@@ -1,0 +1,14 @@
+# NecBlockBurn represents a native NEC tokens burn record per created block.
+type NecBlockBurn {
+    # blockNumber represents the number of the block.
+    blockNumber: Long!
+
+    # Timestamp is the unix timestamp at which this block was created.
+    timestamp: Long!
+
+    # amount represents the amount of NEC tokens burned in WEI units (18 digits fixed INT encoded as HEX number).
+    amount: BigInt!
+
+    # necValue represents NEC value of the burned NEC tokens.
+    necValue: Float!
+}
