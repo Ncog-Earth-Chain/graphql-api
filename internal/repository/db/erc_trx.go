@@ -102,6 +102,22 @@ func (db *MongoDbBridge) ErcTransactionCount() (uint64, error) {
 	return db.EstimateCount(db.client.Database(db.dbName).Collection(colErcTransactions))
 }
 
+// ErcTransactionCount calculates the total number of ERC20 transactions in the database.
+func (db *PostgreSQLBridge) ErcTransactionCount() (int64, error) {
+	// Define the SQL query to count rows in the 'erc_transactions' table
+	query := "SELECT COUNT(*) FROM erc_transactions"
+
+	// Execute the query and scan the result into a variable
+	var count int64
+	err := db.db.QueryRow(query).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get ERC20 transactions count: %w", err)
+	}
+
+	// Return the count as uint64
+	return int64(count), nil
+}
+
 // ercTrxListInit initializes list of ERC20 transactions based on provided cursor, count, and filter.
 func (db *MongoDbBridge) ercTrxListInit(col *mongo.Collection, cursor *string, count int32, filter *bson.D) (*types.TokenTransactionList, error) {
 	// make sure some filter is used

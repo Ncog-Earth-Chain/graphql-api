@@ -85,6 +85,22 @@ func (db *MongoDbBridge) FMintTransactionCount() (uint64, error) {
 	return db.EstimateCount(db.client.Database(db.dbName).Collection(colFMintTransactions))
 }
 
+// FMintTransactionCount calculates the total number of fMint transactions in the database.
+func (db *PostgreSQLBridge) FMintTransactionCount() (int64, error) {
+	// Define the SQL query to count rows in the 'fmint_transactions' table
+	query := "SELECT COUNT(*) FROM fmint_transactions"
+
+	// Execute the query and scan the result into a variable
+	var count int64
+	err := db.db.QueryRow(query).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get fMint transactions count: %w", err)
+	}
+
+	// Return the count as uint64
+	return int64(count), nil
+}
+
 // FMintTransactionCountFiltered calculates total number of sMint transactions
 // in the database for the given filter.
 func (db *MongoDbBridge) FMintTransactionCountFiltered(filter *bson.D) (uint64, error) {
