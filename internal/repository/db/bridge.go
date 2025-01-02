@@ -3,6 +3,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/config"
@@ -10,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	_ "github.com/lib/pq"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -36,6 +38,27 @@ type MongoDbBridge struct {
 	initBurns        *sync.Once
 }
 
+// Struct use for PostgreSQL.
+type PostgreSQLBridge struct {
+	db     *sql.DB
+	log    logger.Logger
+	dbName string
+
+	// init state marks
+	initAccounts     *sync.Once
+	initTransactions *sync.Once
+	initContracts    *sync.Once
+	initSwaps        *sync.Once
+	initDelegations  *sync.Once
+	initWithdrawals  *sync.Once
+	initRewards      *sync.Once
+	initErc20Trx     *sync.Once
+	initFMintTrx     *sync.Once
+	initEpochs       *sync.Once
+	initGasPrice     *sync.Once
+	initBurns        *sync.Once
+}
+
 // docListCountAggregationTimeout represents a max duration of DB query executed to calculate
 // exact document count in filtered collection. If this duration is exceeded, the query fails
 // ad we fall back to full collection documents count estimation.
@@ -43,6 +66,35 @@ const docListCountAggregationTimeout = 500 * time.Millisecond
 
 // intZero represents an empty big value.
 var intZero = new(big.Int)
+
+// func initializeDB() (*pgxpool.Pool, error) {
+// 	connString := "postgres://postgres:King%23123@localhost:5432/ncog_backend"
+
+// 	// Create a new connection pool
+// 	config, err := pgxpool.ParseConfig(connString)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to parse PostgreSQL config: %v", err)
+// 	}
+
+// 	// Optional: Configure pool settings (e.g., max connections, timeouts)
+// 	config.MaxConns = 10
+// 	config.MinConns = 1
+// 	config.MaxConnLifetime = time.Hour
+
+// 	// Establish the connection pool
+// 	dbPool, err := pgxpool.NewWithConfig(context.Background(), config)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to create PostgreSQL connection pool: %v", err)
+// 	}
+
+// 	// Test the connection
+// 	if err := dbPool.Ping(context.Background()); err != nil {
+// 		return nil, fmt.Errorf("failed to ping PostgreSQL database: %v", err)
+// 	}
+
+// 	log.Println("PostgreSQL database connection established")
+// 	return dbPool, nil
+// }
 
 // New creates a new Mongo Db connection bridge.
 func New(cfg *config.Config, log logger.Logger) (*MongoDbBridge, error) {
@@ -69,6 +121,29 @@ func New(cfg *config.Config, log logger.Logger) (*MongoDbBridge, error) {
 	// check the state
 	db.CheckDatabaseInitState()
 	return db, nil
+}
+
+func InitializePostgreSQLBridge(cfg *config.Config, log logger.Logger) (*PostgreSQLBridge, error) {
+	// Use default DSN if not provided
+
+	dsn := "postgres://postgres:King%23123@localhost:5432/ncog_backend"
+	// Open a connection to the database
+	db, err := sql.Open("postgres", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open a DB connection: %v", err)
+	}
+
+	// Test the connection
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to connect to the database: %v", err)
+	}
+	log.Notice("PgSql database connection established")
+	return &PostgreSQLBridge{
+		db:     db,
+		log:    log,
+		dbName: "ncog_backend",
+	}, nil
 }
 
 // connectDb opens Mongo database connection

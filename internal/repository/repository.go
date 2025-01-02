@@ -60,6 +60,7 @@ func R() Repository {
 type proxy struct {
 	cache *cache.MemBridge
 	db    *db.MongoDbBridge
+	pdDB  *db.PostgreSQLBridge
 	rpc   *rpc.NecBridge
 	log   logger.Logger
 	cfg   *config.Config
@@ -87,7 +88,7 @@ func newRepository() Repository {
 	}
 
 	// create connections
-	caBridge, dbBridge, rpcBridge, err := connect(cfg, log)
+	caBridge, dbBridge, pgDbBrige, rpcBridge, err := connect(cfg, log)
 	if err != nil {
 		log.Fatal("repository init failed")
 		return nil
@@ -97,6 +98,7 @@ func newRepository() Repository {
 	p := proxy{
 		cache: caBridge,
 		db:    dbBridge,
+		pdDB:  pgDbBrige,
 		rpc:   rpcBridge,
 		log:   log,
 		cfg:   cfg,
@@ -126,28 +128,33 @@ func governanceContractsMap(cfg *config.Governance) map[string]*config.Governanc
 }
 
 // connect opens connections to the external sources we need.
-func connect(cfg *config.Config, log logger.Logger) (*cache.MemBridge, *db.MongoDbBridge, *rpc.NecBridge, error) {
+func connect(cfg *config.Config, log logger.Logger) (*cache.MemBridge, *db.MongoDbBridge, *db.PostgreSQLBridge, *rpc.NecBridge, error) {
 	// create new in-memory cache bridge
 	caBridge, err := cache.New(cfg, log)
 	if err != nil {
 		log.Criticalf("can not create in-memory cache bridge, %s", err.Error())
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	// create new database connection bridge
 	dbBridge, err := db.New(cfg, log)
 	if err != nil {
 		log.Criticalf("can not connect backend persistent storage, %s", err.Error())
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
-
+	// PostgreSQL brige db connection
+	PgDbBrige, err := db.InitializePostgreSQLBridge(cfg, log)
+	if err != nil {
+		log.Criticalf("can not connect backend persistent storage, %s", err.Error())
+		return nil, nil, nil, nil, err
+	}
 	// create new Forest RPC bridge
 	rpcBridge, err := rpc.New(cfg, log)
 	if err != nil {
 		log.Criticalf("can not connect Forest RPC interface, %s", err.Error())
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
-	return caBridge, dbBridge, rpcBridge, nil
+	return caBridge, dbBridge, PgDbBrige, rpcBridge, nil
 }
 
 // Close with close all connections and clean up the pending work for graceful termination.
