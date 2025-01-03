@@ -390,6 +390,16 @@ func (db *MongoDbBridge) TransactionsCount() (uint64, error) {
 	return db.EstimateCount(db.client.Database(db.dbName).Collection(coTransactions))
 }
 
+func (db *PostgreSQLBridge) TransactionsCount() (int64, error) {
+	var count int64
+	query := "SELECT COUNT(*) FROM transactions"
+	err := db.db.QueryRow(query).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count rows in transactions table: %w", err)
+	}
+	return count, nil
+}
+
 // Transactions pulls list of transaction hashes starting on the specified cursor.
 func (db *MongoDbBridge) Transactions(cursor *string, count int32, filter *bson.D) (*types.TransactionList, error) {
 	// nothing to load?

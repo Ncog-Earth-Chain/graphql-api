@@ -257,6 +257,21 @@ func (db *MongoDbBridge) WithdrawalsCount() (uint64, error) {
 	return db.EstimateCount(db.client.Database(db.dbName).Collection(colWithdrawals))
 }
 
+func (db *PostgreSQLBridge) WithdrawalsCount() (int64, error) {
+	// Define the query to count the rows in the 'withdrawals' table
+	query := "SELECT COUNT(*) FROM withdrawals"
+
+	// Execute the query and scan the result into a variable
+	var count int64
+	err := db.db.QueryRow(query).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get withdrawals count: %w", err)
+	}
+
+	// Return the count as uint64
+	return int64(count), nil
+}
+
 // wrListInit initializes list of withdraw requests based on provided cursor, count, and filter.
 func (db *MongoDbBridge) wrListInit(col *mongo.Collection, cursor *string, count int32, filter *bson.D) (*types.WithdrawRequestList, error) {
 	// make sure some filter is used

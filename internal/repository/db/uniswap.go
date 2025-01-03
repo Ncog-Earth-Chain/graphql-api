@@ -253,6 +253,21 @@ func (db *MongoDbBridge) SwapCount() (uint64, error) {
 	return db.EstimateCount(db.client.Database(db.dbName).Collection(coUniswap))
 }
 
+func (db *PostgreSQLBridge) SwapCount() (int64, error) {
+	// Define the query to count the rows in the 'uniswap' table
+	query := "SELECT COUNT(*) FROM uniswap"
+
+	// Execute the query and scan the result into a variable
+	var count int64
+	err := db.db.QueryRow(query).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get swap count: %w", err)
+	}
+
+	// Return the count as uint64
+	return int64(count), nil
+}
+
 // LastKnownSwapBlock returns number of the last known block stored in the database.
 func (db *MongoDbBridge) LastKnownSwapBlock() (uint64, error) {
 	// search for document with last swap block number
