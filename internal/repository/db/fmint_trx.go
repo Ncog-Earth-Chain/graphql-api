@@ -3,8 +3,10 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"ncogearthchain-api-graphql/internal/types"
+	"strconv"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -35,6 +37,28 @@ func (db *MongoDbBridge) initFMintTrxCollection(col *mongo.Collection) {
 	db.log.Debugf("fMint trx collection initialized")
 }
 
+// initFMintTrxTable initializes the fMint transaction table with indexes and additional parameters needed by the app.
+func (db *PostgreSQLBridge) initFMintTrxTable() {
+	// Prepare SQL queries to create the indexes
+	indexQueries := []string{
+		`CREATE INDEX IF NOT EXISTS idx_fmint_transaction_token ON erc20_transactions ("token_address")`,
+		`CREATE INDEX IF NOT EXISTS idx_fmint_transaction_user ON erc20_transactions ("user_address")`,
+		`CREATE INDEX IF NOT EXISTS idx_fmint_transaction_timestamp ON erc20_transactions ("timestamp" DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_fmint_transaction_ordinal ON erc20_transactions ("ordinal" DESC)`,
+	}
+
+	// Execute each query to create the indexes
+	for _, query := range indexQueries {
+		_, err := db.db.Exec(query)
+		if err != nil {
+			db.log.Panicf("can not create index for fMint trx table; %s", err.Error())
+		}
+	}
+
+	// Log that the indexes are created
+	db.log.Debugf("fMint trx table indexes initialized")
+}
+
 // AddFMintTransaction stores an fMint transaction in the database if it doesn't exist.
 func (db *MongoDbBridge) AddFMintTransaction(trx *types.FMintTransaction) error {
 	// get the collection for delegations
@@ -54,6 +78,37 @@ func (db *MongoDbBridge) AddFMintTransaction(trx *types.FMintTransaction) error 
 	// make sure delegation collection is initialized
 	if db.initFMintTrx != nil {
 		db.initFMintTrx.Do(func() { db.initFMintTrxCollection(col); db.initErc20Trx = nil })
+	}
+	return nil
+}
+
+// AddFMintTransaction stores an fMint transaction in the PostgreSQL database if it doesn't exist.
+func (db *PostgreSQLBridge) AddFMintTransaction(trx *types.FMintTransaction) error {
+	// Check if the fMint transaction already exists in the database
+	if db.isFMintTransactionKnown(trx) {
+		return nil
+	}
+
+	// Prepare the INSERT query with ON CONFLICT to avoid duplicates
+	query := `
+		INSERT INTO fmint_transactions (token_address, user_address, timestamp, ordinal, other_columns)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (token_address, user_address, timestamp) DO NOTHING
+	`
+
+	// Execute the insert query
+	_, err := db.db.Exec(query, trx.TokenAddress, trx.UserAddress)
+	if err != nil {
+		db.log.Critical(err)
+		return err
+	}
+
+	// Ensure the fMint transaction table is initialized (if necessary)
+	if db.initFMintTrx != nil {
+		db.initFMintTrx.Do(func() {
+			db.initFMintTrxTable() // Initialize the table and indexes (if needed)
+			db.initErc20Trx = nil
+		})
 	}
 	return nil
 }
@@ -78,6 +133,34 @@ func (db *MongoDbBridge) isFMintTransactionKnown(col *mongo.Collection, trx *typ
 		return false
 	}
 	return true
+}
+
+// isFMintTransactionKnown checks if the given fMint transaction exists in the database.
+func (db *PostgreSQLBridge) isFMintTransactionKnown(trx *types.FMintTransaction) bool {
+	// Prepare the SQL query to check if the fMint transaction exists by its PK
+	query := `
+		SELECT 1 FROM fmint_transactions
+		WHERE token_address = $1 AND user_address = $2 AND timestamp = $3
+		LIMIT 1
+	`
+
+	// Execute the query with the provided transaction's unique identifiers (or other fields)
+	var exists bool
+	err := db.db.QueryRow(query, trx.TokenAddress, trx.UserAddress).Scan(&exists)
+
+	// If an error occurred while querying, log and return false
+	if err != nil {
+		// If no rows found, the transaction doesn't exist (no need to log)
+		if err == sql.ErrNoRows {
+			return false
+		}
+		// For other errors, log the issue
+		db.log.Errorf("can not check if fMint transaction exists; %s", err.Error())
+		return false
+	}
+
+	// If we found the transaction, return true
+	return exists
 }
 
 // FMintTransactionCount calculates total number of fMint transactions in the database.
@@ -105,6 +188,32 @@ func (db *PostgreSQLBridge) FMintTransactionCount() (int64, error) {
 // in the database for the given filter.
 func (db *MongoDbBridge) FMintTransactionCountFiltered(filter *bson.D) (uint64, error) {
 	return db.CountFiltered(db.client.Database(db.dbName).Collection(colFMintTransactions), filter)
+}
+
+// FMintTransactionCountFiltered calculates the total number of fMint transactions
+// in the database for the given filter.
+func (db *PostgreSQLBridge) FMintTransactionCountFiltered(filter map[string]interface{}) (uint64, error) {
+	// Build the SQL query for counting filtered fMint transactions
+	query := `SELECT COUNT(*) FROM fmint_transactions WHERE 1 = 1`
+
+	// Prepare the arguments for the query
+	var args []interface{}
+
+	// Apply filter dynamically
+	for key, value := range filter {
+		query += " AND \"" + key + "\" = $" + strconv.Itoa(len(args)+1)
+		args = append(args, value)
+	}
+
+	// Execute the query to get the total count
+	var totalCount uint64
+	err := db.db.QueryRow(query, args...).Scan(&totalCount)
+	if err != nil {
+		db.log.Errorf("error counting filtered fMint transactions; %s", err.Error())
+		return 0, err
+	}
+
+	return totalCount, nil
 }
 
 // FMintTransactions pulls list of fMint transactions starting at the specified cursor.

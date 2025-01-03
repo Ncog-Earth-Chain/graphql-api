@@ -420,34 +420,21 @@ func (db *MongoDbBridge) epochListFilter(cursor *string, count int32, list *type
 }
 
 // epochListFilter creates a filter for epoch list loading.
-func (db *PostgreSQLBridge) epochListFilter(cursor *string, count int32, list *types.EpochList) (string, []interface{}, error) {
-	// Initialize the WHERE clause and arguments
-	var whereClause string
-	var args []interface{}
+func (db *PostgreSQLBridge) epochListFilter(cursor *string, count int32) (string, []interface{}) {
+	filter := "1=1" // Default no-op condition
+	params := []interface{}{}
 
-	// If no cursor is provided, filter based on `First` value
-	if cursor == nil {
+	// Add cursor filtering
+	if cursor != nil {
 		if count > 0 {
-			// For a positive count, filter epochs with ID <= list.First (oldest epochs first)
-			whereClause = fmt.Sprintf("WHERE id <= $1")
+			filter += " AND epoch_end_time > $1"
 		} else {
-			// For a negative count, filter epochs with ID >= list.First (newest epochs first)
-			whereClause = fmt.Sprintf("WHERE id >= $1")
+			filter += " AND epoch_end_time < $1"
 		}
-		args = append(args, list.First)
-	} else {
-		// With a cursor provided, skip the identified row
-		if count > 0 {
-			// Filter for epochs with ID < list.First (older epochs first)
-			whereClause = fmt.Sprintf("WHERE id < $1")
-		} else {
-			// Filter for epochs with ID > list.First (newer epochs first)
-			whereClause = fmt.Sprintf("WHERE id > $1")
-		}
-		args = append(args, list.First)
+		params = append(params, *cursor)
 	}
 
-	return whereClause, args, nil
+	return filter, params
 }
 
 // epochListOptions creates a filter options set for epochs list search.
@@ -474,6 +461,33 @@ func (db *MongoDbBridge) epochListOptions(count int32) *options.FindOptions {
 	// apply the limit, try to get one more record so we can detect list end
 	opt.SetLimit(limit + 1)
 	return opt
+}
+
+// epochListOptions generates the SQL query options for epoch list search.
+func (db *PostgreSQLBridge) epochListOptions(count int32) (string, []interface{}) {
+	// Determine sort direction
+	sortDirection := "DESC"
+	if count < 0 {
+		sortDirection = "ASC"
+	}
+
+	// Absolute value of count
+	limit := int64(count)
+	if limit < 0 {
+		limit = -limit
+	}
+
+	// Construct the SQL query
+	query := `
+		SELECT * 
+		FROM epochs 
+		ORDER BY epoch_end_time %s 
+		LIMIT $1
+	`
+	query = fmt.Sprintf(query, sortDirection)
+
+	// Return query and parameters
+	return query, []interface{}{limit + 1} // Fetch one more record to detect list end
 }
 
 // epochListLoad loads the initialized list of epochs from database.
@@ -520,45 +534,132 @@ func (db *MongoDbBridge) epochListLoad(col *mongo.Collection, cursor *string, co
 	return nil
 }
 
-func (db *PostgreSQLBridge) epochListLoad(cursor *string, count int32, list *types.EpochList) error {
-	// Build the SQL filter and sorting clauses
-	filter, args, err := db.epochListFilter(cursor, count, list)
-	if err != nil {
-		db.log.Errorf("cannot build filter for epoch list; %s", err.Error())
-		return err
-	}
+func (db *PostgreSQLBridge) epochListLoad(cursor *string, count int32, list *types.EpochList) (err error) {
+	// Get sorting direction and limit from options
+	sortDirection, limit := db.epochListOptions(count)
 
-	orderByClause, limit := db.epochListOptions(count)
-	args = append(args, limit) // Add limit as the last argument
+	// Generate the filter clause
+	filter, params := db.epochListFilter(cursor, count)
 
-	// Construct the query
+	// Prepare the base query
 	query := fmt.Sprintf(`
-		SELECT id, start_time, end_time, stake_total_amount
-		FROM epochs
+		SELECT id, epoch_end_time, epoch_fee, total_base_reward_weight, total_tx_reward_weight, 
+		       base_reward_per_second, stake_total_amount, total_supply, other_columns
+		FROM epochs 
 		WHERE %s
-		%s
-		LIMIT $%d`, filter, orderByClause, len(args))
+		ORDER BY epoch_end_time %s
+		LIMIT $%d
+	`, filter, sortDirection, len(params)+1)
+
+	// Append the limit to the parameters
+	params = append(params, limit) // Fetch one more record to detect boundary
 
 	// Execute the query
-	rows, err := db.db.Query(query, args...)
+	rows, err := db.db.Query(query, params...)
 	if err != nil {
-		db.log.Errorf("cannot load epochs; %s", err.Error())
+		db.log.Errorf("error loading epochs list; %s", err.Error())
 		return err
 	}
 	defer rows.Close()
 
-	// Load the epochs into the list
+	// Initialize the last epoch reference
+	var e *types.Epoch
+
+	// Loop through the results
 	for rows.Next() {
-		var epoch types.Epoch
-		if err := rows.Scan(&epoch.Id, &epoch.StartTime, &epoch.EndTime, &epoch.StakeTotalAmount); err != nil {
-			db.log.Errorf("cannot decode epoch row; %s", err.Error())
+		// Append the previous epoch to the list
+		if e != nil {
+			list.Collection = append(list.Collection, e)
+		}
+
+		// Decode the next row into an Epoch struct
+		var row types.Epoch
+		err = rows.Scan(
+			&row.Id, &row.EndTime, &row.EpochFee, &row.TotalBaseRewardWeight, &row.TotalTxRewardWeight,
+			&row.BaseRewardPerSecond, &row.StakeTotalAmount, &row.TotalSupply, &row.OtherColumns,
+		)
+		if err != nil {
+			db.log.Errorf("can not decode epoch list row; %s", err.Error())
 			return err
 		}
-		list.Collection = append(list.Collection, &epoch)
+
+		// Set the current row as the next item
+		e = &row
+	}
+
+	// Handle boundary conditions
+	list.IsEnd = (cursor == nil && count < 0) || (count > 0 && int32(len(list.Collection)) < count)
+	list.IsStart = (cursor == nil && count > 0) || (count < 0 && int32(len(list.Collection)) < -count)
+
+	// Add the last item if a boundary is reached
+	if (list.IsStart || list.IsEnd) && e != nil {
+		list.Collection = append(list.Collection, e)
 	}
 
 	return nil
 }
+
+// func (db *PostgreSQLBridge) epochListLoad(cursor *string, count int32, list *types.EpochList) (err error) {
+
+// 	// Prepare the base query
+// 	query := `
+// 		SELECT id, epoch_end_time, other_columns
+// 		FROM epochs
+// 		WHERE ($1::text IS NULL OR epoch_end_time > $1::text)
+// 		ORDER BY epoch_end_time %s
+// 		LIMIT $2
+// 	`
+// 	// Determine sort direction
+// 	sortDirection := "DESC"
+// 	if count < 0 {
+// 		sortDirection = "ASC"
+// 	}
+// 	query = fmt.Sprintf(query, sortDirection)
+
+// 	// Absolute value of count
+// 	limit := int64(count)
+// 	if limit < 0 {
+// 		limit = -limit
+// 	}
+
+// 	// Execute the query
+// 	rows, err := db.db.Query(query, cursor, limit+1) // Fetch one more record to detect boundary
+// 	if err != nil {
+// 		db.log.Errorf("error loading epochs list; %s", err.Error())
+// 		return err
+// 	}
+// 	defer rows.Close()
+
+// 	// Load the data into the list
+// 	var e *types.Epoch
+// 	for rows.Next() {
+// 		// Append the previous value to the list
+// 		if e != nil {
+// 			list.Collection = append(list.Collection, e)
+// 		}
+
+// 		// Decode the next row
+// 		var row types.Epoch
+// 		err = rows.Scan(&row.Id, &row.EndTime, &row.OtherColumns) // Adjust columns as needed
+// 		if err != nil {
+// 			db.log.Errorf("can not decode epoch list row; %s", err.Error())
+// 			return err
+// 		}
+
+// 		// Use this row as the next item
+// 		e = &row
+// 	}
+
+// 	// Check if a boundary was reached
+// 	list.IsEnd = (cursor == nil && count < 0) || (count > 0 && int32(len(list.Collection)) < count)
+// 	list.IsStart = (cursor == nil && count > 0) || (count < 0 && int32(len(list.Collection)) < -count)
+
+// 	// Add the last item as well if we hit the boundary
+// 	if (list.IsStart || list.IsEnd) && e != nil {
+// 		list.Collection = append(list.Collection, e)
+// 	}
+// 	return nil
+// }
 
 // Epochs pulls list of epochs starting at the specified cursor.
 func (db *MongoDbBridge) Epochs(cursor *string, count int32) (*types.EpochList, error) {
