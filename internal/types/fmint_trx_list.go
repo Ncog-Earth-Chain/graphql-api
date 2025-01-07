@@ -24,7 +24,10 @@ type FMintTransactionList struct {
 	IsEnd bool
 
 	// Filter represents the base filter used for filtering the list
-	Filter bson.D
+	Filter         bson.D
+	FilterPostgres string
+	// Query string for SQL query building
+	Query string `json:"-"`
 }
 
 // Reverse reverses the order of fMint transactions in the list.

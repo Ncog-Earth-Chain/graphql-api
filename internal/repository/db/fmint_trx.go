@@ -8,6 +8,8 @@ import (
 	"ncogearthchain-api-graphql/internal/types"
 	"strconv"
 
+	//"github.com/jackc/pgx"
+	"github.com/jackc/pgx"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -249,6 +251,40 @@ func (db *MongoDbBridge) FMintTransactions(cursor *string, count int32, filter *
 	return list, nil
 }
 
+// FMintTransactions retrieves a list of fMint transactions starting at the specified cursor using PostgreSQL.
+func (db *PostgreSQLBridge) FMintTransactions(cursor *string, count int32, filter *string) (*types.FMintTransactionList, error) {
+	// nothing to load?
+	if count == 0 {
+		return nil, fmt.Errorf("nothing to do, zero fMint transactions requested")
+	}
+
+	// Initialize the list using fMintTrxListInit
+	list, err := db.fMintTrxListInit(cursor, count, filter)
+	if err != nil {
+		db.log.Errorf("failed to initialize fMint transaction list; %s", err.Error())
+		return nil, err
+	}
+
+	// Load data if there are any transactions
+	if list.Total > 0 {
+		query := list.Query // Prebuilt query from fMintTrxListInit
+		// args := list.Args   // Prebuilt arguments from fMintTrxListInit
+
+		err = db.fMintTrxListLoad(&query, count, list)
+		if err != nil {
+			db.log.Errorf("failed to load fMint transaction list from database; %s", err.Error())
+			return nil, err
+		}
+
+		// Reverse the list if count is negative
+		if count < 0 {
+			list.Reverse()
+		}
+	}
+
+	return list, nil
+}
+
 // fMintTrxListInit initializes list of fMint transactions based on provided cursor, count, and filter.
 func (db *MongoDbBridge) fMintTrxListInit(col *mongo.Collection, cursor *string, count int32, filter *bson.D) (*types.FMintTransactionList, error) {
 	// make sure some filter is used
@@ -281,6 +317,52 @@ func (db *MongoDbBridge) fMintTrxListInit(col *mongo.Collection, cursor *string,
 	}
 	// this is an empty list
 	db.log.Debug("empty fMint trx list created")
+	return &list, nil
+}
+
+// fMintTrxListInit initializes the list of fMint transactions based on the provided cursor, count, and filter.
+func (db *PostgreSQLBridge) fMintTrxListInit(cursor *string, count int32, filter *string) (*types.FMintTransactionList, error) {
+	// Ensure a filter exists
+	if filter == nil {
+		defaultFilter := "TRUE" // Default filter to select all rows
+		filter = &defaultFilter
+	}
+
+	// Build the base query for counting
+	countQuery := fmt.Sprintf(`
+		SELECT COUNT(*)
+		FROM fMintTransactions
+		WHERE %s
+	`, *filter)
+
+	var total int64
+	err := db.db.QueryRow(countQuery).Scan(&total)
+	if err != nil {
+		db.log.Errorf("failed to count fMint transactions: %s", err.Error())
+		return nil, err
+	}
+
+	// Log the total count of filtered transactions
+	db.log.Debugf("found %d filtered fMint transactions", total)
+
+	// Initialize the transaction list
+	list := types.FMintTransactionList{
+		Collection:     make([]*types.FMintTransaction, 0),
+		Total:          uint64(total),
+		First:          0,
+		Last:           0,
+		IsStart:        total == 0,
+		IsEnd:          total == 0,
+		FilterPostgres: *filter,
+	}
+
+	// If the total is greater than zero, calculate range marks
+	if total > 0 {
+		return db.fMintTrxListCollectRangeMarks(&list, cursor, count)
+	}
+
+	// This is an empty list
+	db.log.Debug("empty fMint transaction list created")
 	return &list, nil
 }
 
@@ -321,6 +403,50 @@ func (db *MongoDbBridge) fMintTrxListCollectRangeMarks(col *mongo.Collection, li
 	return list, nil
 }
 
+// fMintTrxListCollectRangeMarks finds range marks of a list of fMint transactions with proper First/Last marks.
+func (db *PostgreSQLBridge) fMintTrxListCollectRangeMarks(list *types.FMintTransactionList, cursor *string, count int32) (*types.FMintTransactionList, error) {
+	var err error
+
+	// Determine the range based on cursor and count
+	if cursor == nil && count > 0 {
+		// Get the highest available primary key (descending order)
+		err = db.fMintTrxListBorderPk(
+			list,
+			list.FilterPostgres,
+			"DESC",
+		)
+		list.IsStart = true
+
+	} else if cursor == nil && count < 0 {
+		// Get the lowest available primary key (ascending order)
+		err = db.fMintTrxListBorderPk(
+			list,
+			list.FilterPostgres,
+			"ASC",
+		)
+		list.IsEnd = true
+
+	} else if cursor != nil {
+		// The cursor itself is the starting point
+		err = db.fMintTrxListBorderPk(
+			list,
+			fmt.Sprintf("%s AND id = $1", list.Filter),
+			"",
+			*cursor,
+		)
+	}
+
+	// Check for errors
+	if err != nil {
+		db.log.Errorf("cannot find the initial fMint transaction: %s", err.Error())
+		return nil, err
+	}
+
+	// Log initialization information
+	db.log.Debugf("fMint transaction list initialized with ID %d", list.First)
+	return list, nil
+}
+
 // fMintTrxListBorderPk finds the top PK of the ERC20 transactions collection based on given filter and options.
 func (db *MongoDbBridge) fMintTrxListBorderPk(col *mongo.Collection, filter bson.D, opt *options.FindOneOptions) (uint64, error) {
 	// prep container
@@ -338,6 +464,44 @@ func (db *MongoDbBridge) fMintTrxListBorderPk(col *mongo.Collection, filter bson
 		return 0, err
 	}
 	return row.Value, nil
+}
+
+// fMintTrxListBorderPk retrieves the border primary key for fMint transactions.
+func (db *PostgreSQLBridge) fMintTrxListBorderPk(list *types.FMintTransactionList, filter string, sortOrder string, args ...interface{}) error {
+	// Build the query to fetch the border primary key
+	query := fmt.Sprintf(`
+		SELECT id
+		FROM fMintTransactions
+		WHERE %s
+	`, filter)
+
+	// Apply sorting for the border (highest or lowest)
+	if sortOrder != "" {
+		query += fmt.Sprintf(" ORDER BY id %s", sortOrder)
+	}
+
+	// Limit to a single row
+	query += " LIMIT 1"
+
+	// Execute the query
+	var pk int64
+	err := db.db.QueryRowContext(context.Background(), query, args...).Scan(&pk)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			// No rows found, return nil without error
+			return nil
+		}
+		db.log.Errorf("failed to retrieve border primary key: %s", err.Error())
+		return err
+	}
+
+	// Update the appropriate field in the list
+	if sortOrder == "DESC" || sortOrder == "" {
+		list.First = uint64(pk)
+	} else {
+		list.Last = uint64(pk)
+	}
+	return nil
 }
 
 // fMintTrxListFilter creates a filter for fMint transaction list loading.
@@ -358,6 +522,37 @@ func (db *MongoDbBridge) fMintTrxListFilter(cursor *string, count int32, list *t
 	}
 	// return the new filter
 	return &list.Filter
+}
+
+// fMintTrxListFilter creates a SQL filter for fMint transaction list loading.
+func (db *PostgreSQLBridge) fMintTrxListFilter(cursor *string, count int32, list *types.FMintTransactionList) (string, []interface{}) {
+	// Base filter from the list
+	filter := list.FilterPostgres
+	args := []interface{}{}
+	argIndex := 1 // For parameterized queries, starting at $1
+
+	// Add the PK (cursor or ordinal) to the filter
+	if cursor == nil {
+		if count > 0 {
+			filter += fmt.Sprintf(" AND ordinal <= $%d", argIndex)
+			args = append(args, list.First)
+		} else {
+			filter += fmt.Sprintf(" AND ordinal >= $%d", argIndex)
+			args = append(args, list.First)
+		}
+		argIndex++
+	} else {
+		if count > 0 {
+			filter += fmt.Sprintf(" AND ordinal < $%d", argIndex)
+			args = append(args, list.First)
+		} else {
+			filter += fmt.Sprintf(" AND ordinal > $%d", argIndex)
+			args = append(args, list.First)
+		}
+		argIndex++
+	}
+
+	return filter, args
 }
 
 // fMintTrxListOptions creates a filter options set for fMint transactions list search.
@@ -384,6 +579,25 @@ func (db *MongoDbBridge) fMintTrxListOptions(count int32) *options.FindOptions {
 	// apply the limit, try to get one more record, so we can detect list end
 	opt.SetLimit(limit + 1)
 	return opt
+}
+
+// fMintTrxListOptions creates SQL ordering and limit clauses for fMint transactions list search.
+func (db *PostgreSQLBridge) fMintTrxListOptions(count int32) (string, int64) {
+	// Determine sort direction: descending (-1) or ascending (1)
+	order := "DESC"
+	if count < 0 {
+		order = "ASC"
+	}
+
+	// Calculate the absolute limit (include +1 to detect list end)
+	limit := int64(count)
+	if limit < 0 {
+		limit = -limit
+	}
+	limit += 1
+
+	// Return the SQL ORDER BY clause and limit
+	return order, limit
 }
 
 // fMintTrxListLoad load the initialized list of fMint transactions from database.
@@ -432,5 +646,65 @@ func (db *MongoDbBridge) fMintTrxListLoad(col *mongo.Collection, cursor *string,
 	if (list.IsStart || list.IsEnd) && trx != nil {
 		list.Collection = append(list.Collection, trx)
 	}
+	return nil
+}
+
+// fMintTrxListLoad loads the initialized list of fMint transactions from the database.
+func (db *PostgreSQLBridge) fMintTrxListLoad(cursor *string, count int32, list *types.FMintTransactionList) error {
+	ctx := context.Background()
+
+	// Prepare the filter and arguments
+	filter, args := db.fMintTrxListFilter(cursor, count, list)
+	order, limit := db.fMintTrxListOptions(count)
+
+	// Construct the query
+	query := fmt.Sprintf(
+		"SELECT id, ordinal, amount, timestamp FROM fMintTransactions WHERE %s ORDER BY ordinal %s LIMIT $%d",
+		filter, order, len(args)+1,
+	)
+	args = append(args, limit)
+
+	// Execute the query
+	rows, err := db.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		db.log.Errorf("error loading fMint transactions list; %s", err.Error())
+		return err
+	}
+	defer rows.Close()
+
+	// Loop and load the transactions into the list
+	var trx *types.FMintTransaction
+	for rows.Next() {
+		// Append the previous transaction if present
+		if trx != nil {
+			list.Collection = append(list.Collection, trx)
+		}
+
+		// Decode the current row
+		var row types.FMintTransaction
+		if err := rows.Scan(&row.Amount, &row.TimeStamp); err != nil {
+			db.log.Errorf("cannot decode the fMint transaction list row; %s", err.Error())
+			return err
+		}
+
+		// Use this row as the next item
+		trx = &row
+	}
+
+	// Handle potential error after looping
+	if err := rows.Err(); err != nil {
+		db.log.Errorf("error iterating fMint transactions list rows; %s", err.Error())
+		return err
+	}
+
+	// Check if boundaries (start or end of the list) were reached
+	list.IsEnd = (cursor == nil && count < 0) || (count > 0 && int32(len(list.Collection)) < count)
+	list.IsStart = (cursor == nil && count > 0) || (count < 0 && int32(len(list.Collection)) < -count)
+
+	// Append the last transaction if we hit a boundary
+	if (list.IsStart || list.IsEnd) && trx != nil {
+		list.Collection = append(list.Collection, trx)
+	}
+
 	return nil
 }
