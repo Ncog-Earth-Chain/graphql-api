@@ -10,6 +10,8 @@ import (
 
 // TokenTransaction represents a resolvable generic token transaction.
 type TokenTransaction struct {
+	Id string `json:"id"`
+
 	types.TokenTransaction
 }
 

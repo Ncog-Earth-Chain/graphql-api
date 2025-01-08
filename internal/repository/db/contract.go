@@ -3,9 +3,11 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"ncogearthchain-api-graphql/internal/types"
 	"strconv"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"go.mongodb.org/mongo-driver/bson"
@@ -29,6 +31,13 @@ const (
 	fiContractSourceValidated = "val"
 )
 
+type ContractList struct {
+	First   []types.Contract // <-- Change this to a slice of contracts
+	Total   uint64
+	IsStart bool
+	IsEnd   bool
+}
+
 // initContractsCollection initializes the contracts collection with
 // indexes and additional parameters needed by the app.
 func (db *MongoDbBridge) initContractsCollection(col *mongo.Collection) {
@@ -51,6 +60,26 @@ func (db *MongoDbBridge) initContractsCollection(col *mongo.Collection) {
 
 	// log we done that
 	db.log.Debugf("contracts collection initialized")
+}
+
+// initContractsCollection initializes the contracts table with
+// indexes and additional parameters needed by the app.
+func (db *PostgreSQLBridge) initContractsCollection() {
+	// Prepare SQL query for creating indexes
+	// First, we need to create an index on (contract primary key, contract ordinal index)
+	query := `
+		CREATE INDEX IF NOT EXISTS idx_contract_pk_ordinal
+		ON contracts (contract_pk, contract_ordinal_index DESC);
+	`
+
+	// Execute the query to create the index
+	_, err := db.db.Exec(query)
+	if err != nil {
+		db.log.Panicf("can not create indexes for contracts table; %s", err.Error())
+	}
+
+	// Log that the indexes were created
+	db.log.Debugf("contracts table initialized")
 }
 
 // AddContract stores a smart contract reference in connected persistent storage.
@@ -91,6 +120,48 @@ func (db *MongoDbBridge) AddContract(sc *types.Contract) error {
 	return nil
 }
 
+// AddContract stores a smart contract reference in the connected PostgreSQL database.
+func (db *PostgreSQLBridge) AddContract(sc *types.Contract) error {
+	// Do we have all needed data?
+	if sc == nil {
+		return fmt.Errorf("can not add empty contract")
+	}
+
+	// Check if the contract already exists in the database
+	exists, err := db.isContractKnown(&sc.Address)
+	if err != nil {
+		db.log.Critical(err)
+		return err
+	}
+
+	// If the contract already exists, update it
+	if exists {
+		db.log.Debugf("contract %s known, updating", sc.Address.String())
+		return db.UpdateContract(sc)
+	}
+
+	// Insert the new contract into the database
+	query := `
+		INSERT INTO contracts (address, other_column1, other_column2) 
+		VALUES ($1, $2, $3)
+		ON CONFLICT (address) 
+		DO UPDATE SET address = EXCLUDED.address;` // Replace with actual column names
+
+	_, err = db.db.Exec(query, sc.Address) // Adjust column values
+	if err != nil {
+		db.log.Critical(err)
+		return err
+	}
+
+	// Optionally initialize the contracts table (e.g., create indexes)
+	if db.initContracts != nil {
+		db.initContracts.Do(func() { db.initContractsCollection(); db.initContracts = nil })
+	}
+
+	db.log.Debugf("added smart contract at %s", sc.Address.String())
+	return nil
+}
+
 // UpdateContract updates smart contract information in database to reflect
 // new validation or similar changes passed from repository.
 func (db *MongoDbBridge) UpdateContract(sc *types.Contract) error {
@@ -115,11 +186,61 @@ func (db *MongoDbBridge) UpdateContract(sc *types.Contract) error {
 	return nil
 }
 
+// UpdateContract updates smart contract information in PostgreSQL database to reflect
+// new validation or similar changes passed from the repository.
+func (db *PostgreSQLBridge) UpdateContract(sc *types.Contract) error {
+	// Complain about missing contract data
+	if sc == nil {
+		db.log.Criticalf("cannot update empty contract")
+		return fmt.Errorf("no contract given to update")
+	}
+
+	// Prepare the SQL query to update the contract details
+	query := `
+		UPDATE contracts
+		SET other_column1 = $1, other_column2 = $2, ...  -- Add more columns as needed
+		WHERE address = $3
+		RETURNING address;` // Optionally, return the updated address
+
+	// Execute the update query
+	err := db.db.QueryRow(query, sc.Address).Scan(&sc.Address)
+	if err != nil {
+		// Log the issue
+		db.log.Errorf("cannot update contract details at %s; %s", sc.Address.String(), err.Error())
+		return err
+	}
+
+	return nil
+}
+
 // IsContractKnown checks if a smart contract document already exists in the database.
 func (db *MongoDbBridge) IsContractKnown(addr *common.Address) bool {
 	// check the contract existence in the database
 	known, err := db.isContractKnown(db.client.Database(db.dbName).Collection(coContract), addr)
 	if err != nil {
+		return false
+	}
+
+	return known
+}
+
+// IsContractKnown checks if a smart contract document already exists in the PostgreSQL database.
+func (db *PostgreSQLBridge) IsContractKnown(addr *common.Address) bool {
+	// Prepare the SQL query to check if the contract exists
+	query := `
+		SELECT EXISTS(
+			SELECT 1 
+			FROM contracts 
+			WHERE address = $1
+		);`
+
+	var known bool
+
+	// Execute the query
+	err := db.db.QueryRow(query, addr.String()).Scan(&known)
+	if err != nil {
+		// Log the error and return false as default
+		db.log.Errorf("error checking if contract is known at %s; %s", addr.String(), err.Error())
 		return false
 	}
 
@@ -150,6 +271,29 @@ func (db *MongoDbBridge) isContractKnown(col *mongo.Collection, addr *common.Add
 	return true, nil
 }
 
+// isContractKnown checks if a smart contract document already exists in the PostgreSQL database.
+func (db *PostgreSQLBridge) isContractKnown(addr *common.Address) (bool, error) {
+	// SQL query to check if the contract exists
+	query := `
+		SELECT EXISTS(
+			SELECT 1 
+			FROM contracts 
+			WHERE address = $1
+		);`
+
+	var exists bool
+
+	// Execute the query
+	err := db.db.QueryRow(query, addr.String()).Scan(&exists)
+	if err != nil {
+		// Log the error and return
+		db.log.Errorf("error checking if contract is known at %s; %s", addr.String(), err.Error())
+		return false, err
+	}
+
+	return exists, nil
+}
+
 // ContractTransaction returns contract creation transaction hash if available.
 func (db *MongoDbBridge) ContractTransaction(addr *common.Address) (*common.Hash, error) {
 	// get the contract details from database
@@ -166,6 +310,36 @@ func (db *MongoDbBridge) ContractTransaction(addr *common.Address) (*common.Hash
 
 	// return the hash
 	return &c.TransactionHash, nil
+}
+
+// ContractTransaction returns contract creation transaction hash if available.
+func (db *PostgreSQLBridge) ContractTransaction(addr *common.Address) (*common.Hash, error) {
+	// Prepare the SQL query to fetch the contract from the database
+	query := `SELECT transaction_hash FROM contracts WHERE address = $1`
+
+	var transactionHash string
+
+	// Execute the query
+	err := db.db.QueryRow(query, addr.String()).Scan(&transactionHash)
+
+	// Handle errors
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// No contract found
+			return nil, nil
+		}
+		db.log.Errorf("can not get the contract transaction for [%s]; %s", addr.String(), err.Error())
+		return nil, err
+	}
+
+	// If transaction hash is empty, return nil
+	if transactionHash == "" {
+		return nil, nil
+	}
+
+	// Return the transaction hash
+	hash := common.HexToHash(transactionHash)
+	return &hash, nil
 }
 
 // Contract returns details of a smart contract stored in the Mongo database
@@ -202,9 +376,51 @@ func (db *MongoDbBridge) Contract(addr *common.Address) (*types.Contract, error)
 	return &con, nil
 }
 
+// Contract returns details of a smart contract stored in the PostgreSQL database
+// if available, or nil if the contract does not exist.
+func (db *PostgreSQLBridge) Contract(addr *common.Address) (*types.Contract, error) {
+	// Prepare the SQL query to fetch the contract from the database
+	query := `SELECT address, transaction_hash, other_column1, other_column2 FROM contracts WHERE address = $1`
+
+	// Define a variable to hold the contract details
+	var con types.Contract
+
+	// Execute the query
+	err := db.db.QueryRow(query, addr.String()).Scan(&con.Address, &con.TransactionHash)
+
+	// Handle errors
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// No contract found
+			return nil, nil
+		}
+		db.log.Errorf("can not get contract %s details; %s", addr.String(), err.Error())
+		return nil, err
+	}
+
+	// Inform about successful loading
+	db.log.Debugf("loaded contract %s", addr.String())
+	return &con, nil
+}
+
 // ContractCount calculates total number of contracts in the database.
 func (db *MongoDbBridge) ContractCount() (uint64, error) {
 	return db.EstimateCount(db.client.Database(db.dbName).Collection(coContract))
+}
+
+func (db *PostgreSQLBridge) ContractCount() (int64, error) {
+	// Define the query to count the rows in the 'contracts' table
+	query := "SELECT COUNT(*) FROM contracts"
+
+	// Execute the query and scan the result into a variable
+	var count int64
+	err := db.db.QueryRow(query).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get contract count: %w", err)
+	}
+
+	// Return the count as uint64
+	return int64(count), nil
 }
 
 // contractListTotal find the total amount of contracts for the criteria and populates the list
@@ -223,6 +439,27 @@ func (db *MongoDbBridge) contractListTotal(col *mongo.Collection, validatedOnly 
 	}
 
 	// apply the total count
+	list.Total = uint64(total)
+	return nil
+}
+
+// contractListTotal finds the total number of contracts for the criteria and populates the list
+func (db *PostgreSQLBridge) contractListTotal(validatedOnly bool, list *types.ContractList) error {
+	// Build the SQL query with the validation filter
+	query := `SELECT COUNT(*) FROM contracts`
+	if validatedOnly {
+		query += ` WHERE validated IS NOT NULL`
+	}
+
+	// Execute the query to get the total count
+	var total int64
+	err := db.db.QueryRow(query).Scan(&total)
+	if err != nil {
+		db.log.Errorf("can not count contracts; %s", err.Error())
+		return err
+	}
+
+	// Apply the total count to the list
 	list.Total = uint64(total)
 	return nil
 }
@@ -258,6 +495,39 @@ func contractListTopFilter(validatedOnly bool, cursor *string) (*bson.D, error) 
 		filter = bson.D{{Key: fiContractSourceValidated, Value: bson.D{{Key: "$ne", Value: nil}}}, {Key: fiContractOrdinalIndex, Value: ix}}
 	}
 	return &filter, nil
+}
+
+// contractListTopFilter constructs a WHERE clause for finding the top item of the list in PostgreSQL.
+func contractListTopFilterpostgres(validatedOnly bool, cursor *string) (string, []interface{}, error) {
+	// Prepare a slice to hold query parameters
+	var conditions []string
+	var args []interface{}
+
+	// what is the requested ordinal index from cursor, if any
+	if cursor != nil {
+		// Get the ordinal index from cursor
+		ix, err := strconv.ParseUint(*cursor, 10, 64)
+		if err != nil {
+			return "", nil, fmt.Errorf("invalid cursor value; %s", err.Error())
+		}
+
+		// Add condition for ordinal index if cursor is provided
+		conditions = append(conditions, "ordinal_index = $1")
+		args = append(args, ix)
+	}
+
+	// Add condition for validated status if requested
+	if validatedOnly {
+		conditions = append(conditions, "validated IS NOT NULL")
+	}
+
+	// Construct the WHERE clause
+	whereClause := ""
+	if len(conditions) > 0 {
+		whereClause = "WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	return whereClause, args, nil
 }
 
 // contractListTop find the first contract of the list based on provided criteria and populates the list.
@@ -299,6 +569,47 @@ func (db *MongoDbBridge) contractListTop(col *mongo.Collection, validatedOnly bo
 	return nil
 }
 
+// contractListTop finds the first contract of the list based on the provided criteria and populates the list.
+func (db *PostgreSQLBridge) contractListTop(validatedOnly bool, cursor *string, count int32, list *types.ContractList) error {
+	// Build the WHERE clause and parameters
+	whereClause, args, err := contractListTopFilterpostgres(validatedOnly, cursor)
+	if err != nil {
+		db.log.Errorf("cannot find top contract for the list; %s", err.Error())
+		return err
+	}
+
+	// Construct the SQL query
+	query := "SELECT * FROM contracts " + whereClause + " ORDER BY ordinal_index DESC LIMIT $1"
+	args = append(args, count)
+
+	// Execute the query to get the first contract based on the criteria
+	rows, err := db.db.Query(query, args...)
+	if err != nil {
+		db.log.Errorf("error executing query to fetch top contract; %s", err.Error())
+		return err
+	}
+	defer rows.Close()
+
+	// Fetch the contract data
+	if rows.Next() {
+		var contract types.Contract
+		if err := rows.Scan(&contract.Address, &contract.Validated); err != nil {
+			db.log.Errorf("error scanning contract row; %s", err.Error())
+			return err
+		}
+		//list.First = append(list.First, contract)
+	}
+
+	// Check if it's the start or end of the list
+	if cursor == nil && count > 0 {
+		list.IsStart = true
+	} else if cursor == nil && count < 0 {
+		list.IsEnd = true
+	}
+
+	return nil
+}
+
 // contractListInit initializes list of contracts based on provided cursor and count.
 func (db *MongoDbBridge) contractListInit(col *mongo.Collection, validatedOnly bool, cursor *string, count int32) (*types.ContractList, error) {
 	// make the list
@@ -325,6 +636,36 @@ func (db *MongoDbBridge) contractListInit(col *mongo.Collection, validatedOnly b
 	}
 
 	// inform what we are about to do
+	db.log.Debugf("contract list initialized with ordinal index %d", list.First)
+	return &list, nil
+}
+
+// contractListInit initializes list of contracts based on provided cursor and count.
+func (db *PostgreSQLBridge) contractListInit(validatedOnly bool, cursor *string, count int32) (*types.ContractList, error) {
+	// Initialize the contract list structure
+	list := types.ContractList{
+		Collection: make([]*types.Contract, 0),
+		Total:      0,
+		First:      0,
+		Last:       0,
+		IsStart:    false,
+		IsEnd:      false,
+	}
+
+	// Calculate the total number of contracts in the list
+	if err := db.contractListTotal(validatedOnly, &list); err != nil {
+		return nil, err
+	}
+
+	// Inform what we are about to do
+	db.log.Debugf("found %d contracts in the off-chain database", list.Total)
+
+	// Find the top contract of the list
+	if err := db.contractListTop(validatedOnly, cursor, count, &list); err != nil {
+		return nil, err
+	}
+
+	// Inform what we are about to do
 	db.log.Debugf("contract list initialized with ordinal index %d", list.First)
 	return &list, nil
 }
@@ -365,6 +706,39 @@ func (db *MongoDbBridge) contractListFilter(validatedOnly bool, cursor *string, 
 	return &filter
 }
 
+// contractListFilter creates a SQL WHERE clause for contract list search.
+func (db *PostgreSQLBridge) contractListFilter(validatedOnly bool, cursor *string, count int32, list *types.ContractList) (string, []interface{}, error) {
+	// Initialize the WHERE clause and parameters
+	var whereClause string
+	var args []interface{}
+	ordinalOp := "<="
+
+	// Inform what we are about to do
+	db.log.Debugf("contract filter starts from index %d", list.First)
+
+	// Determine the ordinal operation based on the cursor and count
+	if cursor == nil && count < 0 {
+		ordinalOp = ">="
+	} else if cursor != nil && count > 0 {
+		ordinalOp = "<"
+	} else if cursor != nil && count < 0 {
+		ordinalOp = ">"
+	}
+
+	// Build the WHERE clause
+	if validatedOnly {
+		// Filter validated only contracts
+		whereClause = fmt.Sprintf("WHERE ordinal_index %s $1 AND validated IS NOT NULL", ordinalOp)
+		args = append(args, list.First)
+	} else {
+		// Filter all contracts
+		whereClause = fmt.Sprintf("WHERE ordinal_index %s $1", ordinalOp)
+		args = append(args, list.First)
+	}
+
+	return whereClause, args, nil
+}
+
 // contractListOptions creates a filter options set for contract list search.
 func (db *MongoDbBridge) contractListOptions(count int32) *options.FindOptions {
 	// prep options
@@ -391,6 +765,28 @@ func (db *MongoDbBridge) contractListOptions(count int32) *options.FindOptions {
 	// apply the limit
 	opt.SetLimit(limit)
 	return opt
+}
+
+// contractListOptions constructs SQL clauses for sorting and limiting contract list results.
+func (db *PostgreSQLBridge) contractListOptions(count int32) (string, int64) {
+	// Determine sorting order
+	sortOrder := "DESC"
+	if count < 0 {
+		sortOrder = "ASC"
+	}
+
+	// Determine the limit
+	limit := int64(count)
+	if limit < 0 {
+		limit = -limit
+	}
+	// Add 1 to the limit to fetch one more record
+	limit++
+
+	// Build the ORDER BY clause
+	orderByClause := fmt.Sprintf("ORDER BY ordinal_index %s", sortOrder)
+
+	return orderByClause, limit
 }
 
 // contractListLoad loads the initialized contract list from persistent database.
@@ -442,6 +838,69 @@ func (db *MongoDbBridge) contractListLoad(col *mongo.Collection, validatedOnly b
 	return nil
 }
 
+// contractListLoad loads the initialized contract list from the PostgreSQL database.
+func (db *PostgreSQLBridge) contractListLoad(validatedOnly bool, cursor *string, count int32, list *types.ContractList) error {
+	// Build the SQL filter and sorting clauses
+	filter, args, err := db.contractListFilter(validatedOnly, cursor, count, list)
+	if err != nil {
+		db.log.Errorf("error creating filter for contract list; %s", err.Error())
+		return err
+	}
+
+	orderByClause, limit := db.contractListOptions(count)
+	args = append(args, limit) // Add the limit as the last argument
+
+	// Construct the query
+	query := fmt.Sprintf(`
+		SELECT * 
+		FROM contracts 
+		%s 
+		%s 
+		LIMIT $%d`, filter, orderByClause, len(args))
+
+	// Execute the query
+	rows, err := db.db.Query(query, args...)
+	if err != nil {
+		db.log.Errorf("error loading contract list; %s", err.Error())
+		return err
+	}
+	defer rows.Close()
+
+	// Loop through the results
+	var contract *types.Contract
+	for rows.Next() {
+		// Process the last found contract
+		if contract != nil {
+			list.Collection = append(list.Collection, contract)
+			list.Last = contract.Uid()
+		}
+
+		// Decode the next row
+		var con types.Contract
+		if err := rows.Scan(&con.Address, &con.Validated); err != nil {
+			db.log.Errorf("can not decode contract in the list row; %s", err.Error())
+			return err
+		}
+
+		// Keep this one
+		contract = &con
+	}
+
+	// Check if we reached the boundaries
+	if contract != nil {
+		list.IsEnd = count > 0 && int32(len(list.Collection)) < count
+		list.IsStart = count < 0 && int32(len(list.Collection)) < -count
+
+		// Add the last item to the collection if applicable
+		if list.IsStart || list.IsEnd {
+			list.Collection = append(list.Collection, contract)
+			list.Last = contract.Uid()
+		}
+	}
+
+	return nil
+}
+
 // Contracts provides list of smart contracts stored in the persistent storage.
 func (db *MongoDbBridge) Contracts(validatedOnly bool, cursor *string, count int32) (*types.ContractList, error) {
 	// nothing to load?
@@ -481,5 +940,60 @@ func (db *MongoDbBridge) Contracts(validatedOnly bool, cursor *string, count int
 	if len(list.Collection) > int(count) {
 		list.Collection = list.Collection[:len(list.Collection)-1]
 	}
+	return list, nil
+}
+
+// Contracts provides a list of smart contracts stored in the persistent PostgreSQL storage.
+func (db *PostgreSQLBridge) Contracts(validatedOnly bool, cursor *string, count int32) (*types.ContractList, error) {
+	// Nothing to load?
+	if count == 0 {
+		return nil, fmt.Errorf("nothing to do, zero contracts requested")
+	}
+
+	// Initialize the list
+	// Initialize the list using contractListInit
+	list, err := db.contractListInit(validatedOnly, cursor, count)
+	if err != nil {
+		db.log.Errorf("cannot initialize contract list; %s", err.Error())
+		return nil, err
+	}
+
+	// Calculate the total number of contracts in the list
+	if err := db.contractListTotal(validatedOnly, list); err != nil {
+		db.log.Errorf("cannot calculate total number of contracts; %s", err.Error())
+		return nil, err
+	}
+
+	// Inform what we are about to do
+	db.log.Debugf("found %d contracts in the database", list.Total)
+
+	// Find the top contract of the list
+	if err := db.contractListTop(validatedOnly, cursor, count, list); err != nil {
+		db.log.Errorf("cannot find the top contract for the list; %s", err.Error())
+		return nil, err
+	}
+
+	// Load the data
+	if err := db.contractListLoad(validatedOnly, cursor, count, list); err != nil {
+		db.log.Errorf("cannot load contracts list from database; %s", err.Error())
+		return nil, err
+	}
+
+	// Shift the first item on cursor
+	if cursor != nil && len(list.Collection) > 0 {
+		list.First = list.Collection[0].Uid()
+	}
+
+	// Reverse the list on negative count so newer contracts will be on top
+	if count < 0 {
+		list.Reverse()
+		count = -count
+	}
+
+	// Trim the collection to the requested count if needed
+	if len(list.Collection) > int(count) {
+		list.Collection = list.Collection[:int(count)]
+	}
+
 	return list, nil
 }

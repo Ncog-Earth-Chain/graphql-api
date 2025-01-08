@@ -25,6 +25,7 @@ type TokenTransactionList struct {
 
 	// Filter represents the base filter used for filtering the list
 	Filter bson.D
+	cursor *string
 }
 
 // Reverse reverses the order of ERC transactions in the list.
