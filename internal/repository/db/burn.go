@@ -4,13 +4,9 @@ package db
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"fmt"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/types"
-
-	"github.com/lib/pq"
-	_ "github.com/lib/pq"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -45,23 +41,6 @@ func (db *MongoDbBridge) initBurnsCollection(col *mongo.Collection) {
 
 	// log we are done that
 	db.log.Debugf("burns collection initialized")
-}
-
-// initBurnsCollection initializes the burn collection indexes in PostgreSQL.
-func (db *PostgreSQLBridge) initBurnsCollection() {
-	// Prepare SQL queries for creating indexes
-
-	// Index on 'block' column (unique index)
-	indexQuery := `CREATE UNIQUE INDEX IF NOT EXISTS idx_burns_block ON burns (block)`
-
-	// Execute the query to create the index
-	_, err := db.db.Exec(indexQuery)
-	if err != nil {
-		db.log.Panicf("could not create indexes for burns table; %s", err.Error())
-	}
-
-	// Log that we are done
-	db.log.Debugf("burns table indexes initialized")
 }
 
 // StoreBurn stores the given native NEC burn record.
@@ -142,118 +121,9 @@ func (db *MongoDbBridge) StoreBurn(burn *types.NecBurn) error {
 	return err
 }
 
-// StoreBurn stores the given native NEC burn record in PostgreSQL.
-func (db *PostgreSQLBridge) StoreBurn(burn *types.NecBurn) error {
-	if burn == nil {
-		return nil
-	}
-
-	// Prepare SQL queries for insert and update
-	insertQuery := `INSERT INTO burns (block, amount, tx_list) VALUES ($1, $2, $3) RETURNING id`
-	updateQuery := `UPDATE burns SET amount = $1, tx_list = $2 WHERE block = $3`
-
-	// Start a transaction
-	tx, err := db.db.Begin()
-	if err != nil {
-		db.log.Errorf("could not start transaction: %s", err.Error())
-		return err
-	}
-	defer tx.Rollback() // Ensure rollback in case of an error
-
-	// Try to find the existing burn
-	var ex types.NecBurn
-	err = tx.QueryRow("SELECT id, block, amount, tx_list FROM burns WHERE block = $1", burn.BlockNumber).Scan(&ex.ID, &ex.BlockNumber, &ex.Amount, &ex.TxList)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			// If burn not found, insert new record
-			_, err := tx.Exec(insertQuery, burn.BlockNumber, burn.Amount, burn.TxList)
-			if err != nil {
-				db.log.Errorf("could not insert burn at block #%d: %s", burn.BlockNumber, err.Error())
-				return err
-			}
-			// Commit transaction
-			err = tx.Commit()
-			if err != nil {
-				db.log.Errorf("could not commit transaction: %s", err.Error())
-				return err
-			}
-			return nil
-		}
-
-		// If error is not related to missing record
-		db.log.Errorf("could not load NEC burn at block #%d; %s", burn.BlockNumber, err.Error())
-		return err
-	}
-
-	// Handle TxList comparison
-	var found int
-	for _, in := range burn.TxList {
-		for _, e := range ex.TxList {
-			if in == e {
-				found++
-				break
-			}
-		}
-	}
-
-	// Check if all transactions are included
-	if found == len(burn.TxList) {
-		return nil
-	}
-
-	// Handle partial update rejection
-	if found > 0 && found < len(burn.TxList) {
-		db.log.Criticalf("invalid partial burn received at block #%d", burn.BlockNumber)
-		return fmt.Errorf("partial burn update rejected at block #%d", burn.BlockNumber)
-	}
-
-	// Add the new value to the existing one
-	newAmount := new(big.Int).Add((*big.Int)(&ex.Amount), (*big.Int)(&burn.Amount))
-	ex.Amount = hexutil.Big(*newAmount) // Assign the result as hexutil.Big
-	// Update TxList
-	if burn.TxList != nil && len(burn.TxList) > 0 {
-		if ex.TxList == nil {
-			ex.TxList = make([]common.Hash, 0)
-		}
-		ex.TxList = append(ex.TxList, burn.TxList...)
-	}
-
-	// Update the existing burn record
-	_, err = tx.Exec(updateQuery, ex.Amount, ex.TxList, ex.BlockNumber)
-	if err != nil {
-		db.log.Errorf("could not update burn at block #%d: %s", burn.BlockNumber, err.Error())
-		return err
-	}
-
-	// Commit the transaction
-	err = tx.Commit()
-	if err != nil {
-		db.log.Errorf("could not commit transaction: %s", err.Error())
-		return err
-	}
-
-	return nil
-}
-
 // BurnCount estimates the number of burn records in the database.
 func (db *MongoDbBridge) BurnCount() (uint64, error) {
 	return db.EstimateCount(db.client.Database(db.dbName).Collection(colBurns))
-}
-
-// BurnCount estimates the number of burn records in the database.
-func (db *PostgreSQLBridge) BurnCount() (int64, error) {
-	// Define the SQL query to count rows in the 'burns' table
-	query := "SELECT COUNT(*) FROM burns"
-
-	// Execute the query and scan the result into a variable
-	var count int64
-	err := db.db.QueryRow(query).Scan(&count)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get burn count: %w", err)
-	}
-
-	// Return the count as uint64
-	return int64(count), nil
 }
 
 // BurnTotal aggregates the total amount of burned fee across all blocks.
@@ -287,27 +157,6 @@ func (db *MongoDbBridge) BurnTotal() (int64, error) {
 	return row.Amount, nil
 }
 
-// BurnTotal aggregates the total amount of burned fee across all blocks.
-func (db *PostgreSQLBridge) BurnTotal() (int64, error) {
-	// Create SQL query to sum the total amount of burned tokens from the "burns" table
-	query := `SELECT SUM(amount) FROM burns`
-
-	// Execute the query
-	var totalBurned int64
-	err := db.db.QueryRow(query).Scan(&totalBurned)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			// If no rows are found, return 0 as the total
-			return 0, nil
-		}
-		// Log any other errors that occur during the query
-		db.log.Errorf("can not collect total burned fee; %s", err.Error())
-		return 0, err
-	}
-
-	return totalBurned, nil
-}
-
 // BurnList provides list of native NEC burns per blocks stored in the persistent database.
 func (db *MongoDbBridge) BurnList(count int64) ([]types.NecBurn, error) {
 	col := db.client.Database(db.dbName).Collection(colBurns)
@@ -329,49 +178,6 @@ func (db *MongoDbBridge) BurnList(count int64) ([]types.NecBurn, error) {
 			continue
 		}
 		list = append(list, row)
-	}
-
-	return list, nil
-}
-
-// BurnList provides a list of native NEC burns per blocks stored in the persistent PostgreSQL database.
-func (db *PostgreSQLBridge) BurnList(count int64) ([]types.NecBurn, error) {
-	// Query to get the burns ordered by block in descending order with a limit
-	query := `
-        SELECT block, amount, tx_list
-        FROM burns
-        ORDER BY block DESC
-        LIMIT $1
-    `
-
-	rows, err := db.db.Query(query, count)
-	if err != nil {
-		db.log.Errorf("failed to load burns; %s", err.Error())
-		return nil, err
-	}
-	defer rows.Close()
-
-	list := make([]types.NecBurn, 0, count)
-
-	// Iterate over the result set and map each row to the NecBurn struct
-	for rows.Next() {
-		var row types.NecBurn
-
-		// Scan values from the row into the struct fields
-		err := rows.Scan(&row.BlockNumber, &row.Amount, pq.Array(&row.TxList))
-		if err != nil {
-			db.log.Errorf("failed to decode burn; %s", err.Error())
-			continue
-		}
-
-		// Append the row to the list
-		list = append(list, row)
-	}
-
-	// Check for any error that occurred during iteration
-	if err := rows.Err(); err != nil {
-		db.log.Errorf("error during row iteration; %s", err.Error())
-		return nil, err
 	}
 
 	return list, nil

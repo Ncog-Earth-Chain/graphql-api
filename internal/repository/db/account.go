@@ -11,7 +11,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	_ "github.com/lib/pq"
-
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -73,38 +72,6 @@ type PostAccountRow struct {
 func (db *MongoDbBridge) initAccountsCollection() {
 	db.log.Debugf("accounts collection initialized")
 }
-// indexes and additional parameters needed by the app.
-func (db *PostgreSQLBridge) initAccountsTable() {
-	db.log.Debugf("Initializing accounts table...")
-
-	// Create table if it does not exist
-	createTableSQL := `
-    CREATE TABLE IF NOT EXISTS accounts (
-        id SERIAL PRIMARY KEY,
-        account_number TEXT NOT NULL,
-        balance NUMERIC NOT NULL,
-        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-    );
-    `
-	_, err := db.db.Exec(createTableSQL)
-	if err != nil {
-		db.log.Panicf("could not create accounts table: %s", err.Error())
-	}
-
-	// Create indexes for performance, example index on account_number
-	createIndexSQL := `
-    CREATE INDEX IF NOT EXISTS idx_account_number ON accounts(account_number);
-    `
-	_, err = db.db.Exec(createIndexSQL)
-	if err != nil {
-		db.log.Panicf("could not create index for account_number: %s", err.Error())
-	}
-
-	// Log that the table and index have been initialized
-	db.log.Debugf("accounts table and index initialized successfully")
-}
-
-// initAccountsTable initializes the accounts table with
 // indexes and additional parameters needed by the app.
 func (db *PostgreSQLBridge) initAccountsTable() {
 	db.log.Debugf("Initializing accounts table...")
@@ -356,16 +323,6 @@ func (db *PostgreSQLBridge) IsAccountKnown(addr *common.Address) (bool, error) {
 // AccountCount calculates total number of accounts in the database.
 func (db *MongoDbBridge) AccountCount() (uint64, error) {
 	return db.EstimateCount(db.client.Database(db.dbName).Collection(coAccounts))
-}
-
-func (db *PostgreSQLBridge) AccountCount() (int64, error) {
-	var count int64
-	query := "SELECT COUNT(*) FROM accounts"
-	err := db.db.QueryRow(query).Scan(&count)
-	if err != nil {
-		return 0, fmt.Errorf("failed to count rows in accounts table: %w", err)
-	}
-	return count, nil
 }
 
 // AccountTransactions loads list of transaction hashes of an account.
