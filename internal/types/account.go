@@ -28,6 +28,8 @@ const (
 	AccountTypeERC1155Contract = "ERC1155"
 )
 
+
+
 // Account represents an Ncogearthchain account at the blockchain.
 type Account struct {
 	Address      common.Address `json:"address"`

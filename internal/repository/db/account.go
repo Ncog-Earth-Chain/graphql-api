@@ -3,12 +3,14 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"ncogearthchain-api-graphql/internal/types"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	_ "github.com/lib/pq"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -49,10 +51,56 @@ type AccountRow struct {
 	ScHash   *common.Hash `bson:"-"`
 }
 
+// type PostAccountRow struct {
+// 	Address  string       `db:"address"`         // Maps to the "address" column in PostgreSQL
+// 	Type     string       `db:"type"`            // Maps to the "type" column in PostgreSQL
+// 	Sc       *string      `db:"sc"`              // Maps to the "sc" column in PostgreSQL
+// 	Activity uint64       `db:"activity"`        // Maps to the "activity" column in PostgreSQL
+// 	Counter  uint64       `db:"counter"`         // Maps to the "counter" column in PostgreSQL
+// 	ScHash   *common.Hash `db:"sc_hash"`         // Maps to the "sc_hash" column in PostgreSQL
+// }
+
+type PostAccountRow struct {
+    Sc       *string
+    Type     string
+    Activity uint64
+    Counter  uint64
+    ScHash   *common.Hash
+}
 // initAccountsCollection initializes the account collection with
 // indexes and additional parameters needed by the app.
 func (db *MongoDbBridge) initAccountsCollection() {
 	db.log.Debugf("accounts collection initialized")
+}
+// indexes and additional parameters needed by the app.
+func (db *PostgreSQLBridge) initAccountsTable() {
+	db.log.Debugf("Initializing accounts table...")
+
+	// Create table if it does not exist
+	createTableSQL := `
+    CREATE TABLE IF NOT EXISTS accounts (
+        id SERIAL PRIMARY KEY,
+        account_number TEXT NOT NULL,
+        balance NUMERIC NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );
+    `
+	_, err := db.db.Exec(createTableSQL)
+	if err != nil {
+		db.log.Panicf("could not create accounts table: %s", err.Error())
+	}
+
+	// Create indexes for performance, example index on account_number
+	createIndexSQL := `
+    CREATE INDEX IF NOT EXISTS idx_account_number ON accounts(account_number);
+    `
+	_, err = db.db.Exec(createIndexSQL)
+	if err != nil {
+		db.log.Panicf("could not create index for account_number: %s", err.Error())
+	}
+
+	// Log that the table and index have been initialized
+	db.log.Debugf("accounts table and index initialized successfully")
 }
 
 // Account tries to load an account identified by the address given from
@@ -98,6 +146,45 @@ func (db *MongoDbBridge) Account(addr *common.Address) (*types.Account, error) {
 	}, nil
 }
 
+
+func (db *PostgreSQLBridge) Account(addr *common.Address) (*types.Account, error) {
+    // Prepare the SQL query to retrieve the account from PostgreSQL
+    query := `SELECT sc, type, activity, counter FROM accounts WHERE address = $1`
+
+    // Execute the query with context (we don't need to pass context to QueryRow unless using context-specific operations)
+    row := db.db.QueryRowContext(context.Background(), query, addr.String())
+
+    // Initialize a variable to store the result
+    var rowData PostAccountRow
+
+    // Scan the row into the PostAccountRow struct
+    err := row.Scan(&rowData.Sc, &rowData.Type, &rowData.Activity, &rowData.Counter)
+    if err != nil {
+        if err == sql.ErrNoRows {
+            // If no rows are found, return nil
+            return nil, nil
+        }
+        db.log.Error("Cannot get existing account %s; %s", addr.String(), err.Error())
+        return nil, err
+    }
+
+    // If there's a smart contract field, decode the hash
+    if rowData.Sc != nil {
+        h := common.HexToHash(*rowData.Sc)
+        rowData.ScHash = &h
+    }
+
+    // Return the result in the expected format
+    return &types.Account{
+        Address:      *addr,
+        ContractTx:   rowData.ScHash,
+        Type:         rowData.Type,
+        LastActivity: hexutil.Uint64(rowData.Activity),
+        TrxCounter:   hexutil.Uint64(rowData.Counter),
+    }, nil
+}
+
+
 // AddAccount stores an account in the blockchain if not exists.
 func (db *MongoDbBridge) AddAccount(acc *types.Account) error {
 	// do we have account data?
@@ -141,6 +228,48 @@ func (db *MongoDbBridge) AddAccount(acc *types.Account) error {
 	return nil
 }
 
+
+func (db *PostgreSQLBridge) AddAccount(acc *types.Account) error {
+    // Do we have account data?
+    if acc == nil {
+        return fmt.Errorf("cannot add empty account")
+    }
+
+    // Prepare the contract creation transaction if available
+    var conTx *string
+    if acc.ContractTx != nil {
+        cx := acc.ContractTx.String()
+        conTx = &cx
+    }
+
+    // SQL query to insert the account into PostgreSQL
+    query := `
+        INSERT INTO accounts (address, sc, type, activity, counter) 
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (address) DO NOTHING;`
+
+    // Execute the insert query
+    _, err := db.db.ExecContext(context.Background(), query, 
+        acc.Address.String(), 
+        conTx, 
+        acc.Type, 
+        uint64(acc.LastActivity), 
+        uint64(acc.TrxCounter),
+    )
+
+    // Check for errors during the insert
+    if err != nil {
+        db.log.Error("cannot insert new account")
+        return err
+    }
+
+    // Log the successful addition
+    db.log.Debugf("added account at %s", acc.Address.String())
+
+    return nil
+}
+
+
 // IsAccountKnown checks if an account document already exists in the database.
 func (db *MongoDbBridge) IsAccountKnown(addr *common.Address) (bool, error) {
 	// get the collection for account transactions
@@ -163,6 +292,32 @@ func (db *MongoDbBridge) IsAccountKnown(addr *common.Address) (bool, error) {
 	}
 
 	return true, nil
+}
+
+// IsAccountKnown checks if an account exists in the PostgreSQL database.
+func (db *PostgreSQLBridge) IsAccountKnown(addr *common.Address) (bool, error) {
+    // Prepare the SQL query to check if the account exists in the PostgreSQL database
+    query := `SELECT 1 FROM accounts WHERE address = $1 LIMIT 1`
+
+    // Execute the query
+    row := db.db.QueryRowContext(context.Background(), query, addr.String())
+
+    // Check if the row exists by scanning the result
+    var exists int
+    err := row.Scan(&exists)
+
+    // Handle errors
+    if err != nil {
+        if err == sql.ErrNoRows {
+            // Account does not exist
+            return false, nil
+        }
+        db.log.Error("cannot check if account exists: %s", err.Error())
+        return false, err
+    }
+
+    // If we have a result, the account exists
+    return exists == 1, nil
 }
 
 // AccountCount calculates total number of accounts in the database.
@@ -196,6 +351,78 @@ func (db *MongoDbBridge) AccountTransactions(addr *common.Address, rec *common.A
 	return db.Transactions(cursor, count, &filter)
 }
 
+func (db *PostgreSQLBridge) AccountTransactions(addr string, rec *string, cursor *string, count int32) (*types.PostTransactionList, error) {
+	if count == 0 {
+		return nil, fmt.Errorf("nothing to do, zero transactions requested")
+	}
+
+	if addr == "" {
+		return nil, fmt.Errorf("cannot list transactions of an empty account")
+	}
+
+	db.log.Printf("Loading transactions for account %s", addr)
+
+	query := `
+		SELECT 
+			hash, from_address, to_address, value, gas, gas_price, nonce, 
+			data, block_hash, block_number, timestamp, contract_address, 
+			status, cumulative_gas_used, gas_used, transaction_index
+		FROM transactions
+		WHERE (from_address = $1 OR to_address = $1)
+	`
+
+	params := []interface{}{addr}
+
+	if rec != nil {
+		query += " AND to_address = $2"
+		params = append(params, *rec)
+	}
+
+	if cursor != nil {
+		query += " AND hash > $3"
+		params = append(params, *cursor)
+	}
+
+	query += " ORDER BY hash LIMIT $4"
+	params = append(params, count)
+
+	rows, err := db.db.Query(query, params...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query: %v", err)
+	}
+	defer rows.Close()
+
+	var transactions []*types.Transaction
+	for rows.Next() {
+		var trx types.Transaction
+		err := rows.Scan(
+			&trx.Hash, &trx.From, &trx.To, &trx.Value, &trx.Gas, &trx.GasPrice, &trx.Nonce,
+			&trx.InputData, &trx.BlockHash, &trx.BlockNumber, &trx.TimeStamp, &trx.ContractAddress,
+			&trx.Status, &trx.CumulativeGasUsed, &trx.GasUsed, &trx.TrxIndex,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan row: %v", err)
+		}
+		transactions = append(transactions, &trx)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error occurred during rows iteration: %v", err)
+	}
+
+	return &types.PostTransactionList{
+		Collection: transactions,
+		Total:      uint64(len(transactions)),
+		First:      0,
+		Last:       uint64(len(transactions) - 1),
+		IsStart:    cursor == nil,
+		IsEnd:      len(transactions) < int(count),
+		Filter:     map[string]interface{}{"address": addr, "recipient": rec},
+	}, nil
+	
+}
+
+
 // AccountMarkActivity marks the latest account activity in the repository.
 func (db *MongoDbBridge) AccountMarkActivity(addr *common.Address, ts uint64) error {
 	// log what we do
@@ -217,6 +444,29 @@ func (db *MongoDbBridge) AccountMarkActivity(addr *common.Address, ts uint64) er
 	}
 
 	return nil
+}
+
+// AccountMarkActivity marks the latest account activity in PostgreSQL.
+func (db *PostgreSQLBridge) AccountMarkActivity(addr *common.Address, ts uint64) error {
+    // Log what we do
+    db.log.Debugf("account %s activity at %s", addr.String(), time.Unix(int64(ts), 0).String())
+
+    // Prepare the SQL query to update account details
+    query := `
+        UPDATE accounts 
+        SET last_activity = $1, transaction_counter = transaction_counter + 1
+        WHERE address = $2
+    `
+
+    // Execute the query to update the account details
+    _, err := db.db.ExecContext(context.Background(), query, ts, addr.String())
+    if err != nil {
+        // Log the issue
+        db.log.Errorf("cannot update account %s details; %s", addr.String(), err.Error())
+        return fmt.Errorf("failed to update account activity: %v", err)
+    }
+
+    return nil
 }
 
 // Erc20TokensList returns a list of known ERC20 tokens ordered by their activity.
@@ -249,6 +499,55 @@ func (db *MongoDbBridge) Erc20TokensList(count int32) ([]common.Address, error) 
 	return db.loadErcContractsList(cursor)
 }
 
+
+// Erc20TokensList returns a list of known ERC20 tokens ordered by their activity.
+func (db *PostgreSQLBridge) Erc20TokensList(count int32) ([]common.Address, error) {
+    // Ensure the count is positive; use default size if not
+    if count <= 0 {
+        count = defaultTokenListLength
+    }
+
+    // Log what we do
+    db.log.Debugf("loading %d most active ERC20 token accounts", count)
+
+    // Prepare the SQL query to fetch ERC20 tokens
+    query := `
+        SELECT address 
+        FROM accounts 
+        WHERE type = $1
+        ORDER BY transaction_counter DESC, last_activity DESC
+        LIMIT $2
+    `
+    
+    // Execute the query
+    rows, err := db.db.QueryContext(context.Background(), query, "ERC20Token", count)
+    if err != nil {
+        db.log.Errorf("error loading ERC20 tokens list; %s", err.Error())
+        return nil, fmt.Errorf("error fetching ERC20 tokens list: %v", err)
+    }
+    defer rows.Close()
+
+    // Collect the addresses
+    var addresses []common.Address
+    for rows.Next() {
+        var addr string
+        if err := rows.Scan(&addr); err != nil {
+            db.log.Errorf("error scanning address; %s", err.Error())
+            return nil, fmt.Errorf("error scanning address: %v", err)
+        }
+        addresses = append(addresses, common.HexToAddress(addr))
+    }
+
+    // Check for any errors during iteration
+    if err := rows.Err(); err != nil {
+        db.log.Errorf("error iterating over rows; %s", err.Error())
+        return nil, fmt.Errorf("error iterating over rows: %v", err)
+    }
+
+    // Return the list of ERC20 token addresses
+    return addresses, nil
+}
+
 // Erc721ContractsList returns a list of known ERC20 tokens ordered by their activity.
 func (db *MongoDbBridge) Erc721ContractsList(count int32) ([]common.Address, error) {
 	// make sure the count is positive; use default size if not
@@ -277,6 +576,54 @@ func (db *MongoDbBridge) Erc721ContractsList(count int32) ([]common.Address, err
 	}
 
 	return db.loadErcContractsList(cursor)
+}
+
+// Erc721ContractsList returns a list of known ERC721 contracts ordered by their activity.
+func (db *PostgreSQLBridge) Erc721ContractsList(count int32) ([]common.Address, error) {
+    // Ensure the count is positive; use default size if not
+    if count <= 0 {
+        count = defaultTokenListLength
+    }
+
+    // Log what we do
+    db.log.Debugf("loading %d most active ERC721 token accounts", count)
+
+    // Prepare the SQL query to fetch ERC721 contracts
+    query := `
+        SELECT address 
+        FROM accounts 
+        WHERE type = $1
+        ORDER BY transaction_counter DESC, last_activity DESC
+        LIMIT $2
+    `
+    
+    // Execute the query
+    rows, err := db.db.QueryContext(context.Background(), query, "ERC721Contract", count)
+    if err != nil {
+        db.log.Errorf("error loading ERC721 contracts list; %s", err.Error())
+        return nil, fmt.Errorf("error fetching ERC721 contracts list: %v", err)
+    }
+    defer rows.Close()
+
+    // Collect the addresses
+    var addresses []common.Address
+    for rows.Next() {
+        var addr string
+        if err := rows.Scan(&addr); err != nil {
+            db.log.Errorf("error scanning address; %s", err.Error())
+            return nil, fmt.Errorf("error scanning address: %v", err)
+        }
+        addresses = append(addresses, common.HexToAddress(addr))
+    }
+
+    // Check for any errors during iteration
+    if err := rows.Err(); err != nil {
+        db.log.Errorf("error iterating over rows; %s", err.Error())
+        return nil, fmt.Errorf("error iterating over rows: %v", err)
+    }
+
+    // Return the list of ERC721 contract addresses
+    return addresses, nil
 }
 
 // Erc1155ContractsList returns a list of known ERC1155 contracts ordered by their activity.
@@ -309,6 +656,54 @@ func (db *MongoDbBridge) Erc1155ContractsList(count int32) ([]common.Address, er
 	return db.loadErcContractsList(cursor)
 }
 
+// Erc1155ContractsList returns a list of known ERC1155 contracts ordered by their activity.
+func (db *PostgreSQLBridge) Erc1155ContractsList(count int32) ([]common.Address, error) {
+    // Ensure the count is positive; use default size if not
+    if count <= 0 {
+        count = defaultTokenListLength
+    }
+
+    // Log what we do
+    db.log.Debugf("loading %d most active ERC1155 token accounts", count)
+
+    // Prepare the SQL query to fetch ERC1155 contracts
+    query := `
+        SELECT address 
+        FROM accounts 
+        WHERE type = $1
+        ORDER BY transaction_counter DESC, last_activity DESC
+        LIMIT $2
+    `
+    
+    // Execute the query
+    rows, err := db.db.QueryContext(context.Background(), query, "ERC1155Contract", count)
+    if err != nil {
+        db.log.Errorf("error loading ERC1155 contracts list; %s", err.Error())
+        return nil, fmt.Errorf("error fetching ERC1155 contracts list: %v", err)
+    }
+    defer rows.Close()
+
+    // Collect the addresses
+    var addresses []common.Address
+    for rows.Next() {
+        var addr string
+        if err := rows.Scan(&addr); err != nil {
+            db.log.Errorf("error scanning address; %s", err.Error())
+            return nil, fmt.Errorf("error scanning address: %v", err)
+        }
+        addresses = append(addresses, common.HexToAddress(addr))
+    }
+
+    // Check for any errors during iteration
+    if err := rows.Err(); err != nil {
+        db.log.Errorf("error iterating over rows; %s", err.Error())
+        return nil, fmt.Errorf("error iterating over rows: %v", err)
+    }
+
+    // Return the list of ERC1155 contract addresses
+    return addresses, nil
+}
+
 func (db *MongoDbBridge) loadErcContractsList(cursor *mongo.Cursor) ([]common.Address, error) {
 	// close the cursor as we leave
 	defer db.closeCursor(cursor)
@@ -328,4 +723,35 @@ func (db *MongoDbBridge) loadErcContractsList(cursor *mongo.Cursor) ([]common.Ad
 	}
 
 	return list, nil
+}
+
+// loadErcContractsList loads a list of ERC contracts from PostgreSQL.
+func (db *PostgreSQLBridge) loadErcContractsList(rows *sql.Rows) ([]common.Address, error) {
+    // Defer closing the rows when we're done
+    defer rows.Close()
+
+    // Create a slice to hold the list of addresses
+    list := make([]common.Address, 0)
+
+    // Loop through each row and scan the address
+    for rows.Next() {
+        var row AccountRow
+
+        // Scan the address from the row
+        if err := rows.Scan(&row.Address); err != nil {
+            db.log.Errorf("can not scan ERC contract address; %s", err.Error())
+            return nil, fmt.Errorf("failed to scan row: %v", err)
+        }
+
+        // Append the decoded address to the list
+        list = append(list, common.HexToAddress(row.Address))
+    }
+
+    // Check if there was an error during the iteration
+    if err := rows.Err(); err != nil {
+        db.log.Errorf("error iterating over rows; %s", err.Error())
+        return nil, fmt.Errorf("error iterating over rows: %v", err)
+    }
+
+    return list, nil
 }

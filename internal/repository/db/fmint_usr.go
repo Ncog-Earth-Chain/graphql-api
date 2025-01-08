@@ -6,6 +6,7 @@ import (
 	"ncogearthchain-api-graphql/internal/types"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/lib/pq"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
@@ -15,6 +16,12 @@ type fMintUserTokensRow struct {
 	User   string   `bson:"_id"`
 	Tokens []string `bson:"tokens"`
 }
+// fMintUserTokensRow represents the structure of the fMint user tokens aggregation output row for PostgreSQL.
+type PostfMintUserTokensRow struct {
+	User   string   `json:"user"`   // The user ID or address
+	Tokens []string `json:"tokens"` // The list of tokens associated with the user
+}
+
 
 // FMintUsers loads the list of fMint users and their associated tokens
 // used for a specified transaction type  from the collected database using aggregation pipeline.
@@ -67,6 +74,53 @@ func (db *MongoDbBridge) FMintUsers(tt int32) ([]*types.FMintUserTokens, error) 
 	return list, nil
 }
 
+// FMintUsers loads the list of fMint users and their associated tokens
+// used for a specified transaction type from the database.
+func (db *PostgreSQLBridge) FMintUsers(tt int32) ([]*types.FMintUserTokens, error) {
+    // Prepare the SQL query
+    query := `
+        SELECT usr AS user, ARRAY_AGG(tok) AS tokens
+        FROM fmint_transactions
+        WHERE typ = $1
+        GROUP BY usr`
+
+    // Execute the query
+    rows, err := db.db.Query(query, tt)
+    if err != nil {
+        db.log.Errorf("cannot aggregate fMint users; %s", err.Error())
+        return nil, err
+    }
+    defer rows.Close()
+
+    // Make output container
+    list := make([]*types.FMintUserTokens, 0)
+
+    // Iterate through results and construct data
+    for rows.Next() {
+        var user string
+        var tokens []string
+
+        if err := rows.Scan(&user, pq.Array(&tokens)); err != nil {
+            db.log.Errorf("cannot decode aggregation row; %s", err.Error())
+            return nil, err
+        }
+
+        // Append the result to the list
+        list = append(list, &types.FMintUserTokens{
+            Purpose: tt,
+            User:    common.HexToAddress(user),
+            Tokens:  decodeFMintTokensList(tokens),
+        })
+    }
+
+    // Handle any errors encountered during iteration
+    if err := rows.Err(); err != nil {
+        db.log.Errorf("error iterating fMint user rows; %s", err.Error())
+        return nil, err
+    }
+
+    return list, nil
+}
 // decodeFMintTokensList decodes a list of hex coded address into a list
 // of typed address instance.
 func decodeFMintTokensList(in []string) []common.Address {
