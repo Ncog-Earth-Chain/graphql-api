@@ -27,8 +27,34 @@ type TransactionList struct {
 	Filter bson.D
 }
 
+type PostTransactionList struct {
+    Collection []*Transaction `json:"collection"` // List of transaction hashes
+    Total      uint64         `json:"total"`      // Total number of transactions
+    First      uint64         `json:"first"`      // Index of the first item on the list
+    Last       uint64         `json:"last"`       // Index of the last item on the list
+    IsStart    bool           `json:"is_start"`   // Indicates if there are no transactions above
+    IsEnd      bool           `json:"is_end"`     // Indicates if there are no transactions below
+    Filter     map[string]interface{} `json:"filter"` // Base filter used for filtering the list (if necessary)
+}
+
+
 // Reverse reverses the order of transactions in the list.
 func (b *TransactionList) Reverse() {
+	// anything to swap at all?
+	if b.Collection == nil || len(b.Collection) < 2 {
+		return
+	}
+
+	// swap elements
+	for i, j := 0, len(b.Collection)-1; i < j; i, j = i+1, j-1 {
+		b.Collection[i], b.Collection[j] = b.Collection[j], b.Collection[i]
+	}
+
+	// swap indexes
+	b.First, b.Last = b.Last, b.First
+}
+// Reverse reverses the order of transactions in the list.
+func (b *PostTransactionList) Reverse() {
 	// anything to swap at all?
 	if b.Collection == nil || len(b.Collection) < 2 {
 		return

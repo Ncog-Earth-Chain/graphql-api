@@ -279,27 +279,6 @@ func (db *MongoDbBridge) CheckDatabaseInitState() {
 	db.collectionNeedInit("burned fees", db.BurnCount, &db.initBurns)
 }
 
-// CheckDatabaseInitState verifies if database tables have been
-// already initialized and marks the empty tables so they can be properly
-// configured when created.
-func (db *PostgreSQLBridge) CheckDatabaseInitState() {
-	// log what we do
-	db.log.Debugf("checking database init state")
-
-	db.tableNeedInit("accounts", db.AccountCount, &db.initAccounts)
-	db.tableNeedInit("transactions", db.TransactionsCount, &db.initTransactions)
-	db.tableNeedInit("contracts", db.ContractCount, &db.initContracts)
-	db.tableNeedInit("swaps", db.SwapCount, &db.initSwaps)
-	db.tableNeedInit("delegations", db.DelegationsCount, &db.initDelegations)
-	db.tableNeedInit("withdrawals", db.WithdrawalsCount, &db.initWithdrawals)
-	db.tableNeedInit("rewards", db.RewardsCount, &db.initRewards)
-	db.tableNeedInit("erc20_transactions", db.ErcTransactionCount, &db.initErc20Trx)
-	db.tableNeedInit("fmint_transactions", db.FMintTransactionCount, &db.initFMintTrx)
-	db.tableNeedInit("epochs", db.EpochsCount, &db.initEpochs)
-	db.tableNeedInit("gas_price_periods", db.GasPricePeriodCount, &db.initGasPrice)
-	db.tableNeedInit("burned_fees", db.BurnCount, &db.initBurns)
-}
-
 // checkAccountCollectionState checks the Accounts' collection state.
 func (db *MongoDbBridge) collectionNeedInit(name string, counter func() (uint64, error), init **sync.Once) {
 	// use the counter to get the collection size
@@ -356,7 +335,6 @@ func (db *MongoDbBridge) CountFiltered(col *mongo.Collection, filter *bson.D) (u
 	}
 	return uint64(val), nil
 }
-
 
 // CountFiltered calculates the total number of records in the given table for the given filter.
 func (db *PostgreSQLBridge) CountFiltered(tableName string, filter map[string]interface{}) (uint64, error) {

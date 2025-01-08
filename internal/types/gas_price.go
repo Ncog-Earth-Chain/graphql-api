@@ -61,6 +61,17 @@ type GasPricePeriod struct {
 	To    time.Time `json:"to" bson:"to"`
 	Tick  int64     `json:"tick" bson:"tick"`
 }
+type PostGasPricePeriod struct {
+    Type  int8      `json:"type"`
+    Open  int64     `json:"open"`
+    Close int64     `json:"close"`
+    Min   int64     `json:"min"`
+    Max   int64     `json:"max"`
+    Avg   int64     `json:"avg"`
+    From  time.Time `json:"from"`
+    To    time.Time `json:"to"`
+    Tick  int64     `json:"tick"`
+}
 
 // MarshalBSON creates a BSON representation of the gas price estimation record.
 func (gpp *GasPricePeriod) MarshalBSON() ([]byte, error) {

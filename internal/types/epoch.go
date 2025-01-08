@@ -4,10 +4,9 @@ package types
 import (
 	"encoding/json"
 	"fmt"
-	"time"
-
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"go.mongodb.org/mongo-driver/bson"
+	"time"
 )
 
 // Epoch represents epoch detail.
@@ -20,7 +19,6 @@ type Epoch struct {
 	BaseRewardPerSecond   hexutil.Big    `json:"brw"`
 	StakeTotalAmount      hexutil.Big    `json:"stk"`
 	TotalSupply           hexutil.Big    `json:"sup"`
-	OtherColumns          string         //
 }
 
 // BsonEpoch represents the epoch data structure for BSON formatting.
