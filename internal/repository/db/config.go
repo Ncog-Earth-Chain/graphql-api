@@ -3,7 +3,6 @@ package db
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -53,30 +52,6 @@ func (db *MongoDbBridge) UpdateLastKnownBlock(blockNo *hexutil.Uint64) error {
 	return nil
 }
 
-// UpdateLastKnownBlock stores the last known block into the configuration table in PostgreSQL.
-func (db *PostgreSQLBridge) UpdateLastKnownBlock(blockNo *hexutil.Uint64) error {
-	// Do we have all needed data?
-	if blockNo == nil {
-		return fmt.Errorf("cannot add empty block")
-	}
-
-	// Prepare SQL query to insert or update the last known block value
-	query := `
-		INSERT INTO config (key, value)
-		VALUES ($1, $2)
-		ON CONFLICT (key) 
-		DO UPDATE SET value = $2;
-	`
-
-	// Execute the query
-	_, err := db.db.Exec(query, "last_known_block", blockNo.String())
-	if err != nil {
-		return fmt.Errorf("failed to update last known block; %s", err.Error())
-	}
-
-	return nil
-}
-
 // LastKnownBlock returns the last known block from the database.
 func (db *MongoDbBridge) LastKnownBlock() (uint64, error) {
 	// get the collection for cfg
@@ -102,38 +77,6 @@ func (db *MongoDbBridge) LastKnownBlock() (uint64, error) {
 	}
 
 	// load the slow way
-	return db.lastKnownBlock()
-}
-
-// LastKnownBlock returns the last known block from the PostgreSQL database.
-func (db *PostgreSQLBridge) LastKnownBlock() (uint64, error) {
-	// Prepare SQL query to fetch the last known block from the configuration table
-	query := `
-		SELECT value 
-		FROM config 
-		WHERE key = $1;
-	`
-
-	// Execute the query
-	var value string
-	err := db.db.QueryRow(query, "last_known_block").Scan(&value)
-	if err == nil {
-		// Successfully found the value, decode it into uint64
-		blockNumber, err := hexutil.DecodeUint64(value)
-		if err != nil {
-			db.log.Error("cannot decode the last known block value")
-			return 0, err
-		}
-		return blockNumber, nil
-	}
-
-	// Handle any errors
-	if err != sql.ErrNoRows {
-		db.log.Errorf("config record not found; %s", err.Error())
-		return 0, err
-	}
-
-	// If the key does not exist, load the slow way (you might have a fallback logic here)
 	return db.lastKnownBlock()
 }
 
@@ -171,33 +114,4 @@ func (db *MongoDbBridge) lastKnownBlock() (uint64, error) {
 		return 0, res.Err()
 	}
 	return tx.Block, nil
-}
-
-// lastKnownBlock returns number of the last known block stored in the transactions table.
-func (db *PostgreSQLBridge) lastKnownBlock() (uint64, error) {
-	// Prepare the SQL query to retrieve the last known block (maximum block number)
-	query := `
-		SELECT block 
-		FROM transactions 
-		ORDER BY block DESC 
-		LIMIT 1;
-	`
-
-	// Execute the query
-	var block uint64
-	err := db.db.QueryRow(query).Scan(&block)
-	if err != nil {
-		// Handle the case where no rows are found
-		if err == sql.ErrNoRows {
-			db.log.Info("no blocks found in database")
-			return 1, nil
-		}
-
-		// Log the error and return
-		db.log.Error("can not get the top block")
-		return 0, err
-	}
-
-	// Return the found block number
-	return block, nil
 }
