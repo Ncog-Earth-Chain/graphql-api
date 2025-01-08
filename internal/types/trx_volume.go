@@ -11,4 +11,6 @@ type DailyTrxVolume struct {
 	Counter        int64     `bson:"value"`
 	AmountAdjusted int64     `bson:"volume"`
 	Gas            int64     `bson:"gas"`
+	Date           time.Time `json:"date"`
+	TotalVolume    float64   `json:"total_volume"`
 }
