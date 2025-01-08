@@ -24,6 +24,7 @@ type NecBurn struct {
 	BlkTimeStamp time.Time      `bson:"ts"`
 	Amount       hexutil.Big    `bson:"amount"`
 	TxList       []common.Hash  `bson:"tx_list"`
+	ID           int64          `json:"id"`
 }
 
 // MarshalBSON returns a BSON document for the NEC burn.

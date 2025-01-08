@@ -4,6 +4,7 @@ package db
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"fmt"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/types"
@@ -90,6 +91,38 @@ func (db *MongoDbBridge) initUniswapCollection(col *mongo.Collection) {
 	db.log.Debugf("swap collection initialized")
 }
 
+func (db *PostgreSQLBridge) initUniswapCollection() error {
+	// Log the initialization process
+	db.log.Debugf("initializing uniswap collection with indexes")
+
+	// Define the SQL statements to create indexes
+	indexQueries := []string{
+		// Index for primary key (assume primary key is already created on table definition)
+		`CREATE UNIQUE INDEX IF NOT EXISTS uniswap_pk_idx ON uniswap_table (primary_key_column);`,
+
+		// Index on the date column
+		`CREATE INDEX IF NOT EXISTS uniswap_date_idx ON uniswap_table (swap_date_column);`,
+
+		// Index on the sender column
+		`CREATE INDEX IF NOT EXISTS uniswap_sender_idx ON uniswap_table (swap_sender_column);`,
+
+		// Index on the ordinal index column in descending order
+		`CREATE INDEX IF NOT EXISTS uniswap_ord_index_idx ON uniswap_table (swap_ord_index_column DESC);`,
+	}
+
+	// Execute each index creation query
+	for _, query := range indexQueries {
+		if _, err := db.db.ExecContext(context.Background(), query); err != nil {
+			db.log.Panicf("can not create indexes for uniswap collection; %s", err.Error())
+			return err
+		}
+	}
+
+	// Log success
+	db.log.Debugf("uniswap collection initialized with indexes")
+	return nil
+}
+
 // shouldAddSwap validates if the swap should be added to the persistent storage.
 func (db *MongoDbBridge) shouldAddSwap(col *mongo.Collection, swap *types.Swap) bool {
 	// check if swap already exists
@@ -104,6 +137,23 @@ func (db *MongoDbBridge) shouldAddSwap(col *mongo.Collection, swap *types.Swap) 
 	return !exists
 }
 
+func (db *PostgreSQLBridge) shouldAddSwap(tableName string, swap *types.Swap) (bool, error) {
+	// Calculate the swap hash
+	swapHash := getHash(swap)
+	// Convert swapHash to string
+	swapHashStr := swapHash.String()
+
+	// Check if the swap already exists using IsSwapKnown
+	exists, err := db.IsSwapKnown(tableName, swapHashStr)
+	if err != nil {
+		db.log.Errorf("error checking if swap is known; %s", err.Error())
+		return false, err
+	}
+
+	// If the transaction already exists, we don't need to do anything here
+	return !exists, nil
+}
+
 // isZeroSwap checks if amounts are not zero to avoid divide by 0 during calculations in db
 func isZeroSwap(swap *types.Swap) bool {
 	if swap.Type == types.SwapSync {
@@ -111,6 +161,20 @@ func isZeroSwap(swap *types.Swap) bool {
 	}
 	am0small := removeDecimals(new(big.Int).Add(swap.Amount0In, swap.Amount0Out), swapAmountDecimalsCorrection)
 	am1small := removeDecimals(new(big.Int).Add(swap.Amount1In, swap.Amount1Out), swapAmountDecimalsCorrection)
+	return am0small == 0 || am1small == 0
+}
+
+func isZeroSwapPostgres(swap *types.Swap) bool {
+	// Check if the swap is of type "Sync"
+	if swap.Type == types.SwapSync {
+		return false
+	}
+
+	// Calculate the adjusted amounts
+	am0small := removeDecimals(new(big.Int).Add(swap.Amount0In, swap.Amount0Out), swapAmountDecimalsCorrection)
+	am1small := removeDecimals(new(big.Int).Add(swap.Amount1In, swap.Amount1Out), swapAmountDecimalsCorrection)
+
+	// Check if either amount is zero
 	return am0small == 0 || am1small == 0
 }
 
@@ -162,6 +226,64 @@ func (db *MongoDbBridge) UniswapAdd(swap *types.Swap) error {
 	return nil
 }
 
+// UniswapAdd stores a swap reference in connected persistent storage for PostgreSQL.
+func (db *PostgreSQLBridge) UniswapAdd(swap *types.Swap) error {
+	// Do we have all needed data?
+	if swap == nil {
+		return fmt.Errorf("can not add empty swap")
+	}
+
+	// Check for zero amounts in the swap, because of future division by 0 during aggregation in the database
+	if isZeroSwapPostgres(swap) {
+		db.log.Debugf("swap from block %d will not be added, because swap amount is 0 after removing decimals", uint64(*swap.BlockNumber))
+		return nil
+	}
+
+	// If the swap already exists, we don't need to add it
+	// Just make sure the transaction accounts were processed
+	shouldAdd, err := db.shouldAddSwap("swaps", swap)
+	if err != nil {
+		db.log.Errorf("error checking if swap should be added; %s", err.Error())
+		return err
+	}
+
+	if !shouldAdd {
+		return nil
+	}
+
+	// Calculate swap hash to use it as a pk
+	swapHash := getHash(swap)
+
+	// Prepare the SQL query and data for insertion
+	query, values, err := swapDataPostgres(swap)
+	if err != nil {
+		db.log.Errorf("error preparing data for swap insert; %s", err.Error())
+		return err
+	}
+
+	// Try to do the insert
+	_, err = db.db.ExecContext(context.Background(), query, values...)
+	if err != nil {
+		db.log.Criticalf("error inserting swap into database; %s", err.Error())
+		return err
+	}
+
+	// Log the successful insertion
+	db.log.Debugf("swap %s added to database", swapHash.String())
+
+	// Ensure the swap table is initialized (optional step, depending on how your application is designed)
+	// Make sure the collection (table) is set up properly.
+	if db.initSwaps != nil {
+		db.initSwaps.Do(func() {
+			// Call initialization for the swap table, if needed.
+			db.initUniswapCollection()
+			db.initSwaps = nil
+		})
+	}
+
+	return nil
+}
+
 // swapData collects the data for the given swap.
 func swapData(base *bson.D, swap *types.Swap) bson.D {
 	// make a new instance if needed
@@ -183,6 +305,44 @@ func swapData(base *bson.D, swap *types.Swap) bson.D {
 		bson.E{Key: fiSwapReserve1, Value: removeDecimals(swap.Reserve1, swapReserveDecimalsCorrection)},
 	)
 	return *base
+}
+
+// swapData collects the data for the given swap and prepares it for PostgreSQL insertion.
+func swapDataPostgres(swap *types.Swap) (string, []interface{}, error) {
+	// Prepare the base SQL query
+	query := `
+		INSERT INTO swaps (
+			swap_type, 
+			swap_tx_hash, 
+			swap_pair, 
+			swap_sender, 
+			swap_amount0in, 
+			swap_amount0out, 
+			swap_amount1in, 
+			swap_amount1out, 
+			swap_reserve0, 
+			swap_reserve1
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+		)
+	`
+
+	// Prepare the values to insert
+	values := []interface{}{
+		swap.Type,            // fiSwapType
+		swap.Hash.String(),   // fiSwapTxHash
+		swap.Pair.String(),   // fiSwapPair
+		swap.Sender.String(), // fiSwapSender
+		removeDecimals(swap.Amount0In, swapAmountDecimalsCorrection),  // fiSwapAmount0in
+		removeDecimals(swap.Amount0Out, swapAmountDecimalsCorrection), // fiSwapAmount0out
+		removeDecimals(swap.Amount1In, swapAmountDecimalsCorrection),  // fiSwapAmount1in
+		removeDecimals(swap.Amount1Out, swapAmountDecimalsCorrection), // fiSwapAmount1out
+		removeDecimals(swap.Reserve0, swapReserveDecimalsCorrection),  // fiSwapReserve0
+		removeDecimals(swap.Reserve1, swapReserveDecimalsCorrection),  // fiSwapReserve1
+	}
+
+	// Return the query and the corresponding values to be used in an insert
+	return query, values, nil
 }
 
 // IsSwapKnown checks if swap document already exists in the database.
@@ -248,9 +408,38 @@ func (db *MongoDbBridge) IsSwapKnown(col *mongo.Collection, hash *common.Hash, s
 	return true, nil
 }
 
+func (db *PostgreSQLBridge) IsSwapKnown(tableName string, swapHash string) (bool, error) {
+	// Example query to check if the swap already exists in the database
+	query := `SELECT 1 FROM ` + tableName + ` WHERE swap_pk = $1`
+	var exists int
+	err := db.db.QueryRowContext(context.Background(), query, swapHash).Scan(&exists)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 // SwapCount returns the number of swaps stored in the database.
 func (db *MongoDbBridge) SwapCount() (uint64, error) {
 	return db.EstimateCount(db.client.Database(db.dbName).Collection(coUniswap))
+}
+
+func (db *PostgreSQLBridge) SwapCount() (int64, error) {
+	// Define the query to count the rows in the 'uniswap' table
+	query := "SELECT COUNT(*) FROM uniswap"
+
+	// Execute the query and scan the result into a variable
+	var count int64
+	err := db.db.QueryRow(query).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get swap count: %w", err)
+	}
+
+	// Return the count as uint64
+	return int64(count), nil
 }
 
 // LastKnownSwapBlock returns number of the last known block stored in the database.
@@ -291,6 +480,31 @@ func (db *MongoDbBridge) LastKnownSwapBlock() (uint64, error) {
 	return swap.Block, nil
 }
 
+// LastKnownSwapBlock returns the number of the last known block stored in the database.
+func (db *PostgreSQLBridge) LastKnownSwapBlock() (uint64, error) {
+	// Query to find the last known swap block number
+	query := `SELECT last_swap_sync_blk FROM swaps WHERE last_swap_sync_blk IS NOT NULL ORDER BY last_swap_sync_blk DESC LIMIT 1`
+
+	// Execute the query
+	var block uint64
+	err := db.db.QueryRowContext(context.Background(), query).Scan(&block)
+
+	// Check if we got an error
+	if err != nil {
+		// If no rows are returned, this means there's no block, so we return 0
+		if err == sql.ErrNoRows {
+			db.log.Info("No document with last swap block number in the database, starting from 0.")
+			return 0, nil
+		}
+
+		// Log any other errors
+		db.log.Error("Can not get the last correct swap block number, starting from 0.")
+		return 0, err
+	}
+
+	return block, nil
+}
+
 // UniswapUpdateLastKnownSwapBlock stores a last correctly saved swap block number into persistent storage.
 func (db *MongoDbBridge) UniswapUpdateLastKnownSwapBlock(blkNumber uint64) error {
 	// is valid block number
@@ -320,6 +534,33 @@ func (db *MongoDbBridge) UniswapUpdateLastKnownSwapBlock(blkNumber uint64) error
 
 	// log
 	db.log.Debugf("Block %d was set as a last correct uniswap block into database", blkNumber)
+	return nil
+}
+
+// UniswapUpdateLastKnownSwapBlock stores the last correctly saved swap block number into persistent storage.
+func (db *PostgreSQLBridge) UniswapUpdateLastKnownSwapBlock(blkNumber uint64) error {
+	// Validate block number
+	if blkNumber == 0 {
+		return fmt.Errorf("no need to store zero value, will start from 0 next time")
+	}
+
+	// SQL query for upserting the block number
+	query := `
+		INSERT INTO swaps (last_swap_sync_blk)
+		VALUES ($1)
+		ON CONFLICT (id) 
+		DO UPDATE SET last_swap_sync_blk = EXCLUDED.last_swap_sync_blk
+	`
+
+	// Execute the query
+	_, err := db.db.ExecContext(context.Background(), query, blkNumber)
+	if err != nil {
+		db.log.Criticalf("Failed to update last swap block in the database: %s", err.Error())
+		return err
+	}
+
+	// Log success
+	db.log.Debugf("Block %d was set as the last correct uniswap block in the database", blkNumber)
 	return nil
 }
 
@@ -389,6 +630,53 @@ func (db *MongoDbBridge) UniswapVolume(pairAddress *common.Address, fromTime int
 		def.Volume = v
 	}
 
+	return def, nil
+}
+
+// UniswapVolume resolves volume of swap trades for a specified pair and date interval.
+// If toTime is 0, it calculates volumes till now.
+func (db *PostgreSQLBridge) UniswapVolume(pairAddress *common.Address, fromTime int64, toTime int64) (types.DefiSwapVolume, error) {
+	// Initialize the result structure
+	def := types.DefiSwapVolume{
+		PairAddress: pairAddress,
+		Volume:      big.NewInt(0),
+	}
+
+	// Construct the query
+	var query string
+	var args []interface{}
+
+	// Translate Unix timestamps to PostgreSQL format
+	fromDate := time.Unix(fromTime, 0)
+	if toTime != 0 {
+		toDate := time.Unix(toTime, 0)
+		query = `
+			SELECT COALESCE(SUM(am0in + am0out), 0) AS total
+			FROM swaps
+			WHERE pair = $1
+			AND date BETWEEN $2 AND $3
+		`
+		args = []interface{}{pairAddress.String(), fromDate, toDate}
+	} else {
+		query = `
+			SELECT COALESCE(SUM(am0in + am0out), 0) AS total
+			FROM swaps
+			WHERE pair = $1
+			AND date >= $2
+		`
+		args = []interface{}{pairAddress.String(), fromDate}
+	}
+
+	// Execute the query
+	var totalVolume int64
+	err := db.db.QueryRowContext(context.Background(), query, args...).Scan(&totalVolume)
+	if err != nil {
+		db.log.Errorf("Cannot get swap volumes: %s", err.Error())
+		return def, err
+	}
+
+	// Apply decimals correction and set the volume
+	def.Volume = returnDecimals(big.NewInt(totalVolume), swapAmountDecimalsCorrection)
 	return def, nil
 }
 
@@ -698,6 +986,38 @@ func (db *MongoDbBridge) UniswapActions(pairAddress *common.Address, cursor *str
 	return list, nil
 }
 
+// UniswapActions provides a list of uniswap actions stored in PostgreSQL.
+func (db *PostgreSQLBridge) UniswapActions(pairAddress *common.Address, cursor *string, count int32, actionType int32) (*types.UniswapActionList, error) {
+	// nothing to load?
+	if count == 0 {
+		return nil, fmt.Errorf("nothing to do, zero uniswap actions requested")
+	}
+
+	// get the database connection (directly use the client pool)
+	conn := db.db // No need to call .Conn(), db.client is the connection pool
+
+	// initialize the list
+	list, err := db.uniswapActionListInit(conn, pairAddress, cursor, count, actionType)
+	if err != nil {
+		db.log.Errorf("cannot build uniswap action list; %s", err.Error())
+		return nil, err
+	}
+
+	// load data using the PostgreSQL query
+	err = db.uniswapActionListLoad(pairAddress, actionType, cursor, count, list)
+	if err != nil {
+		db.log.Errorf("cannot load uniswap action list from database; %s", err.Error())
+		return nil, err
+	}
+
+	// shift the first item on cursor (if cursor is provided)
+	if cursor != nil && len(list.Collection) > 0 {
+		list.First = list.Collection[0].OrdIndex
+	}
+
+	return list, nil
+}
+
 // contractListInit initializes list of contracts based on provided cursor and count.
 func (db *MongoDbBridge) uniswapActionListInit(col *mongo.Collection, pairAddress *common.Address, cursor *string, count int32, actionType int32) (*types.UniswapActionList, error) {
 	// make the list
@@ -726,6 +1046,39 @@ func (db *MongoDbBridge) uniswapActionListInit(col *mongo.Collection, pairAddres
 	// inform what we are about to do
 	db.log.Debugf("Uniswap action list initialized with ordinal index %d", list.First)
 	return &list, nil
+}
+
+// uniswapActionListInit initializes the uniswap action list based on the provided cursor and count.
+func (db *PostgreSQLBridge) uniswapActionListInit(conn *sql.DB, pairAddress *common.Address, cursor *string, count int32, actionType int32) (*types.UniswapActionList, error) {
+	// Initialize the list
+	list := &types.UniswapActionList{
+		Collection: make([]*types.UniswapAction, 0),
+		Total:      0,
+		First:      0,
+		Last:       0,
+		IsStart:    false,
+		IsEnd:      false,
+	}
+
+	// Calculate the total number of actions for the specified criteria
+	err := db.uniswapActionListTotal(pairAddress, actionType, &list.Total)
+	if err != nil {
+		return nil, err
+	}
+
+	// Log the total number of records
+	db.log.Debugf("Found %d uniswap actions in PostgreSQL database for specified criteria", list.Total)
+
+	// Find the first uniswap action in the list (based on ord_index or timestamp)
+	err = db.uniswapActionListTop(pairAddress, actionType, cursor, count, list)
+	if err != nil {
+		return nil, err
+	}
+
+	// Log the first item in the list
+	db.log.Debugf("Uniswap action list initialized with ordinal index %d", list.First)
+
+	return list, nil
 }
 
 // uniswapActionListTotal find the total amount of uniswap events for the criteria and populates the list
@@ -758,6 +1111,34 @@ func (db *MongoDbBridge) uniswapActionListTotal(col *mongo.Collection, pairAddre
 
 	// apply the total count
 	list.Total = uint64(total)
+	return nil
+}
+
+// uniswapActionListTotal finds the total amount of uniswap events for the criteria and populates the list
+func (db *PostgreSQLBridge) uniswapActionListTotal(pairAddress *common.Address, actionType int32, total *uint64) error {
+	// Start building the SQL query
+	query := "SELECT COUNT(*) FROM uniswap_actions WHERE 1=1"
+
+	// Add filter for pair address if provided
+	if pairAddress != nil {
+		query += " AND pair_address = $1"
+	}
+
+	// Add filter for action type if provided
+	if actionType >= 0 {
+		query += " AND action_type = $2"
+	}
+
+	// Execute the query and get the count
+	//var total int64
+	err := db.db.QueryRow(query, pairAddress.String(), actionType).Scan(&total)
+	if err != nil {
+		db.log.Errorf("Can not count uniswap actions: %v", err.Error())
+		return err
+	}
+
+	// Set the total count
+	//list.Total = uint64(total)
 	return nil
 }
 
@@ -801,6 +1182,63 @@ func (db *MongoDbBridge) uniswapActionListTop(col *mongo.Collection, pairAddress
 	return nil
 }
 
+// uniswapActionListTop finds the first uniswap action of the list based on provided criteria and populates the list.
+func (db *PostgreSQLBridge) uniswapActionListTop(pairAddress *common.Address, actionType int32, cursor *string, count int32, list *types.UniswapActionList) error {
+	// Build the filter conditions based on the pair address, cursor, and action type
+	query, args := uniswapActionListTopFilterPostgres(pairAddress, cursor, actionType)
+
+	// Determine the sorting order based on the cursor and count
+	var orderBy string
+	//var limit int
+	var isStart bool
+	var isEnd bool
+
+	if cursor == nil && count > 0 {
+		// Get the highest available ordinal index (top uniswap action)
+		orderBy = "ORDER BY ord_index DESC"
+		//limit = 1
+		isStart = true
+	} else if cursor == nil && count < 0 {
+		// Get the lowest available ordinal index (bottom uniswap action)
+		orderBy = "ORDER BY ord_index ASC"
+		//limit = 1
+		isEnd = true
+	} else if cursor != nil {
+		// Use the cursor to fetch the next set of uniswap actions
+		orderBy = "ORDER BY ord_index DESC"
+		//limit = count
+	}
+
+	// Build the final query with the limit and sorting
+	sqlQuery := fmt.Sprintf("%s %s LIMIT $%d", query, orderBy, len(args)+1)
+
+	// Execute the query
+	rows, err := db.db.Query(sqlQuery, append(args, cursor)...)
+	if err != nil {
+		db.log.Errorf("can not find the initial uniswap action: %v", err)
+		return err
+	}
+	defer rows.Close()
+
+	// Fetch the first record
+	if rows.Next() {
+		var ordIndex int32
+		err := rows.Scan(&ordIndex) // Assume ord_index is the field to fetch
+		if err != nil {
+			db.log.Errorf("Error scanning row: %v", err)
+			return err
+		}
+
+		list.First = uint64(ordIndex)
+
+		// Set the IsStart and IsEnd flags based on the criteria
+		list.IsStart = isStart
+		list.IsEnd = isEnd
+	}
+
+	return nil
+}
+
 // uniswapActionListTopFilter constructs a filter for finding the top item of the list.
 func uniswapActionListTopFilter(pairAddress *common.Address, cursor *string, actionType int32) (*bson.D, error) {
 	// what is the requested ordinal index from cursor, if any
@@ -839,6 +1277,33 @@ func uniswapActionListTopFilter(pairAddress *common.Address, cursor *string, act
 	filter = bson.D{{Key: "$and", Value: bson.A{filterPair, filterType, filterCursor}}}
 
 	return &filter, nil
+}
+
+// uniswapActionListTopFilter builds the WHERE clause and arguments for the filter
+func uniswapActionListTopFilterPostgres(pairAddress *common.Address, cursor *string, actionType int32) (string, []interface{}) {
+	// Start with the base query
+	query := "SELECT ord_index FROM uniswap_actions WHERE 1=1"
+	args := []interface{}{}
+
+	// Add filter for pair address if provided
+	if pairAddress != nil {
+		query += " AND pair_address = $1"
+		args = append(args, pairAddress.String())
+	}
+
+	// Add filter for action type if provided
+	if actionType >= 0 {
+		query += " AND action_type = $2"
+		args = append(args, actionType)
+	}
+
+	// Add filter for cursor if provided (assuming cursor is an ordinal index)
+	if cursor != nil {
+		query += " AND ord_index > $3"
+		args = append(args, cursor)
+	}
+
+	return query, args
 }
 
 // uniswapActionListLoad loads the initialized uniswap action list from persistent database.
@@ -924,6 +1389,101 @@ func (db *MongoDbBridge) uniswapActionListLoad(col *mongo.Collection, pairAddres
 	return nil
 }
 
+// uniswapActionListLoad loads the initialized uniswap action list from PostgreSQL.
+func (db *PostgreSQLBridge) uniswapActionListLoad(pairAddress *common.Address, actionType int32, cursor *string, count int32, list *types.UniswapActionList) error {
+	// Build the query filter and arguments based on the pairAddress, actionType, and cursor
+	query, args := uniswapActionListTopFilterPostgres(pairAddress, cursor, actionType)
+
+	// Add ordering and pagination logic
+	orderBy := "ORDER BY ord_index DESC" // Default to descending order
+	if cursor != nil {
+		orderBy = "ORDER BY ord_index ASC"
+	}
+
+	// Add the limit and offset for pagination
+	limit := count
+	offset := 0
+	if cursor != nil {
+		offset = 1
+	}
+
+	// Final SQL query
+	sqlQuery := fmt.Sprintf("%s %s LIMIT $%d OFFSET $%d", query, orderBy, len(args)+1, len(args)+2)
+
+	// Execute the query
+	rows, err := db.db.Query(sqlQuery, append(args, cursor, limit, offset)...)
+	if err != nil {
+		db.log.Errorf("error loading uniswap action list; %s", err.Error())
+		return err
+	}
+	defer rows.Close()
+
+	// Define the structure to scan the data into
+	type UniswapActionDB struct {
+		ID              string    `json:"id"`
+		OrdIndex        uint64    `json:"ord_index"`
+		BlockNr         uint64    `json:"block_nr"`
+		Type            int32     `json:"type"`
+		PairAddress     string    `json:"pair_address"`
+		Sender          string    `json:"sender"`
+		TransactionHash string    `json:"transaction_hash"`
+		Time            time.Time `json:"time"`
+		Amount0in       int64     `json:"amount0_in"`
+		Amount0out      int64     `json:"amount0_out"`
+		Amount1in       int64     `json:"amount1_in"`
+		Amount1out      int64     `json:"amount1_out"`
+	}
+
+	// Loop through the rows and process the data
+	var uniswapAction *types.UniswapAction
+	for rows.Next() {
+		var udb UniswapActionDB
+		if err := rows.Scan(&udb.ID, &udb.OrdIndex, &udb.BlockNr, &udb.Type, &udb.PairAddress, &udb.Sender, &udb.TransactionHash, &udb.Time, &udb.Amount0in, &udb.Amount0out, &udb.Amount1in, &udb.Amount1out); err != nil {
+			db.log.Errorf("can not scan row into uniswap action; %s", err.Error())
+			return err
+		}
+
+		// Map database row to UniswapAction
+		ua := types.UniswapAction{
+			ID:       common.HexToHash(udb.ID),
+			OrdIndex: udb.OrdIndex,
+			//BlockNr:         udb.BlockNr,
+			Type:            udb.Type,
+			PairAddress:     common.HexToAddress(udb.PairAddress),
+			Sender:          common.HexToAddress(udb.Sender),
+			TransactionHash: common.HexToHash(udb.TransactionHash),
+			Time:            hexutil.Uint64(udb.Time.UTC().Unix()),
+			Amount0in:       *(*hexutil.Big)(returnDecimals(big.NewInt(udb.Amount0in), swapAmountDecimalsCorrection)),
+			Amount0out:      *(*hexutil.Big)(returnDecimals(big.NewInt(udb.Amount0out), swapAmountDecimalsCorrection)),
+			Amount1in:       *(*hexutil.Big)(returnDecimals(big.NewInt(udb.Amount1in), swapAmountDecimalsCorrection)),
+			Amount1out:      *(*hexutil.Big)(returnDecimals(big.NewInt(udb.Amount1out), swapAmountDecimalsCorrection)),
+		}
+
+		// Append the action to the list
+		if uniswapAction != nil {
+			list.Collection = append(list.Collection, uniswapAction)
+			list.Last = uniswapAction.OrdIndex
+		}
+
+		// Keep track of the current action
+		uniswapAction = &ua
+	}
+
+	// Check for boundary conditions (IsStart, IsEnd)
+	if cursor != nil {
+		list.IsEnd = count > 0 && int32(len(list.Collection)) < count
+		list.IsStart = count < 0 && int32(len(list.Collection)) < -count
+
+		// Add the last item to the list
+		if (list.IsStart || list.IsEnd) && uniswapAction != nil {
+			list.Collection = append(list.Collection, uniswapAction)
+			list.Last = uniswapAction.OrdIndex
+		}
+	}
+
+	return nil
+}
+
 // uniswapActionListFilter creates a filter for uniswap action list search.
 func (db *MongoDbBridge) uniswapActionListFilter(pairAddress *common.Address, actionType int32, cursor *string, count int32, list *types.UniswapActionList) *bson.D {
 	// inform what we are about to do
@@ -969,6 +1529,53 @@ func (db *MongoDbBridge) uniswapActionListFilter(pairAddress *common.Address, ac
 	filter = bson.D{{Key: "$and", Value: bson.A{filterPair, filterType, filterCursor}}}
 
 	return &filter
+}
+
+// uniswapActionListFilter creates a filter for uniswap action list search in PostgreSQL.
+func (db *PostgreSQLBridge) uniswapActionListFilter(pairAddress *common.Address, actionType int32, cursor *string, count int32, list *types.UniswapActionList) (string, []interface{}) {
+	// Inform what we are about to do
+	db.log.Debugf("uniswap action filter starts from index %d", list.First)
+
+	// Prepare the base SQL WHERE clause
+	whereClause := "WHERE 1=1"
+	args := []interface{}{}
+
+	// Prepare the filter for the ordinal index
+	ordinalOp := "<=" // Default to $lte for MongoDB equivalent
+	if cursor == nil && count < 0 {
+		ordinalOp = ">=" // MongoDB equivalent of $gte
+	}
+
+	if cursor != nil && count > 0 {
+		ordinalOp = "<" // MongoDB equivalent of $lt
+	}
+
+	if cursor != nil && count < 0 {
+		ordinalOp = ">" // MongoDB equivalent of $gt
+	}
+
+	// Filter for cursor (ordinal index)
+	if cursor != nil {
+		whereClause += fmt.Sprintf(" AND ord_index %s $%d", ordinalOp, len(args)+1)
+		args = append(args, cursor)
+	} else {
+		whereClause += fmt.Sprintf(" AND ord_index %s $%d", ordinalOp, len(args)+1)
+		args = append(args, list.First)
+	}
+
+	// Filter for pair address
+	if pairAddress != nil {
+		whereClause += fmt.Sprintf(" AND pair_address = $%d", len(args)+1)
+		args = append(args, pairAddress.String())
+	}
+
+	// Filter for action type
+	if actionType >= 0 {
+		whereClause += fmt.Sprintf(" AND type = $%d", len(args)+1)
+		args = append(args, actionType)
+	}
+
+	return whereClause, args
 }
 
 // uniswapActionListOptions creates a filter options set for uniswap action list search.
@@ -1018,4 +1625,25 @@ func (db *MongoDbBridge) findUniswapActionBorderOrdinalIndex(col *mongo.Collecti
 	}
 
 	return row.Value, nil
+}
+
+// findUniswapActionBorderOrdinalIndex finds the highest or lowest ordinal index in the collection.
+// For negative sort, it will return the highest, and for positive sort, it will return the lowest available value.
+func (db *PostgreSQLBridge) findUniswapActionBorderOrdinalIndex(filter string, args []interface{}) (uint64, error) {
+	// Prepare the query to fetch the ordinal index based on the filter and sorting order
+	query := `
+		SELECT ord_index
+		FROM uniswap_actions
+		WHERE ` + filter + `
+		ORDER BY ord_index
+		LIMIT 1`
+
+	// Execute the query
+	var ordIndex uint64
+	err := db.db.QueryRow(query, args...).Scan(&ordIndex)
+	if err != nil {
+		return 0, fmt.Errorf("could not find ordinal index: %v", err)
+	}
+
+	return ordIndex, nil
 }

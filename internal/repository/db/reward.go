@@ -217,6 +217,22 @@ func (db *PostgreSQLBridge) RewardsCount() (uint64, error) {
     return count, nil
 }
 
+// RewardsCount calculates the total number of reward claims in the database.
+func (db *PostgreSQLBridge) RewardsCount() (int64, error) {
+	// Define the SQL query to count rows in the 'rewards' table
+	query := "SELECT COUNT(*) FROM rewards"
+
+	// Execute the query and scan the result into a variable
+	var count int64
+	err := db.db.QueryRow(query).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rewards count: %w", err)
+	}
+
+	// Return the count as uint64
+	return int64(count), nil
+}
+
 // rewListInit initializes list of delegations based on provided cursor, count, and filter.
 func (db *MongoDbBridge) rewListInit(col *mongo.Collection, cursor *string, count int32, filter *bson.D) (*types.RewardClaimsList, error) {
 	// make sure some filter is used

@@ -130,6 +130,24 @@ func (db *MongoDbBridge) GasPricePeriodCount() (uint64, error) {
 func (db *PostgreSQLBridge) GasPricePeriodCount() (uint64, error) {
     var count uint64
 
+<<<<<<< HEAD
+// GasPricePeriodCount calculates the total number of gas price period records in the database.
+func (db *PostgreSQLBridge) GasPricePeriodCount() (int64, error) {
+	// Define the SQL query to count rows in the 'gas_price_periods' table
+	query := "SELECT COUNT(*) FROM gas_price_periods"
+
+	// Execute the query and scan the result into a variable
+	var count int64
+	err := db.db.QueryRow(query).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get gas price period count: %w", err)
+	}
+
+	// Return the count as uint64
+	return int64(count), nil
+}
+
+=======
     // Query to count the total number of records in the gas_price_period table
     query := `SELECT COUNT(*) FROM gas_price_period`
 
@@ -142,6 +160,7 @@ func (db *PostgreSQLBridge) GasPricePeriodCount() (uint64, error) {
 
     return count, nil
 }
+>>>>>>> c860fdd (upgrade code of delegation,fmint,gas_price,trx_flow,withdrawal file)
 // GasPriceTicks provides a list of gas price ticks for the given time period.
 func (db *MongoDbBridge) GasPriceTicks(from *time.Time, to *time.Time) ([]types.GasPricePeriod, error) {
 	// get the collection

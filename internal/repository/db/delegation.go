@@ -468,6 +468,21 @@ func (db *PostgreSQLBridge) DelegationsCount() (uint64, error) {
 
 
 
+func (db *PostgreSQLBridge) DelegationsCount() (int64, error) {
+	// Define the query to count the rows in the 'delegations' table
+	query := "SELECT COUNT(*) FROM delegations"
+
+	// Execute the query and scan the result into a variable
+	var count int64
+	err := db.db.QueryRow(query).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get delegations count: %w", err)
+	}
+
+	// Return the count as uint64
+	return int64(count), nil
+}
+
 // dlgListInit initializes list of delegations based on provided cursor, count, and filter.
 func (db *MongoDbBridge) dlgListInit(col *mongo.Collection, cursor *string, count int32, filter *bson.D) (*types.DelegationList, error) {
 	// make sure some filter is used
