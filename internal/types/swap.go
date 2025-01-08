@@ -149,7 +149,7 @@ type UniswapAction struct {
 	OrdIndex uint64 `json:"orx"`
 
 	// BlockNr is number of the block for this action
-	BlockNr Uint64 `json:"blk"`
+	BlockNr hexutil.Uint64 `json:"blk"`
 
 	// Type represents a general type of the uniswap action.
 	Type int32 `json:"type"`

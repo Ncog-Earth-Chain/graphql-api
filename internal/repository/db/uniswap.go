@@ -994,7 +994,7 @@ func (db *PostgreSQLBridge) UniswapActions(pairAddress *common.Address, cursor *
 	}
 
 	// get the database connection (directly use the client pool)
-	conn := db.client // No need to call .Conn(), db.client is the connection pool
+	conn := db.db // No need to call .Conn(), db.client is the connection pool
 
 	// initialize the list
 	list, err := db.uniswapActionListInit(conn, pairAddress, cursor, count, actionType)
@@ -1004,7 +1004,7 @@ func (db *PostgreSQLBridge) UniswapActions(pairAddress *common.Address, cursor *
 	}
 
 	// load data using the PostgreSQL query
-	err = db.uniswapActionListLoad(conn, pairAddress, actionType, cursor, count, list)
+	err = db.uniswapActionListLoad(pairAddress, actionType, cursor, count, list)
 	if err != nil {
 		db.log.Errorf("cannot load uniswap action list from database; %s", err.Error())
 		return nil, err
@@ -1061,7 +1061,7 @@ func (db *PostgreSQLBridge) uniswapActionListInit(conn *sql.DB, pairAddress *com
 	}
 
 	// Calculate the total number of actions for the specified criteria
-	err := db.uniswapActionListTotal(conn, pairAddress, actionType, &list.Total)
+	err := db.uniswapActionListTotal(pairAddress, actionType, &list.Total)
 	if err != nil {
 		return nil, err
 	}
@@ -1070,7 +1070,7 @@ func (db *PostgreSQLBridge) uniswapActionListInit(conn *sql.DB, pairAddress *com
 	db.log.Debugf("Found %d uniswap actions in PostgreSQL database for specified criteria", list.Total)
 
 	// Find the first uniswap action in the list (based on ord_index or timestamp)
-	err = db.uniswapActionListTop(conn, pairAddress, actionType, cursor, count, list)
+	err = db.uniswapActionListTop(pairAddress, actionType, cursor, count, list)
 	if err != nil {
 		return nil, err
 	}
@@ -1115,7 +1115,7 @@ func (db *MongoDbBridge) uniswapActionListTotal(col *mongo.Collection, pairAddre
 }
 
 // uniswapActionListTotal finds the total amount of uniswap events for the criteria and populates the list
-func (db *PostgreSQLBridge) uniswapActionListTotal(pairAddress *common.Address, list *types.UniswapActionList, actionType int32) error {
+func (db *PostgreSQLBridge) uniswapActionListTotal(pairAddress *common.Address, actionType int32, total *uint64) error {
 	// Start building the SQL query
 	query := "SELECT COUNT(*) FROM uniswap_actions WHERE 1=1"
 
@@ -1130,7 +1130,7 @@ func (db *PostgreSQLBridge) uniswapActionListTotal(pairAddress *common.Address, 
 	}
 
 	// Execute the query and get the count
-	var total int64
+	//var total int64
 	err := db.db.QueryRow(query, pairAddress.String(), actionType).Scan(&total)
 	if err != nil {
 		db.log.Errorf("Can not count uniswap actions: %v", err.Error())
@@ -1138,7 +1138,7 @@ func (db *PostgreSQLBridge) uniswapActionListTotal(pairAddress *common.Address, 
 	}
 
 	// Set the total count
-	list.Total = uint64(total)
+	//list.Total = uint64(total)
 	return nil
 }
 
