@@ -94,44 +94,43 @@ func (db *MongoDbBridge) initTransactionsCollection(col *mongo.Collection) {
 
 // initTransactionsCollection initializes the transaction table with indexes needed by the app.
 func (db *PostgreSQLBridge) initTransactionsCollection() {
-    // Define the index creation queries
-    queries := []string{
-        // Unique index on ordinal key (descending order)
-        `CREATE UNIQUE INDEX IF NOT EXISTS idx_transaction_ordinal_desc
+	// Define the index creation queries
+	queries := []string{
+		// Unique index on ordinal key (descending order)
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_transaction_ordinal_desc
          ON transactions (ordinal_index DESC)`,
 
-        // Index on sender
-        `CREATE INDEX IF NOT EXISTS idx_transaction_sender
+		// Index on sender
+		`CREATE INDEX IF NOT EXISTS idx_transaction_sender
          ON transactions (sender)`,
 
-        // Index on recipient
-        `CREATE INDEX IF NOT EXISTS idx_transaction_recipient
+		// Index on recipient
+		`CREATE INDEX IF NOT EXISTS idx_transaction_recipient
          ON transactions (recipient)`,
 
-        // Index on timestamp
-        `CREATE INDEX IF NOT EXISTS idx_transaction_timestamp
+		// Index on timestamp
+		`CREATE INDEX IF NOT EXISTS idx_transaction_timestamp
          ON transactions (timestamp)`,
 
-        // Unique composite index on sender + ordinal index
-        `CREATE UNIQUE INDEX IF NOT EXISTS idx_from_orx
+		// Unique composite index on sender + ordinal index
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_from_orx
          ON transactions (sender, ordinal_index DESC)`,
 
-        // Unique composite index on recipient + ordinal index
-        `CREATE UNIQUE INDEX IF NOT EXISTS idx_to_orx
+		// Unique composite index on recipient + ordinal index
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_to_orx
          ON transactions (recipient, ordinal_index DESC)`,
-    }
+	}
 
-    // Execute each query
-    for _, query := range queries {
-        if _, err := db.db.Exec(query); err != nil {
-            db.log.Panicf("cannot create index: %s", err.Error())
-        }
-    }
+	// Execute each query
+	for _, query := range queries {
+		if _, err := db.db.Exec(query); err != nil {
+			db.log.Panicf("cannot create index: %s", err.Error())
+		}
+	}
 
-    // Log completion
-    db.log.Debugf("transactions table initialized with indexes")
+	// Log completion
+	db.log.Debugf("transactions table initialized with indexes")
 }
-
 
 // shouldAddTransaction validates if the transaction should be added to the persistent storage.
 func (db *MongoDbBridge) shouldAddTransaction(col *mongo.Collection, trx *types.Transaction) bool {
@@ -160,7 +159,6 @@ func (db *PostgreSQLBridge) shouldAddTransaction(tx *sql.Tx, trx *types.Transact
 	// Return the opposite of existence, indicating whether the transaction should be added
 	return !exists, nil
 }
-
 
 // AddTransaction stores a transaction reference in connected persistent storage.
 func (db *MongoDbBridge) AddTransaction(block *types.Block, trx *types.Transaction) error {
@@ -260,7 +258,6 @@ func (db *PostgreSQLBridge) AddTransaction(block *types.Block, trx *types.Transa
 	return nil
 }
 
-
 // UpdateTransaction updates transaction data in the database collection.
 func (db *MongoDbBridge) UpdateTransaction(col *mongo.Collection, trx *types.Transaction) error {
 	// notify
@@ -313,8 +310,8 @@ func (db *PostgreSQLBridge) UpdateTransaction(tx *sql.Tx, trx *types.Transaction
 
 // IsTransactionKnown checks if a transaction document already exists in the PostgreSQL database.
 func (db *PostgreSQLBridge) IsTransactionKnown(hash *common.Hash) (bool, error) {
-    // Define the query to check for transaction existence
-    query := `
+	// Define the query to check for transaction existence
+	query := `
         SELECT EXISTS (
             SELECT 1
             FROM transactions
@@ -322,22 +319,21 @@ func (db *PostgreSQLBridge) IsTransactionKnown(hash *common.Hash) (bool, error) 
         )
     `
 
-    var exists bool
+	var exists bool
 
-    // Execute the query
-    err := db.db.QueryRow(query, hash.Hex()).Scan(&exists)
-    if err != nil {
-        db.log.Errorf("failed to check transaction existence: %s", err.Error())
-        return false, err
-    }
+	// Execute the query
+	err := db.db.QueryRow(query, hash.Hex()).Scan(&exists)
+	if err != nil {
+		db.log.Errorf("failed to check transaction existence: %s", err.Error())
+		return false, err
+	}
 
-    // Return whether the transaction exists
-    if !exists {
-        db.log.Debugf("transaction %s not found in database", hash.Hex())
-    }
-    return exists, nil
+	// Return whether the transaction exists
+	if !exists {
+		db.log.Debugf("transaction %s not found in database", hash.Hex())
+	}
+	return exists, nil
 }
-
 
 // IsTransactionKnown checks if a transaction document already exists in the database.
 func (db *MongoDbBridge) IsTransactionKnown(col *mongo.Collection, hash *common.Hash) (bool, error) {
@@ -365,7 +361,6 @@ func (db *MongoDbBridge) IsTransactionKnown(col *mongo.Collection, hash *common.
 	// add transaction to the db
 	return true, nil
 }
-
 
 // initTrxList initializes list of transactions based on provided cursor and count.
 func (db *MongoDbBridge) initTrxList(col *mongo.Collection, cursor *string, count int32, filter *bson.D) (*types.TransactionList, error) {
@@ -405,42 +400,40 @@ func (db *MongoDbBridge) initTrxList(col *mongo.Collection, cursor *string, coun
 
 // initTrxList initializes a list of transactions based on the provided cursor and count.
 func (db *PostgreSQLBridge) initTrxList(cursor *string, count int32, filter string, args ...interface{}) (*types.PostTransactionList, error) {
-    // Count the total number of transactions matching the filter
-    var total int64
-    countQuery := `SELECT COUNT(*) FROM transactions WHERE ` + filter
-    err := db.db.QueryRow(countQuery, args...).Scan(&total)
-    if err != nil {
-        db.log.Errorf("cannot count transactions: %s", err.Error())
-        return nil, err
-    }
+	// Count the total number of transactions matching the filter
+	var total int64
+	countQuery := `SELECT COUNT(*) FROM transactions WHERE ` + filter
+	err := db.db.QueryRow(countQuery, args...).Scan(&total)
+	if err != nil {
+		db.log.Errorf("cannot count transactions: %s", err.Error())
+		return nil, err
+	}
 
-    // Create the transaction list
-    db.log.Debugf("found %d filtered transactions", total)
-    list := &types.PostTransactionList{
-        Collection: make([]*types.Transaction, 0),
-        Total:      uint64(total),
-        First:      0,
-        Last:       0,
-        IsStart:    total == 0,
-        IsEnd:      total == 0,
-        Filter:     make(map[string]interface{}), // Initialize filter as an empty map
-    }
+	// Create the transaction list
+	db.log.Debugf("found %d filtered transactions", total)
+	list := &types.PostTransactionList{
+		Collection: make([]*types.Transaction, 0),
+		Total:      uint64(total),
+		First:      0,
+		Last:       0,
+		IsStart:    total == 0,
+		IsEnd:      total == 0,
+		Filter:     make(map[string]interface{}), // Initialize filter as an empty map
+	}
 
-    // If there are transactions, calculate range marks and load them
-    if total > 0 {
-        updatedList, err := db.trxListWithRangeMarks(list, cursor, count, filter, args...)
-        if err != nil {
-            return nil, err
-        }
-        return updatedList, nil
-    }
+	// If there are transactions, calculate range marks and load them
+	if total > 0 {
+		updatedList, err := db.trxListWithRangeMarks(list, cursor, count, filter, args...)
+		if err != nil {
+			return nil, err
+		}
+		return updatedList, nil
+	}
 
-    // If the list is empty, return the empty list
-    db.log.Debug("empty transaction list created")
-    return list, nil
+	// If the list is empty, return the empty list
+	db.log.Debug("empty transaction list created")
+	return list, nil
 }
-
-
 
 // trxListWithRangeMarks returns the transaction list with proper First/Last marks of the transaction range.
 func (db *MongoDbBridge) trxListWithRangeMarks(
@@ -487,21 +480,21 @@ func (db *MongoDbBridge) trxListWithRangeMarks(
 
 // trxListWithRangeMarks loads a list of transactions with proper range marks.
 func (db *PostgreSQLBridge) trxListWithRangeMarks(list *types.PostTransactionList, cursor *string, count int32, filter string, args ...interface{}) (*types.PostTransactionList, error) {
-    // Define the sorting direction
-    sortDirection := "ASC"
-    if count < 0 {
-        sortDirection = "DESC"
-        count = -count
-    }
+	// Define the sorting direction
+	sortDirection := "ASC"
+	if count < 0 {
+		sortDirection = "DESC"
+		count = -count
+	}
 
-    // Add range filtering based on the cursor
-    if cursor != nil {
-        filter += ` AND hash >= $` + fmt.Sprintf("%d", len(args)+1)
-        args = append(args, *cursor)
-    }
+	// Add range filtering based on the cursor
+	if cursor != nil {
+		filter += ` AND hash >= $` + fmt.Sprintf("%d", len(args)+1)
+		args = append(args, *cursor)
+	}
 
-    // Query to load the transactions
-    query := fmt.Sprintf(`
+	// Query to load the transactions
+	query := fmt.Sprintf(`
         SELECT hash, block_hash, block_number, timestamp, from_account, to_account,
                value, gas, gas_used, cumulative_gas_used, gas_price, nonce,
                contract_address, trx_index, input_data, status
@@ -511,48 +504,46 @@ func (db *PostgreSQLBridge) trxListWithRangeMarks(list *types.PostTransactionLis
         LIMIT $%d
     `, filter, sortDirection, sortDirection, len(args)+1)
 
-    args = append(args, count)
+	args = append(args, count)
 
-    // Execute the query
-    rows, err := db.db.Query(query, args...)
-    if err != nil {
-        db.log.Errorf("failed to load transactions: %s", err.Error())
-        return nil, err
-    }
-    defer rows.Close()
+	// Execute the query
+	rows, err := db.db.Query(query, args...)
+	if err != nil {
+		db.log.Errorf("failed to load transactions: %s", err.Error())
+		return nil, err
+	}
+	defer rows.Close()
 
-    // Populate the transaction list
-    for rows.Next() {
-        var trx types.Transaction
-        err := rows.Scan(
-            &trx.Hash,
-            &trx.BlockHash,
-            &trx.BlockNumber,
-            &trx.TimeStamp,
-            &trx.From,
-            &trx.To,
-            &trx.Value,
-            &trx.Gas,
-            &trx.GasUsed,
-            &trx.CumulativeGasUsed,
-            &trx.GasPrice,
-            &trx.Nonce,
-            &trx.ContractAddress,
-            &trx.TrxIndex,
-            &trx.InputData,
-            &trx.Status,
-        )
-        if err != nil {
-            db.log.Errorf("failed to scan transaction: %s", err.Error())
-            return nil, err
-        }
-        list.Collection = append(list.Collection, &trx)
-    }
+	// Populate the transaction list
+	for rows.Next() {
+		var trx types.Transaction
+		err := rows.Scan(
+			&trx.Hash,
+			&trx.BlockHash,
+			&trx.BlockNumber,
+			&trx.TimeStamp,
+			&trx.From,
+			&trx.To,
+			&trx.Value,
+			&trx.Gas,
+			&trx.GasUsed,
+			&trx.CumulativeGasUsed,
+			&trx.GasPrice,
+			&trx.Nonce,
+			&trx.ContractAddress,
+			&trx.TrxIndex,
+			&trx.InputData,
+			&trx.Status,
+		)
+		if err != nil {
+			db.log.Errorf("failed to scan transaction: %s", err.Error())
+			return nil, err
+		}
+		list.Collection = append(list.Collection, &trx)
+	}
 
-    return list, nil
+	return list, nil
 }
-
-
 
 // findBorderOrdinalIndex finds the highest, or lowest ordinal index in the collection.
 // For negative sort it will return highest and for positive sort it will return lowest available value.
@@ -578,8 +569,8 @@ func (db *MongoDbBridge) findBorderOrdinalIndex(col *mongo.Collection, filter bs
 // findBorderOrdinalIndex finds the highest or lowest ordinal index in the transactions table.
 // For descending sort, it returns the highest value; for ascending sort, it returns the lowest.
 func (db *PostgreSQLBridge) findBorderOrdinalIndex(filter string, sortDirection string, args ...interface{}) (uint64, error) {
-    // Construct the query to get the border ordinal index
-    query := `
+	// Construct the query to get the border ordinal index
+	query := `
         SELECT ordinal_index
         FROM transactions
         WHERE ` + filter + `
@@ -587,21 +578,20 @@ func (db *PostgreSQLBridge) findBorderOrdinalIndex(filter string, sortDirection 
         LIMIT 1
     `
 
-    // Execute the query
-    var value uint64
-    err := db.db.QueryRow(query, args...).Scan(&value)
-    if err != nil {
-        if err == sql.ErrNoRows {
-            // No rows found, return 0 as default
-            return 0, nil
-        }
-        db.log.Errorf("failed to find border ordinal index: %s", err.Error())
-        return 0, err
-    }
+	// Execute the query
+	var value uint64
+	err := db.db.QueryRow(query, args...).Scan(&value)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// No rows found, return 0 as default
+			return 0, nil
+		}
+		db.log.Errorf("failed to find border ordinal index: %s", err.Error())
+		return 0, err
+	}
 
-    return value, nil
+	return value, nil
 }
-
 
 // txListFilter creates a filter for transaction list search.
 func (db *MongoDbBridge) txListFilter(cursor *string, count int32, list *types.TransactionList) *bson.D {
@@ -629,39 +619,37 @@ func (db *MongoDbBridge) txListFilter(cursor *string, count int32, list *types.T
 
 // txListFilter creates a filter string and arguments for transaction list search in PostgreSQL.
 func (db *PostgreSQLBridge) txListFilter(cursor *string, count int32, list *types.PostTransactionList) (string, []interface{}) {
-    // Log the starting point of the filter
-    db.log.Debugf("transaction filter starts from index %d", list.First)
+	// Log the starting point of the filter
+	db.log.Debugf("transaction filter starts from index %d", list.First)
 
-    // Start with the base filter
-    filter := "1=1" // Default filter to match all rows
-    args := make([]interface{}, 0)
+	// Start with the base filter
+	filter := "1=1" // Default filter to match all rows
+	args := make([]interface{}, 0)
 
-    // Build the filter query based on the cursor and count
-    if cursor == nil {
-        if count > 0 {
-            filter += " AND ordinal_index <= $1"
-            args = append(args, list.First)
-        } else {
-            filter += " AND ordinal_index >= $1"
-            args = append(args, list.First)
-        }
-    } else {
-        if count > 0 {
-            filter += " AND ordinal_index < $1"
-            args = append(args, list.First)
-        } else {
-            filter += " AND ordinal_index > $1"
-            args = append(args, list.First)
-        }
-    }
+	// Build the filter query based on the cursor and count
+	if cursor == nil {
+		if count > 0 {
+			filter += " AND ordinal_index <= $1"
+			args = append(args, list.First)
+		} else {
+			filter += " AND ordinal_index >= $1"
+			args = append(args, list.First)
+		}
+	} else {
+		if count > 0 {
+			filter += " AND ordinal_index < $1"
+			args = append(args, list.First)
+		} else {
+			filter += " AND ordinal_index > $1"
+			args = append(args, list.First)
+		}
+	}
 
-    // Log the filter for debugging purposes
-    db.log.Debugf("filter: %s, args: %v", filter, args)
+	// Log the filter for debugging purposes
+	db.log.Debugf("filter: %s, args: %v", filter, args)
 
-    return filter, args
+	return filter, args
 }
-
-
 
 // txListOptions creates a filter options set for transactions list search.
 func (db *MongoDbBridge) txListOptions(count int32) *options.FindOptions {
@@ -688,22 +676,23 @@ func (db *MongoDbBridge) txListOptions(count int32) *options.FindOptions {
 	opt.SetLimit(limit + 1)
 	return opt
 }
+
 // txListOptions creates a sorting and limit clause for transactions list search in PostgreSQL.
 func (db *PostgreSQLBridge) txListOptions(count int32) (string, int64) {
-    // Determine the sorting direction
-    sortDirection := "DESC"
-    if count < 0 {
-        sortDirection = "ASC"
-    }
+	// Determine the sorting direction
+	sortDirection := "DESC"
+	if count < 0 {
+		sortDirection = "ASC"
+	}
 
-    // Calculate the limit, ensuring it is positive
-    limit := int64(count)
-    if limit < 0 {
-        limit = -limit
-    }
+	// Calculate the limit, ensuring it is positive
+	limit := int64(count)
+	if limit < 0 {
+		limit = -limit
+	}
 
-    // Return the ORDER BY clause and the limit
-    return fmt.Sprintf("ORDER BY ordinal_index %s", sortDirection), limit + 1
+	// Return the ORDER BY clause and the limit
+	return fmt.Sprintf("ORDER BY ordinal_index %s", sortDirection), limit + 1
 }
 
 // txListLoad load the initialized list from database
@@ -752,17 +741,17 @@ func (db *MongoDbBridge) txListLoad(col *mongo.Collection, cursor *string, count
 
 // txListLoad loads the initialized list of transactions from the PostgreSQL database.
 func (db *PostgreSQLBridge) txListLoad(cursor *string, count int32, list *types.PostTransactionList, filter string, args ...interface{}) error {
-    // Determine sorting and limit
-    orderBy, limit := db.txListOptions(count)
+	// Determine sorting and limit
+	orderBy, limit := db.txListOptions(count)
 
-    // Add range filtering based on cursor
-    if cursor != nil {
-        filter += ` AND ordinal_index >= $` + fmt.Sprintf("%d", len(args)+1)
-        args = append(args, *cursor)
-    }
+	// Add range filtering based on cursor
+	if cursor != nil {
+		filter += ` AND ordinal_index >= $` + fmt.Sprintf("%d", len(args)+1)
+		args = append(args, *cursor)
+	}
 
-    // Construct the query
-    query := fmt.Sprintf(`
+	// Construct the query
+	query := fmt.Sprintf(`
         SELECT hash, block_hash, block_number, timestamp, from_account, to_account,
                value, gas, gas_used, cumulative_gas_used, gas_price, nonce,
                contract_address, trx_index, input_data, status
@@ -772,71 +761,69 @@ func (db *PostgreSQLBridge) txListLoad(cursor *string, count int32, list *types.
         LIMIT $%d
     `, filter, orderBy, len(args)+1)
 
-    args = append(args, limit)
+	args = append(args, limit)
 
-    // Execute the query
-    rows, err := db.db.Query(query, args...)
-    if err != nil {
-        db.log.Errorf("error loading transactions list; %s", err.Error())
-        return err
-    }
-    defer rows.Close()
+	// Execute the query
+	rows, err := db.db.Query(query, args...)
+	if err != nil {
+		db.log.Errorf("error loading transactions list; %s", err.Error())
+		return err
+	}
+	defer rows.Close()
 
-    // Loop and load transactions
-    var trx *types.Transaction
-    for rows.Next() {
-        // Process the previously found transaction
-        if trx != nil {
-            list.Collection = append(list.Collection, trx)
-        }
+	// Loop and load transactions
+	var trx *types.Transaction
+	for rows.Next() {
+		// Process the previously found transaction
+		if trx != nil {
+			list.Collection = append(list.Collection, trx)
+		}
 
-        // Decode the current row
-        var row types.Transaction
-        err := rows.Scan(
-            &row.Hash,
-            &row.BlockHash,
-            &row.BlockNumber,
-            &row.TimeStamp,
-            &row.From,
-            &row.To,
-            &row.Value,
-            &row.Gas,
-            &row.GasUsed,
-            &row.CumulativeGasUsed,
-            &row.GasPrice,
-            &row.Nonce,
-            &row.ContractAddress,
-            &row.TrxIndex,
-            &row.InputData,
-            &row.Status,
-        )
-        if err != nil {
-            db.log.Errorf("failed to scan transaction: %s", err.Error())
-            return err
-        }
+		// Decode the current row
+		var row types.Transaction
+		err := rows.Scan(
+			&row.Hash,
+			&row.BlockHash,
+			&row.BlockNumber,
+			&row.TimeStamp,
+			&row.From,
+			&row.To,
+			&row.Value,
+			&row.Gas,
+			&row.GasUsed,
+			&row.CumulativeGasUsed,
+			&row.GasPrice,
+			&row.Nonce,
+			&row.ContractAddress,
+			&row.TrxIndex,
+			&row.InputData,
+			&row.Status,
+		)
+		if err != nil {
+			db.log.Errorf("failed to scan transaction: %s", err.Error())
+			return err
+		}
 
-        trx = &row
-    }
+		trx = &row
+	}
 
-    // Check if a boundary was reached
-    list.IsEnd = (cursor == nil && count < 0) || (count > 0 && int32(len(list.Collection)) < count)
-    list.IsStart = (cursor == nil && count > 0) || (count < 0 && int32(len(list.Collection)) < -count)
+	// Check if a boundary was reached
+	list.IsEnd = (cursor == nil && count < 0) || (count > 0 && int32(len(list.Collection)) < count)
+	list.IsStart = (cursor == nil && count > 0) || (count < 0 && int32(len(list.Collection)) < -count)
 
-    // Add the last transaction if it reaches the boundary
-    if (list.IsStart || list.IsEnd) && trx != nil {
-        list.Collection = append(list.Collection, trx)
-    }
+	// Add the last transaction if it reaches the boundary
+	if (list.IsStart || list.IsEnd) && trx != nil {
+		list.Collection = append(list.Collection, trx)
+	}
 
-    return nil
+	return nil
 }
-
 
 // TransactionsCount returns the number of transactions stored in the database.
 func (db *MongoDbBridge) TransactionsCount() (uint64, error) {
 	return db.EstimateCount(db.client.Database(db.dbName).Collection(coTransactions))
 }
 
-<<<<<<< HEAD
 func (db *PostgreSQLBridge) TransactionsCount() (int64, error) {
 	var count int64
 	query := "SELECT COUNT(*) FROM transactions"
@@ -847,26 +834,6 @@ func (db *PostgreSQLBridge) TransactionsCount() (int64, error) {
 	return count, nil
 }
 
-=======
-// TransactionsCount returns the number of transactions stored in the PostgreSQL database.
-func (db *PostgreSQLBridge) TransactionsCount() (uint64, error) {
-    var count uint64
-
-    // Query to count the number of transactions
-    query := `SELECT COUNT(*) FROM transactions`
-
-    // Execute the query
-    err := db.db.QueryRow(query).Scan(&count)
-    if err != nil {
-        db.log.Errorf("failed to count transactions: %s", err.Error())
-        return 0, err
-    }
-
-    return count, nil
-}
-
-
->>>>>>> c860fdd (upgrade code of delegation,fmint,gas_price,trx_flow,withdrawal file)
 // Transactions pulls list of transaction hashes starting on the specified cursor.
 func (db *MongoDbBridge) Transactions(cursor *string, count int32, filter *bson.D) (*types.TransactionList, error) {
 	// nothing to load?
@@ -909,38 +876,37 @@ func (db *MongoDbBridge) Transactions(cursor *string, count int32, filter *bson.
 
 // Transactions pulls a list of transactions starting at the specified cursor.
 func (db *PostgreSQLBridge) Transactions(cursor *string, count int32, filter string, args ...interface{}) (*types.PostTransactionList, error) {
-    // Nothing to load?
-    if count == 0 {
-        return nil, fmt.Errorf("nothing to do, zero transactions requested")
-    }
+	// Nothing to load?
+	if count == 0 {
+		return nil, fmt.Errorf("nothing to do, zero transactions requested")
+	}
 
-    // Initialize the list
-    list, err := db.initTrxList(cursor, count, filter, args...)
-    if err != nil {
-        db.log.Errorf("cannot build transactions list; %s", err.Error())
-        return nil, err
-    }
+	// Initialize the list
+	list, err := db.initTrxList(cursor, count, filter, args...)
+	if err != nil {
+		db.log.Errorf("cannot build transactions list; %s", err.Error())
+		return nil, err
+	}
 
-    // Load data if there are any transactions
-    if list.Total > 0 {
-        err = db.txListLoad(cursor, count, list, filter, args...)
-        if err != nil {
-            db.log.Errorf("cannot load transactions list from database; %s", err.Error())
-            return nil, err
-        }
+	// Load data if there are any transactions
+	if list.Total > 0 {
+		err = db.txListLoad(cursor, count, list, filter, args...)
+		if err != nil {
+			db.log.Errorf("cannot load transactions list from database; %s", err.Error())
+			return nil, err
+		}
 
-        // Reverse the list if count is negative to show newer transactions on top
-        if count < 0 {
+		// Reverse the list if count is negative to show newer transactions on top
+		if count < 0 {
 			list.Reverse()
 			count = -count
 		}
 
-        // Trim the list if it exceeds the requested count
-        if len(list.Collection) > int(count) {
-            list.Collection = list.Collection[:len(list.Collection)-1]
-        }
-    }
+		// Trim the list if it exceeds the requested count
+		if len(list.Collection) > int(count) {
+			list.Collection = list.Collection[:len(list.Collection)-1]
+		}
+	}
 
-    return list, nil
+	return list, nil
 }
-

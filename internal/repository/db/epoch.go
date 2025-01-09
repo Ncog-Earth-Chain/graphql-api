@@ -599,68 +599,6 @@ func (db *PostgreSQLBridge) epochListLoad(cursor *string, count int32, list *typ
 	return nil
 }
 
-// func (db *PostgreSQLBridge) epochListLoad(cursor *string, count int32, list *types.EpochList) (err error) {
-
-// 	// Prepare the base query
-// 	query := `
-// 		SELECT id, epoch_end_time, other_columns
-// 		FROM epochs
-// 		WHERE ($1::text IS NULL OR epoch_end_time > $1::text)
-// 		ORDER BY epoch_end_time %s
-// 		LIMIT $2
-// 	`
-// 	// Determine sort direction
-// 	sortDirection := "DESC"
-// 	if count < 0 {
-// 		sortDirection = "ASC"
-// 	}
-// 	query = fmt.Sprintf(query, sortDirection)
-
-// 	// Absolute value of count
-// 	limit := int64(count)
-// 	if limit < 0 {
-// 		limit = -limit
-// 	}
-
-// 	// Execute the query
-// 	rows, err := db.db.Query(query, cursor, limit+1) // Fetch one more record to detect boundary
-// 	if err != nil {
-// 		db.log.Errorf("error loading epochs list; %s", err.Error())
-// 		return err
-// 	}
-// 	defer rows.Close()
-
-// 	// Load the data into the list
-// 	var e *types.Epoch
-// 	for rows.Next() {
-// 		// Append the previous value to the list
-// 		if e != nil {
-// 			list.Collection = append(list.Collection, e)
-// 		}
-
-// 		// Decode the next row
-// 		var row types.Epoch
-// 		err = rows.Scan(&row.Id, &row.EndTime, &row.OtherColumns) // Adjust columns as needed
-// 		if err != nil {
-// 			db.log.Errorf("can not decode epoch list row; %s", err.Error())
-// 			return err
-// 		}
-
-// 		// Use this row as the next item
-// 		e = &row
-// 	}
-
-// 	// Check if a boundary was reached
-// 	list.IsEnd = (cursor == nil && count < 0) || (count > 0 && int32(len(list.Collection)) < count)
-// 	list.IsStart = (cursor == nil && count > 0) || (count < 0 && int32(len(list.Collection)) < -count)
-
-// 	// Add the last item as well if we hit the boundary
-// 	if (list.IsStart || list.IsEnd) && e != nil {
-// 		list.Collection = append(list.Collection, e)
-// 	}
-// 	return nil
-// }
-
 // Epochs pulls list of epochs starting at the specified cursor.
 func (db *MongoDbBridge) Epochs(cursor *string, count int32) (*types.EpochList, error) {
 	// nothing to load?

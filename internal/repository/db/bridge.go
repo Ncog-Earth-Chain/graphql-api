@@ -357,7 +357,6 @@ func (db *MongoDbBridge) CountFiltered(col *mongo.Collection, filter *bson.D) (u
 	return uint64(val), nil
 }
 
-
 // CountFiltered calculates the total number of records in the given table for the given filter.
 func (db *PostgreSQLBridge) CountFiltered(tableName string, filter map[string]interface{}) (uint64, error) {
 	// Build the WHERE clause for filtering
