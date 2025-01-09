@@ -40,9 +40,20 @@ func (p *proxy) LastKnownBlock() (uint64, error) {
 	return p.db.LastKnownBlock()
 }
 
+// LastKnownBlock returns the number of the last block known to the repository.
+func (p *proxy) LastKnownBlockPost() (uint64, error) {
+	// Call the PostgreSQL bridge to get the last known block number
+	return p.pdDB.LastKnownBlock()
+}
+
 // UpdateLastKnownBlock update record about last known block.
 func (p *proxy) UpdateLastKnownBlock(blockNo *hexutil.Uint64) error {
 	return p.db.UpdateLastKnownBlock(blockNo)
+}
+
+// UpdateLastKnownBlock update record about last known block.
+func (p *proxy) UpdateLastKnownBlockPost(blockNo *hexutil.Uint64) error {
+	return p.pdDB.UpdateLastKnownBlock(blockNo)
 }
 
 // CacheBlock puts a block to the internal block cache.
@@ -228,8 +239,8 @@ func checkBlocksListBoundary(count int32, next *types.Block, list *types.BlockLi
 // If the initial block number is not provided, we start on top, or bottom based on count value.
 //
 // No-number boundaries are handled as follows:
-// 	- For positive count we start from the most recent block and scan to older blocks.
-// 	- For negative count we start from the first block and scan to newer blocks.
+//   - For positive count we start from the most recent block and scan to older blocks.
+//   - For negative count we start from the first block and scan to newer blocks.
 func (p *proxy) Blocks(num *uint64, count int32) (*types.BlockList, error) {
 	// nothing to load?
 	if count == 0 {

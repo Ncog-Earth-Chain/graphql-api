@@ -160,12 +160,27 @@ func (p *proxy) LastKnownEpoch() (uint64, error) {
 	return p.db.LastKnownEpoch()
 }
 
+// LastKnownEpoch returns the id of the last known and scanned epoch.
+func (p *proxy) LastKnownEpochPost() (uint64, error) {
+	return p.pdDB.LastKnownEpoch()
+}
+
 // AddEpoch stores an epoch reference in connected persistent storage.
 func (p *proxy) AddEpoch(e *types.Epoch) error {
 	return p.db.AddEpoch(e)
 }
 
+// AddEpoch stores an epoch reference in connected persistent storage.
+func (p *proxy) AddEpochPost(e *types.Epoch) error {
+	return p.pdDB.AddEpoch(e)
+}
+
 // Epochs pulls list of epochs starting at the specified cursor.
 func (p *proxy) Epochs(cursor *string, count int32) (*types.EpochList, error) {
 	return p.db.Epochs(cursor, count)
+}
+
+// Epochs pulls list of epochs starting at the specified cursor.
+func (p *proxy) EpochsPost(cursor *string, count int32) (*types.EpochList, error) {
+	return p.pdDB.Epochs(cursor, count)
 }

@@ -60,6 +60,10 @@ type PostgreSQLBridge struct {
 	initBurns        *sync.Once
 }
 
+func (p *PostgreSQLBridge) QueryRow(query string, args ...interface{}) *sql.Row {
+	return p.db.QueryRow(query, args...)
+}
+
 // docListCountAggregationTimeout represents a max duration of DB query executed to calculate
 // exact document count in filtered collection. If this duration is exceeded, the query fails
 // ad we fall back to full collection documents count estimation.

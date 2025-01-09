@@ -18,12 +18,31 @@ func (p *proxy) StoreNecBurn(burn *types.NecBurn) error {
 	return p.db.StoreBurn(burn)
 }
 
+// StoreNecBurn stores the given native NEC burn per block record into the persistent storage.
+func (p *proxy) StoreNecBurnPost(burn *types.NecBurn) error {
+	// Update the cache with the NEC burn data
+	p.cache.NecBurnUpdate(burn, p.pdDB.BurnTotal)
+
+	// Store the NEC burn data in the PostgreSQL database
+	return p.pdDB.StoreBurn(burn)
+}
+
 // NecBurnTotal provides the total amount of burned native NEC.
 func (p *proxy) NecBurnTotal() (int64, error) {
 	return p.cache.NecBurnTotal(p.db.BurnTotal)
 }
 
+// NecBurnTotal provides the total amount of burned native NEC.
+func (p *proxy) NecBurnTotalPost() (int64, error) {
+	return p.cache.NecBurnTotal(p.pdDB.BurnTotal)
+}
+
 // NecBurnList provides list of per-block burned native NEC tokens.
 func (p *proxy) NecBurnList(count int64) ([]types.NecBurn, error) {
 	return p.db.BurnList(count)
+}
+
+// NecBurnList provides list of per-block burned native NEC tokens.
+func (p *proxy) NecBurnListPost(count int64) ([]types.NecBurn, error) {
+	return p.pdDB.BurnList(count)
 }

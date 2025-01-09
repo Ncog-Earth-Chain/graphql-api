@@ -47,17 +47,31 @@ type Repository interface {
 	// Transactions are always sorted from newer to older.
 	AccountTransactions(*common.Address, *common.Address, *string, int32) (*types.TransactionList, error)
 
+	AccountTransactionsPost(*common.Address, *common.Address, *string, int32) (*types.TransactionList, error)
+
 	// AccountsActive total number of accounts known to repository.
 	AccountsActive() (hexutil.Uint64, error)
+
+	// AccountsActive total number of accounts known to repository.
+	AccountsActivePost() (hexutil.Uint64, error)
 
 	// AccountIsKnown checks if the account of the given address is known to the API server.
 	AccountIsKnown(*common.Address) bool
 
+	// AccountIsKnown checks if the account of the given address is known to the API server.
+	AccountIsKnownPost(*common.Address) bool
+
 	// StoreAccount adds specified account detail into the repository.
 	StoreAccount(*types.Account) error
 
+	// StoreAccount adds specified account detail into the repository.
+	StoreAccountPost(*types.Account) error
+
 	// AccountMarkActivity marks the latest account activity in the repository.
 	AccountMarkActivity(*common.Address, uint64) error
+
+	// AccountMarkActivity marks the latest account activity in the repository.
+	AccountMarkActivityPost(*common.Address, uint64) error
 
 	// BlockHeight returns the current height of the Ncogearthchain blockchain in blocks.
 	BlockHeight() (*hexutil.Big, error)
@@ -65,8 +79,14 @@ type Repository interface {
 	// LastKnownBlock returns number of the last block known to the repository.
 	LastKnownBlock() (uint64, error)
 
+	// LastKnownBlock returns number of the last block known to the repository.
+	LastKnownBlockPost() (uint64, error)
+
 	// UpdateLastKnownBlock update record about last known block.
 	UpdateLastKnownBlock(blockNo *hexutil.Uint64) error
+
+	// UpdateLastKnownBlock update record about last known block.
+	UpdateLastKnownBlockPost(blockNo *hexutil.Uint64) error
 
 	// ObservedHeaders provides a channel fed with new headers observed
 	// by the connected blockchain node.
@@ -92,16 +112,30 @@ type Repository interface {
 	// Contract extract a smart contract information by address if available.
 	Contract(*common.Address) (*types.Contract, error)
 
+	// Contract extract a smart contract information by address if available.
+	ContractPost(*common.Address) (*types.Contract, error)
+
 	// Contracts returns list of smart contracts at Ncogearthchain blockchain.
 	Contracts(bool, *string, int32) (*types.ContractList, error)
+
+	// Contracts returns list of smart contracts at Ncogearthchain blockchain.
+	ContractsPost(bool, *string, int32) (*types.ContractList, error)
 
 	// ValidateContract tries to validate contract byte code using
 	// provided source code. If successful, the contract information
 	// is updated the the repository.
 	ValidateContract(*types.Contract) error
 
+	// ValidateContract tries to validate contract byte code using
+	// provided source code. If successful, the contract information
+	// is updated the the repository.
+	ValidateContractPost(*types.Contract) error
+
 	// StoreContract updates the contract in repository.
 	StoreContract(*types.Contract) error
+
+	// StoreContract updates the contract in repository.
+	StoreContractPost(*types.Contract) error
 
 	// SfcVersion returns current version of the SFC contract.
 	SfcVersion() (hexutil.Uint64, error)
@@ -356,6 +390,9 @@ type Repository interface {
 	// AddFMintTransaction adds the specified fMint transaction to persistent storage.
 	AddFMintTransaction(*types.FMintTransaction) error
 
+	// AddFMintTransaction adds the specified fMint transaction to persistent storage.
+	AddFMintTransactionPost(*types.FMintTransaction) error
+
 	// UniswapPairs returns list of all token pairs managed by Uniswap core.
 	UniswapPairs() ([]common.Address, error)
 
@@ -432,14 +469,24 @@ type Repository interface {
 	// transaction call (blockchain transaction).
 	TokenTransactionsByCall(*common.Hash) ([]*types.TokenTransaction, error)
 
+	// TokenTransactionsByCall provides a list of token transaction made inside a specific
+	// transaction call (blockchain transaction).
+	TokenTransactionsByCallPost(*common.Hash) ([]*types.TokenTransaction, error)
+
 	// Erc20Token returns an ERC20 token for the given address, if available.
 	Erc20Token(*common.Address) (*types.Erc20Token, error)
 
 	// Erc20TokensList returns a list of known ERC20 tokens ordered by their activity.
 	Erc20TokensList(int32) ([]common.Address, error)
 
+	// Erc20TokensList returns a list of known ERC20 tokens ordered by their activity.
+	Erc20TokensListPost(int32) ([]common.Address, error)
+
 	// Erc20Assets provides list of ERC20 tokens involved with the given owner.
 	Erc20Assets(common.Address, int32) ([]common.Address, error)
+
+	// Erc20Assets provides list of ERC20 tokens involved with the given owner.
+	Erc20AssetsPost(common.Address, int32) ([]common.Address, error)
 
 	// Erc20BalanceOf load the current available balance of and ERC20 token identified by the token
 	// contract address for an identified owner address.
@@ -466,6 +513,9 @@ type Repository interface {
 
 	// StoreTokenTransaction stores ERC20/ERC721/ERC1155 transaction into the repository.
 	StoreTokenTransaction(*types.TokenTransaction) error
+
+	// StoreTokenTransaction stores ERC20/ERC721/ERC1155 transaction into the repository.
+	StoreTokenTransactionPost(*types.TokenTransaction) error
 
 	// Erc165SupportsInterface provides information about support of the interface by the contract.
 	Erc165SupportsInterface(contract *common.Address, interfaceID [4]byte) (bool, error)

@@ -22,10 +22,21 @@ func (p *proxy) StoreTokenTransaction(trx *types.TokenTransaction) error {
 	return p.db.AddERC20Transaction(trx)
 }
 
+// StoreTokenTransaction stores ERC20/ERC721/ERC1155 transaction into the repository.
+func (p *proxy) StoreTokenTransactionPost(trx *types.TokenTransaction) error {
+	return p.pdDB.AddERC20Transaction(trx)
+}
+
 // TokenTransactionsByCall provides a list of token transaction made inside a specific
 // transaction call (blockchain transaction).
 func (p *proxy) TokenTransactionsByCall(trxHash *common.Hash) ([]*types.TokenTransaction, error) {
 	return p.db.TokenTransactionsByCall(trxHash)
+}
+
+// TokenTransactionsByCall provides a list of token transaction made inside a specific
+// transaction call (blockchain transaction).
+func (p *proxy) TokenTransactionsByCallPost(trxHash *common.Hash) ([]*types.TokenTransaction, error) {
+	return p.pdDB.TokenTransactionsByCall(trxHash)
 }
 
 // TokenTransactions provides list of ERC20/ERC721/ERC1155 transactions based on given filters.
@@ -87,4 +98,9 @@ func (p *proxy) TokenTransactions(tokenType string, token *common.Address, token
 // Erc20Assets provides a list of known assets for the given owner.
 func (p *proxy) Erc20Assets(owner common.Address, count int32) ([]common.Address, error) {
 	return p.db.Erc20Assets(owner, count)
+}
+
+// Erc20Assets provides a list of known assets for the given owner.
+func (p *proxy) Erc20AssetsPost(owner common.Address, count int32) ([]common.Address, error) {
+	return p.pdDB.Erc20Assets(owner, count)
 }
