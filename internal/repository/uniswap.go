@@ -110,14 +110,29 @@ func (p *proxy) UniswapAdd(swap *types.Swap) error {
 	return p.db.UniswapAdd(swap)
 }
 
+// UniswapAdd notifies a new incoming swap from blockchain to the repository.
+func (p *proxy) UniswapAddPost(swap *types.Swap) error {
+	return p.pdDB.UniswapAdd(swap)
+}
+
 // LastKnownSwapBlock returns number of the last block known to the repository with the swap event.
 func (p *proxy) LastKnownSwapBlock() (uint64, error) {
 	return p.db.LastKnownSwapBlock()
 }
 
+// LastKnownSwapBlock returns number of the last block known to the repository with the swap event.
+func (p *proxy) LastKnownSwapBlockPost() (uint64, error) {
+	return p.pdDB.LastKnownSwapBlock()
+}
+
 // UniswapUpdateLastKnownSwapBlock stores a last correctly saved swap block number into persistent storage.
 func (p *proxy) UniswapUpdateLastKnownSwapBlock(blkNumber uint64) error {
 	return p.db.UniswapUpdateLastKnownSwapBlock(blkNumber)
+}
+
+// UniswapUpdateLastKnownSwapBlock stores a last correctly saved swap block number into persistent storage.
+func (p *proxy) UniswapUpdateLastKnownSwapBlockPost(blkNumber uint64) error {
+	return p.pdDB.UniswapUpdateLastKnownSwapBlock(blkNumber)
 }
 
 // UniswapFactoryContract returns an instance of an Uniswap factory
@@ -129,6 +144,12 @@ func (p *proxy) UniswapFactoryContract() (*contracts.UniswapFactory, error) {
 // If toTime = 0, then it resolves volumes till now
 func (p *proxy) UniswapVolume(pairAddress *common.Address, fromTime int64, toTime int64) (types.DefiSwapVolume, error) {
 	return p.db.UniswapVolume(pairAddress, fromTime, toTime)
+}
+
+// UniswapVolume returns swap volume for specified uniswap pair
+// If toTime = 0, then it resolves volumes till now
+func (p *proxy) UniswapVolumePost(pairAddress *common.Address, fromTime int64, toTime int64) (types.DefiSwapVolume, error) {
+	return p.pdDB.UniswapVolume(pairAddress, fromTime, toTime)
 }
 
 // UniswapTimeVolumes returns daily swap volume for specified uniswap pair and period of time
@@ -152,4 +173,9 @@ func (p *proxy) UniswapTimeReserves(pairAddress *common.Address, resolution stri
 // UniswapActions provides list of uniswap actions stored in the persistent storage.
 func (p *proxy) UniswapActions(pairAddress *common.Address, cursor *string, count int32, actionType int32) (*types.UniswapActionList, error) {
 	return p.db.UniswapActions(pairAddress, cursor, count, actionType)
+}
+
+// UniswapActions provides list of uniswap actions stored in the persistent storage.
+func (p *proxy) UniswapActionsPost(pairAddress *common.Address, cursor *string, count int32, actionType int32) (*types.UniswapActionList, error) {
+	return p.pdDB.UniswapActions(pairAddress, cursor, count, actionType)
 }

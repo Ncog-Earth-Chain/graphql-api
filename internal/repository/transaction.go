@@ -28,6 +28,11 @@ func (p *proxy) StoreTransaction(block *types.Block, trx *types.Transaction) err
 	return p.db.AddTransaction(block, trx)
 }
 
+// StoreTransaction notifies a new incoming transaction from blockchain to the repository.
+func (p *proxy) StoreTransactionPost(block *types.Block, trx *types.Transaction) error {
+	return p.pdDB.AddTransaction(block, trx)
+}
+
 // CacheTransaction puts a transaction to the internal ring cache.
 func (p *proxy) CacheTransaction(trx *types.Transaction) {
 	p.cache.AddTransaction(trx)
@@ -115,8 +120,8 @@ func (p *proxy) SendTransaction(tx hexutil.Bytes) (*types.Transaction, error) {
 // If the initial transaction cursor is not provided, we start on top, or bottom based on count value.
 //
 // No-number boundaries are handled as follows:
-// 	- For positive count we start from the most recent transaction and scan to older transactions.
-// 	- For negative count we start from the first transaction and scan to newer transactions.
+//   - For positive count we start from the most recent transaction and scan to older transactions.
+//   - For negative count we start from the first transaction and scan to newer transactions.
 func (p *proxy) Transactions(cursor *string, count int32) (*types.TransactionList, error) {
 	// we may be able to pull the list faster than from the db
 	if cursor == nil && count > 0 && count < cache.TransactionRingCacheSize {
@@ -144,4 +149,34 @@ func (p *proxy) Transactions(cursor *string, count int32) (*types.TransactionLis
 // StoreGasPricePeriod stores the given gas price period data in the persistent storage
 func (p *proxy) StoreGasPricePeriod(gp *types.GasPricePeriod) error {
 	return p.db.AddGasPricePeriod(gp)
+}
+
+// ConvertGasPricePeriodToPost converts GasPricePeriod to PostGasPricePeriod for PostgreSQL insertion.
+func ConvertGasPricePeriodToPost(gp *types.GasPricePeriod) *types.PostGasPricePeriod {
+	if gp == nil {
+		return nil
+	}
+	return &types.PostGasPricePeriod{
+		Type:  gp.Type, // Map fields accordingly
+		Open:  gp.Open,
+		Close: gp.Close,
+		Min:   gp.Min,
+		Max:   gp.Max,
+		Avg:   gp.Avg,
+		From:  gp.From,
+		To:    gp.To,
+		Tick:  gp.Tick,
+	}
+}
+
+// StoreGasPricePeriod stores the given gas price period data in the persistent storage (Postgres).
+func (p *proxy) StoreGasPricePeriodPost(gp *types.GasPricePeriod) error {
+	// Convert the GasPricePeriod into PostGasPricePeriod
+	postGP := ConvertGasPricePeriodToPost(gp)
+	if postGP == nil {
+		return fmt.Errorf("failed to convert GasPricePeriod to PostGasPricePeriod")
+	}
+
+	// Call the AddGasPricePeriod method to store the data in Postgres
+	return p.pdDB.AddGasPricePeriod(postGP)
 }

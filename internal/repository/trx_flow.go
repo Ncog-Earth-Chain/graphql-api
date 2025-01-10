@@ -21,14 +21,29 @@ func (p *proxy) TrxFlowVolume(from *time.Time, to *time.Time) ([]*types.DailyTrx
 	return p.db.TrxDailyFlowList(from, to)
 }
 
+// TrxFlowVolume resolves the list of daily trx flow aggregations.
+func (p *proxy) TrxFlowVolumePost(from *time.Time, to *time.Time) ([]*types.DailyTrxVolume, error) {
+	return p.pdDB.TrxDailyFlowList(from, to)
+}
+
 // TrxFlowSpeed provides speed of transaction per second for the last <sec> seconds.
 func (p *proxy) TrxFlowSpeed(sec int32) (float64, error) {
 	return p.db.TrxRecentTrxSpeed(sec)
 }
 
+// TrxFlowSpeed provides speed of transaction per second for the last <sec> seconds.
+func (p *proxy) TrxFlowSpeedPost(sec int32) (float64, error) {
+	return p.pdDB.TrxRecentTrxSpeed(sec)
+}
+
 // TrxGasSpeed provides speed of gas consumption per second by transactions.
 func (p *proxy) TrxGasSpeed(from *time.Time, to *time.Time) (float64, error) {
 	return p.db.TrxGasSpeed(from, to)
+}
+
+// TrxGasSpeed provides speed of gas consumption per second by transactions.
+func (p *proxy) TrxGasSpeedPost(from *time.Time, to *time.Time) (float64, error) {
+	return p.pdDB.TrxGasSpeed(from, to)
 }
 
 // TrxFlowUpdate executes the trx flow update in the database.
@@ -40,6 +55,23 @@ func (p *proxy) TrxFlowUpdate() {
 
 	// do the update
 	err := p.db.TrxDailyFlowUpdate(from)
+	if err != nil {
+		p.log.Criticalf("can not update trx flow; %s", err.Error())
+	}
+
+	// log success
+	p.log.Debugf("trx flow updated")
+}
+
+// TrxFlowUpdate executes the trx flow update in the database.
+func (p *proxy) TrxFlowUpdatePost() {
+	// calculate previous midnight
+	now := time.Now().UTC()
+	h, m, s := now.Clock()
+	from := now.Add(time.Duration(-(h*3600 + m*60 + s)) * time.Second).Add(time.Duration(-now.Nanosecond()) * time.Nanosecond).Add(trxFlowUpdateRange)
+
+	// do the update
+	err := p.pdDB.TrxDailyFlowUpdate(from)
 	if err != nil {
 		p.log.Criticalf("can not update trx flow; %s", err.Error())
 	}

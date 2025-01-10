@@ -23,6 +23,11 @@ func (p *proxy) StoreRewardClaim(rc *types.RewardClaim) error {
 	return p.db.AddRewardClaim(rc)
 }
 
+// StoreRewardClaim stores reward claim record in the persistent repository.
+func (p *proxy) StoreRewardClaimPost(rc *types.RewardClaim) error {
+	return p.pdDB.AddRewardClaim(rc)
+}
+
 // RewardClaims provides a list of reward claims for the given delegation and/or filter.
 func (p *proxy) RewardClaims(adr *common.Address, valID *big.Int, cursor *string, count int32) (*types.RewardClaimsList, error) {
 	// prep the filter
@@ -44,6 +49,52 @@ func (p *proxy) RewardClaims(adr *common.Address, valID *big.Int, cursor *string
 		})
 	}
 	return p.db.RewardClaims(cursor, count, &fi)
+}
+
+// RewardClaimsPostgres provides a list of reward claims for the given delegation and/or filter.
+// RewardClaimsPostgres provides a list of reward claims for the given delegation and/or filter.
+func (p *proxy) RewardClaimsPostgres(adr *common.Address, valID *big.Int, cursor *string, count int32) (*types.RewardClaimsList, error) {
+	// Prep the filter
+	filter := ""
+
+	// Arguments to be passed to PostgreSQL query
+	args := []interface{}{}
+
+	// Add delegator address to the filter
+	if adr != nil {
+		filter += "reward_claim_address = $1"
+		args = append(args, adr.String())
+	}
+
+	// Add validator ID to the filter
+	if valID != nil {
+		if len(args) > 0 {
+			filter += " AND "
+		}
+		filter += "reward_claim_to_validator = $2"
+		args = append(args, (*hexutil.Big)(valID).String())
+	}
+
+	// Fetch reward claims using the PostgreSQL bridge
+	postRewardClaims, err := p.pdDB.RewardClaims(cursor, count, filter, args...)
+	if err != nil {
+		p.log.Errorf("failed to load reward claims for address %s and validator #%d: %v", adr.String(), valID, err)
+		return nil, err
+	}
+
+	// Convert PostRewardClaimsList to RewardClaimsList
+	rewardClaims := make([]*types.RewardClaim, len(postRewardClaims.Collection))
+	for i, prc := range postRewardClaims.Collection {
+		rewardClaims[i] = &types.RewardClaim{
+			Delegator:   prc.Delegator,
+			Claimed:     prc.Claimed,
+			ClaimTrx:    prc.ClaimTrx,
+			IsDelegated: prc.IsDelegated,
+		}
+	}
+
+	// Return the result using the correct field
+	return &types.RewardClaimsList{Collection: rewardClaims}, nil
 }
 
 // RewardsClaimed returns sum of all claimed rewards for the given delegator address and validator ID.
@@ -83,4 +134,47 @@ func (p *proxy) RewardsClaimed(adr *common.Address, valId *big.Int, since *int64
 		})
 	}
 	return p.db.RewardsSumValue(&fi)
+}
+
+// RewardsClaimed returns sum of all claimed rewards for the given delegator address and validator ID.
+func (p *proxy) RewardsClaimedPost(adr *common.Address, valId *big.Int, since *int64, until *int64) (*big.Int, error) {
+	// Prep the filter and arguments for the PostgreSQL query
+	filter := ""
+	args := []interface{}{}
+
+	// Filter by delegator address
+	if adr != nil {
+		filter += "reward_claim_address = $1"
+		args = append(args, adr.String())
+	}
+
+	// Filter by validator ID
+	if valId != nil {
+		if len(args) > 0 {
+			filter += " AND "
+		}
+		filter += "reward_claim_to_validator = $2"
+		args = append(args, (*hexutil.Big)(valId).String())
+	}
+
+	// Starting timestamp provided (filter by 'since')
+	if since != nil {
+		if len(args) > 0 {
+			filter += " AND "
+		}
+		filter += "reward_claimed_timestamp >= $3"
+		args = append(args, time.Unix(*since, 0))
+	}
+
+	// Ending timestamp provided (filter by 'until')
+	if until != nil {
+		if len(args) > 0 {
+			filter += " AND "
+		}
+		filter += "reward_claimed_timestamp <= $4"
+		args = append(args, time.Unix(*until, 0))
+	}
+
+	// Call RewardsSumValue to calculate the sum of rewards
+	return p.pdDB.RewardsSumValue(filter, args...)
 }

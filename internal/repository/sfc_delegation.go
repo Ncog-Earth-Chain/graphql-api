@@ -32,9 +32,31 @@ func (p *proxy) IsDelegating(addr *common.Address) (bool, error) {
 	return 0 < count, nil
 }
 
+func (p *proxy) IsDelegatingPost(addr *common.Address) (bool, error) {
+	filters := map[string]interface{}{
+		"delegation_address": addr.String(),
+		"delegation_value": map[string]interface{}{
+			"$gt": 0,
+		},
+	}
+
+	count, err := p.pdDB.DelegationsCountFiltered(filters)
+	if err != nil {
+		p.log.Errorf("cannot check delegation by address; %s", addr.String())
+		return false, err
+	}
+
+	return count > 0, nil
+}
+
 // StoreDelegation stores the delegation in persistent database.
 func (p *proxy) StoreDelegation(dl *types.Delegation) error {
 	return p.db.AddDelegation(dl)
+}
+
+// StoreDelegation stores the delegation in the persistent database.
+func (p *proxy) StoreDelegationPost(dl *types.Delegation) error {
+	return p.pdDB.AddDelegation(dl)
 }
 
 // UpdateDelegationBalance updates active balance of the given delegation.
@@ -48,6 +70,32 @@ func (p *proxy) UpdateDelegationBalance(addr *common.Address, valID *hexutil.Big
 
 	// do the update
 	err = p.updateDelegationBalance(addr, valID, val)
+	if err == nil {
+		return nil
+	}
+
+	// unknown delegation detected?
+	if err == db.ErrUnknownDelegation {
+		p.log.Debugf("delegation %s to #%d missing", addr.String(), valID.ToInt().Uint64())
+		return unknownDelegation(val)
+	}
+
+	// some other error
+	p.log.Errorf("delegation %s to %d update failed; %s", addr.String(), valID.ToInt().Uint64(), err.Error())
+	return err
+}
+
+// UpdateDelegationBalance updates active balance of the given delegation.
+func (p *proxy) UpdateDelegationBalancePost(addr *common.Address, valID *hexutil.Big, unknownDelegation func(*big.Int) error) error {
+	// pull the current value
+	val, err := p.DelegationAmountStaked(addr, valID)
+	if err != nil {
+		p.log.Errorf("delegation balance not available for %s to %d; %s", addr.String(), valID.ToInt().Uint64(), err.Error())
+		return err
+	}
+
+	// do the update
+	err = p.updateDelegationBalancePost(addr, valID, val)
 	if err == nil {
 		return nil
 	}
@@ -85,6 +133,29 @@ func (p *proxy) updateDelegationBalance(addr *common.Address, valID *hexutil.Big
 	return err
 }
 
+// updateDelegationBalance performs delegation balance update if needed.
+func (p *proxy) updateDelegationBalancePost(addr *common.Address, valID *hexutil.Big, amo *big.Int) error {
+	// Get the delegation details
+	dlg, err := p.Delegation(addr, valID)
+	if err != nil {
+		return err
+	}
+
+	// Check if an update is needed (skip if the amount has not changed)
+	if dlg.AmountStaked.ToInt().Cmp(amo) == 0 {
+		return nil
+	}
+
+	// Update the delegation balance in the database
+	dlg.AmountDelegated = (*hexutil.Big)(amo)
+	err = p.pdDB.UpdateDelegationBalance(addr, valID, dlg.AmountDelegated)
+	if err == nil {
+		// Update the in-memory cache
+		p.cache.PushDelegation(dlg)
+	}
+	return err
+}
+
 // Delegation returns a detail of delegation for the given address.
 func (p *proxy) Delegation(adr *common.Address, valID *hexutil.Big) (*types.Delegation, error) {
 	// log what we do
@@ -107,6 +178,28 @@ func (p *proxy) Delegation(adr *common.Address, valID *hexutil.Big) (*types.Dele
 	return dlg, nil
 }
 
+// Delegation returns the details of delegation for the given address and validator ID.
+func (p *proxy) DelegationPost(adr *common.Address, valID *hexutil.Big) (*types.Delegation, error) {
+	// Log the operation
+	p.log.Debugf("accessing delegation of %s to #%d", adr.String(), valID.ToInt().Uint64())
+
+	// Check the cache first
+	dlg := p.cache.PullDelegation(*adr, valID)
+	if dlg != nil {
+		return dlg, nil
+	}
+
+	// Retrieve from the database if not found in the cache
+	dlg, err := p.pdDB.Delegation(adr, valID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Store to cache for future reference
+	p.cache.PushDelegation(dlg)
+	return dlg, nil
+}
+
 // DelegationAmountStaked returns the current amount of staked tokens for the given delegation.
 func (p *proxy) DelegationAmountStaked(addr *common.Address, valID *hexutil.Big) (*big.Int, error) {
 	val, err := p.rpc.AmountStaked(addr, (*big.Int)(valID))
@@ -125,16 +218,92 @@ func (p *proxy) DelegationsByAddress(addr *common.Address, cursor *string, count
 	return p.db.Delegations(cursor, count, &bson.D{{Key: types.FiDelegationAddress, Value: addr.String()}})
 }
 
+// DelegationsByAddressPostgres returns a list of all delegations for a given delegator address.
+func (p *proxy) DelegationsByAddressPost(addr *common.Address, cursor *string, count int32) (*types.DelegationList, error) {
+	p.log.Debugf("loading delegations of %s", addr.String())
+
+	// Define the filter as the delegator's address
+	filter := "delegation_address = $1"
+	args := []interface{}{addr.String()}
+
+	// Fetch delegations using the PostgreSQL bridge
+	postDelegations, err := p.pdDB.Delegations(cursor, count, filter, args...)
+	if err != nil {
+		p.log.Errorf("failed to fetch delegations: %v", err)
+		return nil, err
+	}
+
+	// Convert PostDelegationList to DelegationList
+	delegations := make([]*types.Delegation, len(postDelegations.Collection))
+	for i, pd := range postDelegations.Collection {
+		delegations[i] = &types.Delegation{
+			Address:      pd.Address,
+			AmountStaked: pd.AmountStaked,
+			// Map other fields as needed
+		}
+	}
+
+	// Adjust this to match the correct field in DelegationList
+	return &types.DelegationList{Delegations: delegations}, nil
+
+}
+
 // DelegationsByAddressAll returns a list of all delegations of the given address un-paged.
 func (p *proxy) DelegationsByAddressAll(addr *common.Address) ([]*types.Delegation, error) {
 	p.log.Debugf("loading all delegations of %s", addr.String())
 	return p.db.DelegationsAll(&bson.D{{Key: types.FiDelegationAddress, Value: addr.String()}})
 }
 
+// DelegationsByAddressAllPostgres returns a list of all delegations for the given address un-paged.
+func (p *proxy) DelegationsByAddressAllPost(addr *common.Address) ([]*types.Delegation, error) {
+	p.log.Debugf("loading all delegations of %s", addr.String())
+
+	// Define the filter condition for the query
+	filter := "address = $1"
+	args := []interface{}{addr.String()}
+
+	// Fetch all delegations using the PostgreSQL bridge
+	delegations, err := p.pdDB.DelegationsAll(filter, args...)
+	if err != nil {
+		p.log.Errorf("failed to load delegations for address %s: %v", addr.String(), err)
+		return nil, err
+	}
+
+	return delegations, nil
+}
+
 // DelegationsOfValidator extract a list of delegations for a given validator.
 func (p *proxy) DelegationsOfValidator(valID *hexutil.Big, cursor *string, count int32) (*types.DelegationList, error) {
 	p.log.Debugf("loading delegations of #%d", valID.ToInt().Uint64())
 	return p.db.Delegations(cursor, count, &bson.D{{Key: types.FiDelegationToValidator, Value: valID.String()}})
+}
+
+// DelegationsOfValidatorPostgres extracts a list of delegations for a given validator.
+func (p *proxy) DelegationsOfValidatorPost(valID *hexutil.Big, cursor *string, count int32) (*types.DelegationList, error) {
+	p.log.Debugf("loading delegations of validator #%d", valID.ToInt().Uint64())
+
+	// Define the filter condition for the validator
+	filter := "to_staker_id = $1"
+	args := []interface{}{valID.String()}
+
+	// Fetch delegations using the PostgreSQL bridge
+	postDelegations, err := p.pdDB.Delegations(cursor, count, filter, args...)
+	if err != nil {
+		p.log.Errorf("failed to load delegations for validator #%d: %v", valID.ToInt().Uint64(), err)
+		return nil, err
+	}
+
+	// Convert PostDelegationList to DelegationList
+	delegations := make([]*types.Delegation, len(postDelegations.Collection))
+	for i, pd := range postDelegations.Collection {
+		delegations[i] = &types.Delegation{
+			Address:      pd.Address,
+			AmountStaked: pd.AmountStaked,
+		}
+	}
+
+	// Adjust this to match the correct field in DelegationList
+	return &types.DelegationList{Delegations: delegations}, nil
 }
 
 // DelegationLock returns delegation lock information using SFC contract binding.

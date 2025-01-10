@@ -35,6 +35,32 @@ func handleSfcRewardClaim(lr *types.LogRecord, addr common.Address, valID *hexut
 	}
 }
 
+// handleSfcRewardClaim handles a rewards claim event.
+func handleSfcRewardClaimPost(lr *types.LogRecord, addr common.Address, valID *hexutil.Big, amo *big.Int, isRestake bool) {
+	// debug the event
+	log.Debugf("%s claimed %d in stake to #%d", addr.String(), amo.Uint64(), valID.ToInt().Uint64())
+
+	// add the rewards claim into the repository
+	if err := repo.StoreRewardClaimPost(&types.RewardClaim{
+		Delegator:     addr,
+		ToValidatorId: *valID,
+		Claimed:       lr.Block.TimeStamp,
+		ClaimTrx:      lr.TxHash,
+		Amount:        (hexutil.Big)(*amo),
+		IsDelegated:   isRestake,
+	}); err != nil {
+		log.Criticalf("can not store rewards claim; %s", err.Error())
+		return
+	}
+
+	// check active amount on the delegation
+	if err := repo.UpdateDelegationBalance(&addr, valID, func(amo *big.Int) error {
+		return makeAdHocDelegation(lr, &addr, valID, amo)
+	}); err != nil {
+		log.Errorf("failed to update delegation; %s", err.Error())
+	}
+}
+
 // handleSfcCommonRewardClaim handles the common reward claim on SFC contract.
 func handleSfcCommonRewardClaim(lr *types.LogRecord, isRestake bool) {
 	// sanity check for data (3x uint256 = 3x32 bytes = 96 bytes)

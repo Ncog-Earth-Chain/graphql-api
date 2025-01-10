@@ -310,6 +310,9 @@ type Repository interface {
 	// StoreRewardClaim stores reward claim record in the persistent repository.
 	StoreRewardClaim(*types.RewardClaim) error
 
+	// StoreRewardClaim stores reward claim record in the persistent repository.
+	StoreRewardClaimPost(*types.RewardClaim) error
+
 	// RewardsClaimed returns the sum of all the claimed rewards
 	// for the given delegator address and validator ID.
 	RewardsClaimed(adr *common.Address, valId *big.Int, since *int64, until *int64) (*big.Int, error)
