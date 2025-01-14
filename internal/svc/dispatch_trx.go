@@ -154,6 +154,7 @@ func (trd *trxDispatcher) process(evt *eventTrx) {
 	// store the transaction into the database once the processing is done
 	// we spawn a lot of go-routines here, so we should test the optimal queue length above
 	go trd.waitAndStore(evt, &wg)
+	go trd.waitAndStorePostgres(evt, &wg)
 
 	// broadcast new transaction; if it can not be broadcast quickly, skip
 	select {
@@ -167,6 +168,19 @@ func (trd *trxDispatcher) waitAndStore(evt *eventTrx, wg *sync.WaitGroup) {
 	// wait until all the sub-processors finish their job
 	wg.Wait()
 	if err := repo.StoreTransaction(evt.blk, evt.trx); err != nil {
+		log.Errorf("can not store trx %s from block #%d", evt.trx.Hash.String(), evt.blk.Number)
+	}
+
+	repo.IncTrxCountEstimate(1)
+	repo.CacheTransaction(evt.trx)
+	trd.blkObserver.Store(uint64(evt.blk.Number))
+}
+
+// waitAndStore waits for the transaction processing to finish and stores the transaction into db.
+func (trd *trxDispatcher) waitAndStorePostgres(evt *eventTrx, wg *sync.WaitGroup) {
+	// wait until all the sub-processors finish their job
+	wg.Wait()
+	if err := repo.StoreTransactionPost(evt.blk, evt.trx); err != nil {
 		log.Errorf("can not store trx %s from block #%d", evt.trx.Hash.String(), evt.blk.Number)
 	}
 

@@ -4,6 +4,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"ncogearthchain-api-graphql/internal/types"
 
@@ -93,7 +94,7 @@ func (db *MongoDbBridge) initTransactionsCollection(col *mongo.Collection) {
 }
 
 // initTransactionsCollection initializes the transaction table with indexes needed by the app.
-func (db *PostgreSQLBridge) initTransactionsCollection() {
+func (db *PostgreSQLBridge) initTransactionsTable() {
 	// Define the index creation queries
 	queries := []string{
 		// Unique index on ordinal key (descending order)
@@ -145,7 +146,21 @@ func (db *MongoDbBridge) shouldAddTransaction(col *mongo.Collection, trx *types.
 	return !exists
 }
 
-// shouldAddTransaction validates if the transaction should be added to the persistent storage.
+// // shouldAddTransaction validates if the transaction should be added to the persistent storage.
+// func (db *PostgreSQLBridge) shouldAddTransaction(tx *sql.Tx, trx *types.Transaction) (bool, error) {
+// 	// Check if the transaction already exists
+// 	var exists bool
+// 	query := `SELECT EXISTS (SELECT 1 FROM transactions WHERE hash = $1)`
+// 	err := tx.QueryRow(query, trx.Hash.String()).Scan(&exists)
+// 	if err != nil {
+// 		db.log.Criticalf("error checking if transaction is known: %s", err.Error())
+// 		return false, err
+// 	}
+
+// 	// Return the opposite of existence, indicating whether the transaction should be added
+// 	return !exists, nil
+// }
+
 func (db *PostgreSQLBridge) shouldAddTransaction(tx *sql.Tx, trx *types.Transaction) (bool, error) {
 	// Check if the transaction already exists
 	var exists bool
@@ -156,7 +171,7 @@ func (db *PostgreSQLBridge) shouldAddTransaction(tx *sql.Tx, trx *types.Transact
 		return false, err
 	}
 
-	// Return the opposite of existence, indicating whether the transaction should be added
+	// Return whether the transaction should be added (i.e., it does not exist)
 	return !exists, nil
 }
 
@@ -192,15 +207,11 @@ func (db *MongoDbBridge) AddTransaction(block *types.Block, trx *types.Transacti
 
 	return nil
 }
-
-// AddTransaction stores a transaction reference in connected persistent storage.
 func (db *PostgreSQLBridge) AddTransaction(block *types.Block, trx *types.Transaction) error {
-	// Do we have all needed data?
 	if block == nil || trx == nil {
 		return fmt.Errorf("cannot add empty transaction")
 	}
 
-	// Begin a new transaction
 	tx, err := db.db.Begin()
 	if err != nil {
 		db.log.Critical(err)
@@ -208,14 +219,12 @@ func (db *PostgreSQLBridge) AddTransaction(block *types.Block, trx *types.Transa
 	}
 	defer tx.Rollback()
 
-	// Check if the transaction should be added
 	shouldAdd, err := db.shouldAddTransaction(tx, trx)
 	if err != nil {
 		db.log.Critical(err)
 		return fmt.Errorf("failed to check if transaction exists: %v", err)
 	}
 
-	// If the transaction already exists, update it instead
 	if !shouldAdd {
 		if err := db.UpdateTransaction(tx, trx); err != nil {
 			db.log.Critical(err)
@@ -224,36 +233,46 @@ func (db *PostgreSQLBridge) AddTransaction(block *types.Block, trx *types.Transa
 		return tx.Commit()
 	}
 
-	// Insert the transaction
+	toAccount := ""
+	if trx.To != nil {
+		toAccount = trx.To.String()
+	}
+	inputData := hex.EncodeToString(trx.InputData)
+	//timestamp := time.Unix(int64(trx.TimeStamp), 0)
+
 	query := `
-		INSERT INTO transactions (hash, from_account, to_account, value, gas, gas_price, block_number, block_hash, input, nonce)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-	`
+        INSERT INTO transactions (hash, from_account, to_account, value, gas, gas_price, block_number, block_hash, input, nonce)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    `
+
 	_, err = tx.Exec(
 		query,
 		trx.Hash.String(),
 		trx.From.String(),
-		trx.To.String(),
+		toAccount,
 		trx.Value.String(),
 		trx.Gas,
 		trx.GasPrice.String(),
 		block.Number,
 		block.Hash.String(),
-		trx.InputData,
+		inputData,
 		trx.Nonce,
+		//timestamp,
 	)
 	if err != nil {
 		db.log.Critical(err)
 		return fmt.Errorf("failed to insert transaction: %v", err)
 	}
 
-	// Commit the transaction
 	if err := tx.Commit(); err != nil {
 		db.log.Critical(err)
 		return fmt.Errorf("failed to commit database transaction: %v", err)
 	}
 
 	db.log.Debugf("transaction %s added to database", trx.Hash.String())
+	if db.initTransactions != nil {
+		db.initTransactions.Do(func() { db.initTransactionsTable(); db.initTransactions = nil })
+	}
 
 	return nil
 }

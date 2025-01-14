@@ -60,9 +60,24 @@ type AccountRow struct {
 // 	ScHash   *common.Hash `db:"sc_hash"`         // Maps to the "sc_hash" column in PostgreSQL
 // }
 
+// type PostAccountRow struct {
+// 	Sc       *string
+// 	Type     string
+// 	Activity uint64
+// 	Counter  uint64
+// 	ScHash   *common.Hash
+// }
+
 type PostAccountRow struct {
-	Sc       *string
-	Type     string
+	Name         string
+	Address      string `bson:"_id"`
+	ContractTx   *types.Transaction
+	Type         string
+	LastActivity uint64
+	TrxCounter   uint64
+	Balance      float64
+	Sc           *string
+	//Type     string
 	Activity uint64
 	Counter  uint64
 	ScHash   *common.Hash
@@ -80,12 +95,15 @@ func (db *PostgreSQLBridge) initAccountsTable() {
 
 	// Create table if it does not exist
 	createTableSQL := `
-    CREATE TABLE IF NOT EXISTS accounts (
-        id SERIAL PRIMARY KEY,
-        account_number TEXT NOT NULL,
-        balance NUMERIC NOT NULL,
-        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-    );
+ CREATE TABLE accounts (
+                id SERIAL PRIMARY KEY,
+                address TEXT UNIQUE,
+                sc TEXT,
+				type TEXT,
+                activity BIGINT DEFAULT 0,
+                counter BIGINT DEFAULT 0,
+               created_at TIMESTAMP DEFAULT NOW()
+            )
     `
 	_, err := db.db.Exec(createTableSQL)
 	if err != nil {
@@ -275,7 +293,7 @@ func (db *PostgreSQLBridge) AddAccount(acc *types.Account) error {
 
 	// SQL query to insert the account into PostgreSQL
 	query := `
-        INSERT INTO accounts (address, sc, type, activity, counter) 
+        INSERT INTO accounts (address, sc, type, activity, counter)
         VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT (address) DO NOTHING;`
 
@@ -294,11 +312,63 @@ func (db *PostgreSQLBridge) AddAccount(acc *types.Account) error {
 		return err
 	}
 
+	// check init state
+	// make sure transactions collection is initialized
+	if db.initAccounts != nil {
+		db.initAccounts.Do(func() { db.initAccountsTable(); db.initAccounts = nil })
+	}
+
 	// Log the successful addition
 	db.log.Debugf("added account at %s", acc.Address.String())
 
 	return nil
 }
+
+// func (db *PostgreSQLBridge) AddAccount(acc *types.Account) error {
+
+// 	// Static data for testing
+// 	account := &PostAccountRow{
+// 		Address:    "0x1234567890abcdef1234567890abcdef12345678",           // Static Address
+// 		ContractTx: &types.Transaction{Hash: common.HexToHash("0xabc123")}, // No contract transaction data
+// 		Type:       "ERC20",                                                // Static type
+// 		//LastActivity: time.Now().Unix(),                            // Current Unix timestamp for LastActivity
+// 		TrxCounter: 10, // Static transaction counter value
+// 	}
+
+// 	// Check for nil account
+// 	if acc == nil {
+// 		return fmt.Errorf("cannot add empty account")
+// 	}
+
+// 	// Prepare the contract creation transaction if available
+// 	var conTx *string
+// 	if account.ContractTx != nil {
+// 		cx := account.ContractTx.Hash.String()
+// 		conTx = &cx
+// 	}
+// 	// SQL query to insert the account into PostgreSQL
+// 	query := `
+//   INSERT INTO accounts (address, sc, type, activity, counter)
+//   VALUES ($1, $2, $3, $4, $5)
+//   ON CONFLICT (address) DO NOTHING;`
+
+// 	// Execute the insert query
+// 	_, err := db.db.ExecContext(context.Background(), query,
+// 		account.Address,
+// 		conTx,
+// 		account.Type,
+// 		uint64(account.LastActivity),
+// 		uint64(account.TrxCounter),
+// 	)
+// 	if err != nil {
+// 		db.log.Error("cannot insert new account", err)
+// 		return err
+// 	}
+
+// 	// Log the successful addition
+// 	db.log.Debugf("Added account at %s", account.Address)
+// 	return nil
+// }
 
 // IsAccountKnown checks if an account document already exists in the database.
 func (db *MongoDbBridge) IsAccountKnown(addr *common.Address) (bool, error) {

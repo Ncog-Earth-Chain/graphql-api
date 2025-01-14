@@ -37,7 +37,7 @@ func (db *MongoDbBridge) initGasPriceCollection(col *mongo.Collection) {
 }
 
 // initGasPriceCollection initializes the gas price period table with indexes needed by the app.
-func (db *PostgreSQLBridge) initGasPriceCollection() {
+func (db *PostgreSQLBridge) initGasPriceTable() {
 	ctx := context.Background()
 
 	// Define index creation queries
@@ -82,7 +82,7 @@ func (db *MongoDbBridge) AddGasPricePeriod(gp *types.GasPricePeriod) error {
 }
 
 // AddGasPricePeriod stores a new record for the gas price evaluation into the database.
-func (db *PostgreSQLBridge) AddGasPricePeriod(gp *types.PostGasPricePeriod) error {
+func (db *PostgreSQLBridge) AddGasPricePeriod(gp *types.GasPricePeriod) error {
 	// Check if the input is valid
 	if gp == nil {
 		return fmt.Errorf("no value to store")
@@ -113,11 +113,15 @@ func (db *PostgreSQLBridge) AddGasPricePeriod(gp *types.PostGasPricePeriod) erro
 	// Ensure the gas price table is initialized with indexes
 	if db.initGasPrice != nil {
 		db.initGasPrice.Do(func() {
-			db.initGasPriceCollection()
+			db.initGasPriceTable()
 			db.initGasPrice = nil
 		})
 	}
 
+	// make sure gas price collection is initialized
+	if db.initGasPrice != nil {
+		db.initGasPrice.Do(func() { db.initGasPriceTable(); db.initGasPrice = nil })
+	}
 	return nil
 }
 
@@ -177,7 +181,7 @@ func (db *MongoDbBridge) GasPriceTicks(from *time.Time, to *time.Time) ([]types.
 	return list, nil
 }
 
-func (db *PostgreSQLBridge) GasPriceTicks(from *time.Time, to *time.Time) ([]types.PostGasPricePeriod, error) {
+func (db *PostgreSQLBridge) GasPriceTicks(from *time.Time, to *time.Time) ([]types.GasPricePeriod, error) {
 	// Ensure the input times are valid
 	if from == nil || to == nil {
 		return nil, fmt.Errorf("invalid time range provided")
@@ -199,9 +203,9 @@ func (db *PostgreSQLBridge) GasPriceTicks(from *time.Time, to *time.Time) ([]typ
 	defer rows.Close()
 
 	// Load all the data from the database
-	list := make([]types.PostGasPricePeriod, 0)
+	list := make([]types.GasPricePeriod, 0)
 	for rows.Next() {
-		var row types.PostGasPricePeriod
+		var row types.GasPricePeriod
 		if err := rows.Scan(
 			&row.Type,
 			&row.Open,

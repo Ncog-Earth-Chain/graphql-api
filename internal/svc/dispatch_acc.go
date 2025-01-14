@@ -43,6 +43,7 @@ func (acd *accDispatcher) run() {
 	// signal orchestrator we started and go
 	acd.mgr.started(acd)
 	go acd.execute()
+	go acd.executePost()
 }
 
 // execute runs the main account requests monitor and dispatcher
@@ -78,6 +79,39 @@ func (acd *accDispatcher) execute() {
 	}
 }
 
+// execute runs the main account requests monitor and dispatcher
+// loop in a separate thread.
+func (acd *accDispatcher) executePost() {
+	// don't forget to sign off after we are done
+	defer func() {
+		close(acd.sigStop)
+		acd.mgr.finished(acd)
+	}()
+
+	// wait for either stop signal, or an account request
+	for {
+		select {
+		case <-acd.sigStop:
+			return
+		case acc, ok := <-acd.inAccount:
+			// is the channel even available for reading
+			if !ok {
+				log.Noticef("account channel closed, terminating %s", acd.name())
+				return
+			}
+
+			// do the stuff
+			err := acd.processPost(acc)
+			if err != nil {
+				log.Errorf("failed account %s processing; %s", acc.addr.String(), err.Error())
+			}
+
+			// signal this account has been processed
+			acc.watchDog.Done()
+		}
+	}
+}
+
 // processAccount processes account into the database
 // based on the account details
 func (acd *accDispatcher) process(acc *eventAcc) error {
@@ -99,6 +133,27 @@ func (acd *accDispatcher) process(acc *eventAcc) error {
 	return acd.wallet(acc)
 }
 
+// processAccount processes account into the database
+// based on the account details
+func (acd *accDispatcher) processPost(acc *eventAcc) error {
+	// log what we do
+	log.Debugf("account %s received for processing", acc.addr.String())
+
+	// check if the account is new; if we already know it, we are done
+	if repo.AccountIsKnownPost(acc.addr) {
+		return repo.AccountMarkActivity(acc.addr, uint64(acc.blk.TimeStamp))
+	}
+
+	// is this a simple wallet/account?
+	if acc.trx.ContractAddress != nil {
+		err := acd.processContract(acc)
+		if err != nil {
+			return err
+		}
+	}
+	return acd.walletPost(acc)
+}
+
 // wallet processes a simple non-contract wallet account into the database
 // based on the account details (it still could be the SFC, be cautious about it)
 func (acd *accDispatcher) wallet(acc *eventAcc) error {
@@ -110,6 +165,29 @@ func (acd *accDispatcher) wallet(acc *eventAcc) error {
 
 	// add the account into the database
 	err := repo.StoreAccount(&types.Account{
+		Address:      *acc.addr,
+		ContractTx:   acc.deploy,
+		Type:         acc.act,
+		LastActivity: acc.blk.TimeStamp,
+		TrxCounter:   1,
+	})
+	if err != nil {
+		log.Errorf("can not add account %s; %s", acc.addr.String(), err.Error())
+	}
+	return err
+}
+
+// wallet processes a simple non-contract wallet account into the database
+// based on the account details (it still could be the SFC, be cautious about it)
+func (acd *accDispatcher) walletPost(acc *eventAcc) error {
+	// notify new account detected
+	log.Debugf("found new account %s", acc.addr.String())
+
+	// check if the target address is not an SFC contract
+	acd.checkSfc(acc)
+
+	// add the account into the database
+	err := repo.StoreAccountPost(&types.Account{
 		Address:      *acc.addr,
 		ContractTx:   acc.deploy,
 		Type:         acc.act,

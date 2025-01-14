@@ -851,18 +851,29 @@ func (db *PostgreSQLBridge) CheckDatabaseInitState() {
 	// Define table creation SQL for required tables
 	tables := map[string]string{
 		"accounts": `
-            CREATE TABLE accounts (
-                id SERIAL PRIMARY KEY,
-                name TEXT NOT NULL,
-                balance NUMERIC DEFAULT 0,
-                created_at TIMESTAMP DEFAULT NOW()
-            )`,
+		    CREATE TABLE accounts (
+		        id SERIAL PRIMARY KEY,
+		        address TEXT UNIQUE,
+		        sc TEXT,
+				type TEXT,
+		        activity BIGINT DEFAULT 0,
+		        counter BIGINT DEFAULT 0,
+		       created_at TIMESTAMP DEFAULT NOW()
+		    )`,
 		"transactions": `
             CREATE TABLE transactions (
                 id SERIAL PRIMARY KEY,
-                account_id INT REFERENCES accounts(id),
-                amount NUMERIC NOT NULL,
-                timestamp TIMESTAMP DEFAULT NOW()
+                hash TEXT NOT NULL, -- To store the transaction hash
+                from_account TEXT NOT NULL, -- Account initiating the transaction
+                to_account TEXT, -- Account receiving the transaction (nullable if not always present)
+                value NUMERIC NOT NULL, -- Transaction value
+                gas NUMERIC NOT NULL, -- Gas used
+                gas_price NUMERIC NOT NULL, -- Price per gas unit
+                block_number BIGINT NOT NULL, -- Block number the transaction belongs to
+                block_hash TEXT NOT NULL, -- Hash of the block containing the transaction
+                input TEXT, -- Input data for the transaction
+                nonce BIGINT NOT NULL, -- Transaction nonce
+                timestamp TIMESTAMP DEFAULT NOW() 
             )`,
 		"contracts": `
             CREATE TABLE contracts (
@@ -927,10 +938,16 @@ func (db *PostgreSQLBridge) CheckDatabaseInitState() {
             )`,
 		"gas_price_periods": `
             CREATE TABLE gas_price_periods (
-                id SERIAL PRIMARY KEY,
-                start_block INT NOT NULL,
-                end_block INT NOT NULL,
-                gas_price NUMERIC NOT NULL
+                id SERIAL PRIMARY KEY,        
+                type TEXT NOT NULL,             
+                open NUMERIC NOT NULL,          
+                close NUMERIC NOT NULL,         
+                min NUMERIC NOT NULL,          
+                max NUMERIC NOT NULL,           
+                avg NUMERIC NOT NULL,           
+                time_from TIMESTAMP NOT NULL,   
+                time_to TIMESTAMP NOT NULL,     
+                tick BIGINT NOT NULL   
             )`,
 		"burned_fees": `
             CREATE TABLE burned_fees (
@@ -946,6 +963,7 @@ func (db *PostgreSQLBridge) CheckDatabaseInitState() {
 		db.tableNeedInit(tableName, createTableQuery, db.dummyCounter, nil) // Use a dummy counter for now
 	}
 }
+
 func (db *PostgreSQLBridge) dummyCounter() (int64, error) {
 	return 0, nil
 }

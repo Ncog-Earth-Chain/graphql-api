@@ -179,6 +179,9 @@ type Repository interface {
 	// StoreTransaction adds a new incoming transaction from blockchain to the repository.
 	StoreTransaction(*types.Block, *types.Transaction) error
 
+	// StoreTransactionPost adds a new incoming transaction from blockchain to the repository.
+	StoreTransactionPost(*types.Block, *types.Transaction) error
+
 	// LoadTransaction returns a transaction at Ncogearthchain blockchain
 	// by a hash loaded directly from the node.
 	LoadTransaction(hash *common.Hash) (*types.Transaction, error)
@@ -331,6 +334,8 @@ type Repository interface {
 
 	// StoreGasPricePeriod stores gas price period data into the persistent storage.
 	StoreGasPricePeriod(*types.GasPricePeriod) error
+
+	StoreGasPricePeriodPostgres(*types.GasPricePeriod) error
 
 	// GasEstimate calculates the estimated amount of Gas required to perform
 	// transaction described by the input params.

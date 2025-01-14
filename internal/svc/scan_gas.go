@@ -159,6 +159,7 @@ func (gps *gpsMonitor) flip() {
 	// do we have any collected ticks? store the period if we do
 	if gps.count > 0 {
 		gps.store(now)
+		gps.storePostgres(now)
 	}
 
 	// reset for the next period
@@ -170,6 +171,25 @@ func (gps *gpsMonitor) flip() {
 
 // store this period worth of data into the persistent storage.
 func (gps *gpsMonitor) store(now time.Time) {
+	// prep and store the period data
+	err := repo.StoreGasPricePeriod(&types.GasPricePeriod{
+		Type:  types.GasPricePeriodTypeSuggestion,
+		Open:  gps.ticks[0],
+		Close: gps.ticks[gps.count-1],
+		Min:   gps.min,
+		Max:   gps.max,
+		Avg:   gps.avg(),
+		From:  *gps.start,
+		To:    now,
+		Tick:  int64(gasPriceSuggestionTickerInterval),
+	})
+	if err != nil {
+		log.Errorf("could not store gas price period data; %s", err.Error())
+	}
+}
+
+// store this period worth of data into the persistent storage.
+func (gps *gpsMonitor) storePostgres(now time.Time) {
 	// prep and store the period data
 	err := repo.StoreGasPricePeriod(&types.GasPricePeriod{
 		Type:  types.GasPricePeriodTypeSuggestion,

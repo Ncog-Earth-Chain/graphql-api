@@ -152,11 +152,11 @@ func (p *proxy) StoreGasPricePeriod(gp *types.GasPricePeriod) error {
 }
 
 // ConvertGasPricePeriodToPost converts GasPricePeriod to PostGasPricePeriod for PostgreSQL insertion.
-func ConvertGasPricePeriodToPost(gp *types.GasPricePeriod) *types.PostGasPricePeriod {
+func ConvertGasPricePeriodToPost(gp *types.GasPricePeriod) *types.GasPricePeriod {
 	if gp == nil {
 		return nil
 	}
-	return &types.PostGasPricePeriod{
+	return &types.GasPricePeriod{
 		Type:  gp.Type, // Map fields accordingly
 		Open:  gp.Open,
 		Close: gp.Close,
@@ -170,13 +170,13 @@ func ConvertGasPricePeriodToPost(gp *types.GasPricePeriod) *types.PostGasPricePe
 }
 
 // StoreGasPricePeriod stores the given gas price period data in the persistent storage (Postgres).
-func (p *proxy) StoreGasPricePeriodPost(gp *types.GasPricePeriod) error {
+func (p *proxy) StoreGasPricePeriodPostgres(gp *types.GasPricePeriod) error {
 	// Convert the GasPricePeriod into PostGasPricePeriod
-	postGP := ConvertGasPricePeriodToPost(gp)
-	if postGP == nil {
-		return fmt.Errorf("failed to convert GasPricePeriod to PostGasPricePeriod")
+	// Ensure that the GasPricePeriod is valid
+	if gp == nil {
+		return fmt.Errorf("invalid gas price period")
 	}
 
 	// Call the AddGasPricePeriod method to store the data in Postgres
-	return p.pdDB.AddGasPricePeriod(postGP)
+	return p.pdDB.AddGasPricePeriod(gp)
 }
