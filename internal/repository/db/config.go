@@ -53,53 +53,30 @@ func (db *MongoDbBridge) UpdateLastKnownBlock(blockNo *hexutil.Uint64) error {
 	return nil
 }
 
-// // AddConfig inserts or updates a configuration value in the PostgreSQL database.
-// func (db *PostgreSQLBridge) AddConfig(key string, value string) (uint64, error) {
-// 	// Prepare SQL query to insert or update the configuration value
-// 	query := `
-// 		INSERT INTO config (key, value)
-// 		VALUES ($1, $2)
-// 		ON CONFLICT (key)
-// 		DO UPDATE SET value = $2;
-// 	`
-
-// 	// Execute the query
-// 	result, err := db.db.Exec(query, key, value)
-// 	if err != nil {
-// 		return 0, fmt.Errorf("failed to add or update config: %v", err)
-// 	}
-
-// 	// Get the number of affected rows
-// 	affectedRows, err := result.RowsAffected()
-// 	if err != nil {
-// 		return 0, fmt.Errorf("failed to get affected rows: %v", err)
-// 	}
-
-// 	// Return the number of affected rows and nil error
-// 	return uint64(affectedRows), nil
-// }
-
 // UpdateLastKnownBlock stores the last known block into the configuration table in PostgreSQL.
-func (db *PostgreSQLBridge) UpdateLastKnownBlock(blockNo *hexutil.Uint64) error {
-	// Do we have all needed data?
+// UpdateLastKnownBlockPost updates the last known block in PostgreSQL.
+func (db *PostgreSQLBridge) UpdateLastKnownBlockPost(blockNo *hexutil.Uint64) error {
 	if blockNo == nil {
 		return fmt.Errorf("cannot add empty block")
 	}
 
-	// Prepare SQL query to insert or update the last known block value
+	key := "lnb"
+
+	// Adjusted query to work with unique constraint on the `key` column
 	query := `
 		INSERT INTO config (key, value)
 		VALUES ($1, $2)
 		ON CONFLICT (key) 
-		DO UPDATE SET value = $2;
+		DO UPDATE SET value = EXCLUDED.value;
 	`
 
-	// Execute the query
-	_, err := db.db.Exec(query, "last_known_block", blockNo.String())
+	_, err := db.db.Exec(query, key, blockNo.String())
 	if err != nil {
-		return fmt.Errorf("failed to update last known block; %s", err.Error())
+		db.log.Errorf("Postgres UpdateLastKnownBlockPost failed: %s", err.Error())
+		return fmt.Errorf("failed to update last known block; %w", err)
 	}
 
+	db.log.Infof("Updated last known block in PostgreSQL: %s", blockNo.String())
 	return nil
 }
 

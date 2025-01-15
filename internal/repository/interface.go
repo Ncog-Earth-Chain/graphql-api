@@ -87,7 +87,7 @@ type Repository interface {
 
 	//AddConfig(string, string) (uint64, error)
 
-	// UpdateLastKnownBlock update record about last known block.
+	// UpdateLastKnownBlockPost update record about last known block.
 	UpdateLastKnownBlockPost(blockNo *hexutil.Uint64) error
 
 	// ObservedHeaders provides a channel fed with new headers observed

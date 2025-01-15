@@ -103,6 +103,7 @@ func (trd *trxDispatcher) execute() {
 			return
 		case <-trd.bot.C:
 			trd.updateLastSeenBlock()
+			trd.updateLastSeenBlockPostgres()
 		case evt, ok := <-trd.inTransaction:
 			// is the channel even available for reading
 			if !ok {
@@ -130,6 +131,20 @@ func (trd *trxDispatcher) updateLastSeenBlock() {
 	err := repo.UpdateLastKnownBlock((*hexutil.Uint64)(&lsb))
 	if err != nil {
 		log.Errorf("could not update last seen block; %s", err.Error())
+	}
+}
+
+// updateLastSeenBlockPostgres updates the information about last known block
+// in the persistent database.
+func (trd *trxDispatcher) updateLastSeenBlockPostgres() {
+	lsb := trd.blkObserver.Load()
+	log.Infof("Attempting to update last seen block in Postgres: #%d", lsb)
+
+	err := repo.UpdateLastKnownBlockPost((*hexutil.Uint64)(&lsb))
+	if err != nil {
+		log.Errorf("Failed to update last seen block in Postgres: %s", err.Error())
+	} else {
+		log.Infof("Successfully updated last seen block in Postgres: #%d", lsb)
 	}
 }
 

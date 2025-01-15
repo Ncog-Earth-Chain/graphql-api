@@ -55,9 +55,9 @@ func (p *proxy) UpdateLastKnownBlock(blockNo *hexutil.Uint64) error {
 	return p.db.UpdateLastKnownBlock(blockNo)
 }
 
-// UpdateLastKnownBlock update record about last known block.
+// UpdateLastKnownBlockPost update record about last known block.
 func (p *proxy) UpdateLastKnownBlockPost(blockNo *hexutil.Uint64) error {
-	return p.pdDB.UpdateLastKnownBlock(blockNo)
+	return p.pdDB.UpdateLastKnownBlockPost(blockNo)
 }
 
 // CacheBlock puts a block to the internal block cache.

@@ -188,10 +188,29 @@ func (gps *gpsMonitor) store(now time.Time) {
 	}
 }
 
-// storePostgres this period worth of data into the persistent storage.
+// // storePostgres this period worth of data into the persistent storage.
+// func (gps *gpsMonitor) storePostgres(now time.Time) {
+// 	// prep and storePostgres the period data
+// 	err := repo.StoreGasPricePeriodPostgres(&types.GasPricePeriod{
+// 		Type:  types.GasPricePeriodTypeSuggestion,
+// 		Open:  gps.ticks[0],
+// 		Close: gps.ticks[gps.count-1],
+// 		Min:   gps.min,
+// 		Max:   gps.max,
+// 		Avg:   gps.avg(),
+// 		From:  *gps.start,
+// 		To:    now,
+// 		Tick:  int64(gasPriceSuggestionTickerInterval),
+// 	})
+
+// 	if err != nil {
+// 		log.Errorf("could not storePostgres gas price period data; %s", err.Error())
+// 	}
+// }
+
+// storePostgres stores the current period's data into PostgreSQL storage.
 func (gps *gpsMonitor) storePostgres(now time.Time) {
-	// prep and storePostgres the period data
-	err := repo.StoreGasPricePeriodPostgres(&types.GasPricePeriod{
+	gpsPeriod := &types.GasPricePeriod{
 		Type:  types.GasPricePeriodTypeSuggestion,
 		Open:  gps.ticks[0],
 		Close: gps.ticks[gps.count-1],
@@ -201,9 +220,17 @@ func (gps *gpsMonitor) storePostgres(now time.Time) {
 		From:  *gps.start,
 		To:    now,
 		Tick:  int64(gasPriceSuggestionTickerInterval),
-	})
+	}
+
+	// Debug log the gas price period before inserting
+	log.Infof("Storing GasPricePeriod to PostgreSQL: %+v", gpsPeriod)
+
+	// Attempt to insert the record
+	err := repo.StoreGasPricePeriodPostgres(gpsPeriod)
 	if err != nil {
-		log.Errorf("could not storePostgres gas price period data; %s", err.Error())
+		log.Errorf("StoreGasPricePeriodPostgres failed: %s", err)
+	} else {
+		log.Infof("Gas price period successfully stored in PostgreSQL.")
 	}
 }
 

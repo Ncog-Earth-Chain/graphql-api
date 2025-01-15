@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"ncogearthchain-api-graphql/internal/types"
+	"strconv"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -36,25 +37,43 @@ func (db *MongoDbBridge) initGasPriceCollection(col *mongo.Collection) {
 	db.log.Debugf("gas price collection initialized")
 }
 
-// initGasPriceCollection initializes the gas price period table with indexes needed by the app.
+// initGasPriceTable initializes the gas price table and creates required indexes.
 func (db *PostgreSQLBridge) initGasPriceTable() {
 	ctx := context.Background()
 
+	// Create the table if it does not exist
+	createTableQuery := `
+        CREATE TABLE IF NOT EXISTS gas_price_periods (
+            id SERIAL PRIMARY KEY,
+            type TEXT NOT NULL,
+            open NUMERIC NOT NULL,
+            close NUMERIC NOT NULL,
+            min NUMERIC NOT NULL,
+            max NUMERIC NOT NULL,
+            avg NUMERIC NOT NULL,
+            time_from TIMESTAMP NOT NULL,
+            time_to TIMESTAMP NOT NULL,
+            tick BIGINT NOT NULL
+        )
+    `
+	if _, err := db.db.ExecContext(ctx, createTableQuery); err != nil {
+		db.log.Panicf("failed to create gas_price_periods table: %s", err)
+	}
+
 	// Define index creation queries
-	queries := []string{
+	indexQueries := []string{
 		`CREATE INDEX IF NOT EXISTS idx_gas_price_time_from ON gas_price_periods (time_from)`,
 		`CREATE INDEX IF NOT EXISTS idx_gas_price_time_to ON gas_price_periods (time_to)`,
 	}
 
-	// Execute each query
-	for _, query := range queries {
+	// Execute each index query
+	for _, query := range indexQueries {
 		if _, err := db.db.ExecContext(ctx, query); err != nil {
-			db.log.Panicf("cannot create indexes for gas price table; %s", err.Error())
+			db.log.Panicf("failed to create index for gas price table; %s", err)
 		}
 	}
 
-	// Log that the operation is complete
-	db.log.Debugf("gas price table initialized with indexes")
+	db.log.Debugf("Gas price table initialized with schema and indexes.")
 }
 
 // AddGasPricePeriod stores a new record for the gas price evaluation
@@ -88,33 +107,42 @@ func (db *PostgreSQLBridge) AddGasPricePeriod(gp *types.GasPricePeriod) error {
 		return fmt.Errorf("no value to store")
 	}
 
+	// Debug log the input to ensure correctness
+	db.log.Infof("Inserting GasPricePeriod: %+v", gp)
+
 	// Insert the record into the gas price table
 	query := `
         INSERT INTO gas_price_periods (type, open, close, min, max, avg, time_from, time_to, tick)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
 
-	_, err := db.db.Exec(
+	res, err := db.db.Exec(
 		query,
-		gp.Type,
+		strconv.Itoa(int(gp.Type)), // Convert int8 to string
 		gp.Open,
 		gp.Close,
 		gp.Min,
 		gp.Max,
 		gp.Avg,
-		gp.From,
-		gp.To,
+		gp.From.Format("2006-01-02 15:04:05"), // Format timestamp
+		gp.To.Format("2006-01-02 15:04:05"),   // Format timestamp
 		gp.Tick,
 	)
 	if err != nil {
-		db.log.Errorf("cannot store gas price value; %s", err.Error())
-		return err
+		db.log.Errorf("Error executing query: %s", err)
+		return fmt.Errorf("failed to insert gas price period: %w", err)
 	}
 
 	// make sure gas price collection is initialized
 	if db.initGasPrice != nil {
 		db.initGasPrice.Do(func() { db.initGasPriceTable(); db.initGasPrice = nil })
 	}
+
+	// Log the number of rows affected
+	affected, _ := res.RowsAffected()
+	db.log.Infof("Rows affected: %d", affected)
+
 	return nil
+
 }
 
 // GasPricePeriodCount calculates total number of gas price period records in the database.
@@ -181,10 +209,10 @@ func (db *PostgreSQLBridge) GasPriceTicks(from *time.Time, to *time.Time) ([]typ
 
 	// Query to fetch gas price ticks in the given time range
 	query := `
-        SELECT type, open, close, min, max, avg, time_from, time_to, tick
-        FROM gas_price_period
-        WHERE time_from >= $1 AND time_to <= $2
-        ORDER BY time_from ASC`
+          SELECT type, open, close, min, max, avg, time_from, time_to, tick
+          FROM gas_price_periods
+          WHERE time_from >= $1 AND time_to <= $2
+          ORDER BY time_from ASC`
 
 	// Execute the query
 	rows, err := db.db.Query(query, from, to)
