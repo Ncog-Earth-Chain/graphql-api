@@ -50,6 +50,7 @@ type Delegation struct {
 	ToStakerAddress common.Address `json:"toStakerAddr"`
 	CreatedTime     hexutil.Uint64 `json:"createdTime"`
 	Index           uint64         `json:"ordinalIndex"`
+	Value           uint64
 
 	// AmountStaked represents the current staked amount
 	AmountStaked *hexutil.Big `json:"amountStaked"`

@@ -4,6 +4,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/types"
@@ -56,7 +57,7 @@ func (db *MongoDbBridge) initDelegationCollection(col *mongo.Collection) {
 
 // initDelegationCollection initializes the delegation table with
 // indexes and additional parameters needed by the app.
-func (db *PostgreSQLBridge) initDelegationCollection() error {
+func (db *PostgreSQLBridge) initDelegationTable() error {
 	// Prepare index creation queries
 	indexQueries := []string{
 		// Create unique index on delegation address and validator
@@ -175,6 +176,47 @@ func (db *MongoDbBridge) AddDelegation(dl *types.Delegation) error {
 }
 
 // AddDelegation stores a delegation in the PostgreSQL database if it doesn't exist.
+// func (db *PostgreSQLBridge) AddDelegation(dl *types.Delegation) error {
+// 	// Check if the delegation already exists in the database
+// 	exists, err := db.isDelegationKnown(dl)
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	// If the delegation already exists, update it with the new data
+// 	if exists {
+// 		return db.UpdateDelegation(dl)
+// 	}
+
+// 	// Insert the new delegation into the database
+// 	query := `
+//         INSERT INTO delegations (delegation_address, to_staker_id, to_staker_address,
+//                                  created_time, ordinal_index, amount_staked, amount_delegated)
+//         VALUES ($1, $2, $3, $4, $5, $6, $7)
+//         RETURNING id
+//     `
+
+// 	// Execute the insert query
+// 	var id string
+// 	err = db.db.QueryRowContext(context.Background(), query, dl.Address.String(), dl.ToStakerId.String(), dl.ToStakerAddress.String(),
+// 		dl.CreatedTime, dl.Index, dl.AmountStaked.String(), dl.AmountDelegated.String()).Scan(&id)
+// 	if err != nil {
+// 		db.log.Criticalf("cannot add delegation %s to %d; %s", dl.Address.String(), dl.ToStakerId.ToInt().Uint64(), err.Error())
+// 		return fmt.Errorf("failed to insert delegation: %v", err)
+// 	}
+
+// 	// Optionally log the insertion or do other tasks
+// 	db.log.Debugf("delegation %s to %d added with ID %s", dl.Address.String(), dl.ToStakerId.ToInt().Uint64(), id)
+
+// 	// make sure delegation collection is initialized
+// 	if db.initDelegations != nil {
+// 		db.initDelegations.Do(func() { db.initDelegationTable(); db.initDelegations = nil })
+// 	}
+
+// 	return nil
+// }
+
+// AddDelegation stores a delegation in the PostgreSQL database if it doesn't exist.
 func (db *PostgreSQLBridge) AddDelegation(dl *types.Delegation) error {
 	// Check if the delegation already exists in the database
 	exists, err := db.isDelegationKnown(dl)
@@ -189,23 +231,36 @@ func (db *PostgreSQLBridge) AddDelegation(dl *types.Delegation) error {
 
 	// Insert the new delegation into the database
 	query := `
-        INSERT INTO delegations (delegation_address, to_staker_id, to_staker_address, 
-                                 created_time, ordinal_index, amount_staked, amount_delegated)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO delegations (trx, adr, "to", toad, crt, amo, act, val, stamp)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING id
     `
 
 	// Execute the insert query
-	var id string
-	err = db.db.QueryRowContext(context.Background(), query, dl.Address.String(), dl.ToStakerId.String(), dl.ToStakerAddress.String(),
-		dl.CreatedTime, dl.Index, dl.AmountStaked.String(), dl.AmountDelegated.String()).Scan(&id)
+	var id int
+	err = db.db.QueryRowContext(
+		context.Background(),
+		query,
+		dl.Transaction.Hex(),        // Convert common.Hash to string
+		dl.Address.Hex(),            // Convert common.Address to string
+		dl.ToStakerId.String(),      // Convert *hexutil.Big to string
+		dl.ToStakerAddress.Hex(),    // Convert common.Address to string
+		uint64(dl.CreatedTime),      // Convert hexutil.Uint64 to uint64
+		dl.AmountDelegated.String(), // Convert *hexutil.Big to string
+		dl.AmountStaked.String(),    // Convert *hexutil.Big to string
+		dl.Value,                    // Pass uint64 directly
+		time.Now(),                  // stamp
+	).Scan(&id)
 	if err != nil {
-		db.log.Criticalf("cannot add delegation %s to %d; %s", dl.Address.String(), dl.ToStakerId.ToInt().Uint64(), err.Error())
-		return fmt.Errorf("failed to insert delegation: %v", err)
+		if strings.Contains(err.Error(), "unique constraint") {
+			db.log.Errorf("Transaction already exists: %s", dl.Transaction.Hex())
+			return errors.New("transaction already exists")
+		}
+		return err
 	}
-
-	// Optionally log the insertion or do other tasks
-	db.log.Debugf("delegation %s to %d added with ID %s", dl.Address.String(), dl.ToStakerId.ToInt().Uint64(), id)
+	if db.initDelegations != nil {
+		db.initDelegations.Do(func() { db.initDelegationTable(); db.initDelegations = nil })
+	}
 
 	return nil
 }
@@ -382,12 +437,37 @@ func (db *MongoDbBridge) isDelegationKnown(col *mongo.Collection, dl *types.Dele
 	return true
 }
 
+// // isDelegationKnown checks if the given delegation exists in the PostgreSQL database.
+// func (db *PostgreSQLBridge) isDelegationKnown(dl *types.Delegation) (bool, error) {
+// 	// Prepare the SQL query to check if the delegation exists
+// 	query := `
+//         SELECT 1 FROM delegations
+//         WHERE delegation_address = $1 AND to_staker_id = $2
+//     `
+
+// 	// Execute the query
+// 	var exists int
+// 	err := db.db.QueryRowContext(context.Background(), query, dl.Address.String(), dl.ToStakerId.String()).Scan(&exists)
+// 	if err != nil {
+// 		if err == sql.ErrNoRows {
+// 			// No matching delegation found
+// 			return false, nil
+// 		}
+// 		// Log error if query execution fails
+// 		db.log.Errorf("cannot check if delegation exists; %s", err.Error())
+// 		return false, fmt.Errorf("failed to check if delegation exists: %v", err)
+// 	}
+
+// 	// Return true if a matching delegation exists
+// 	return exists > 0, nil
+// }
+
 // isDelegationKnown checks if the given delegation exists in the PostgreSQL database.
 func (db *PostgreSQLBridge) isDelegationKnown(dl *types.Delegation) (bool, error) {
 	// Prepare the SQL query to check if the delegation exists
 	query := `
         SELECT 1 FROM delegations 
-        WHERE delegation_address = $1 AND to_staker_id = $2
+        WHERE adr = $1 AND "to" = $2
     `
 
 	// Execute the query

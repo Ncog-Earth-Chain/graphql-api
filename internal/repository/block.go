@@ -35,6 +35,10 @@ func (p *proxy) BlockHeight() (*hexutil.Big, error) {
 	return p.rpc.BlockHeight()
 }
 
+// func (p *proxy) AddConfig(key string, value string) (uint64, error) {
+// 	return p.pdDB.AddConfig(key, value)
+// }
+
 // LastKnownBlock returns number of the last block known to the repository.
 func (p *proxy) LastKnownBlock() (uint64, error) {
 	return p.db.LastKnownBlock()

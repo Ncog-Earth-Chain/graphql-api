@@ -188,10 +188,10 @@ func (gps *gpsMonitor) store(now time.Time) {
 	}
 }
 
-// store this period worth of data into the persistent storage.
+// storePostgres this period worth of data into the persistent storage.
 func (gps *gpsMonitor) storePostgres(now time.Time) {
-	// prep and store the period data
-	err := repo.StoreGasPricePeriod(&types.GasPricePeriod{
+	// prep and storePostgres the period data
+	err := repo.StoreGasPricePeriodPostgres(&types.GasPricePeriod{
 		Type:  types.GasPricePeriodTypeSuggestion,
 		Open:  gps.ticks[0],
 		Close: gps.ticks[gps.count-1],
@@ -203,7 +203,7 @@ func (gps *gpsMonitor) storePostgres(now time.Time) {
 		Tick:  int64(gasPriceSuggestionTickerInterval),
 	})
 	if err != nil {
-		log.Errorf("could not store gas price period data; %s", err.Error())
+		log.Errorf("could not storePostgres gas price period data; %s", err.Error())
 	}
 }
 

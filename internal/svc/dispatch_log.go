@@ -27,6 +27,9 @@ func (lgd *logDispatcher) init() {
 		/* SFC1::CreatedDelegation(address indexed delegator, uint256 indexed toStakerID, uint256 amount) */
 		common.HexToHash("0xfd8c857fb9acd6f4ad59b8621a2a77825168b7b4b76de9586d08e00d4ed462be"): handleSfcCreatedDelegation,
 
+		/* SFC1::CreatedDelegation(address indexed delegator, uint256 indexed toStakerID, uint256 amount) */
+		common.HexToHash("0xfd8c857fb9acd6f4ad59b8621a2a77825168b7b4b76de9586d08e00d4ed462be"): handleSfcCreatedDelegationPostgres,
+
 		/* SFC1::CreatedStake(uint256 indexed stakerID, address indexed dagSfcAddress, uint256 amount) */
 		common.HexToHash("0x0697dfe5062b9db8108e4b31254f47a912ae6bbb78837667b2e923a6f5160d39"): handleSfcCreatedStake,
 
@@ -35,6 +38,9 @@ func (lgd *logDispatcher) init() {
 
 		/* SFC1::IncreasedDelegation(address indexed delegator, uint256 indexed stakerID, uint256 newAmount, uint256 diff); */
 		common.HexToHash("0x4ca781bfe171e588a2661d5a7f2f5f59df879c53489063552fbad2145b707fc1"): handleSfc1IncreasedDelegation,
+
+		/* SFC1::IncreasedDelegation(address indexed delegator, uint256 indexed stakerID, uint256 newAmount, uint256 diff); */
+		common.HexToHash("0x4ca781bfe171e588a2661d5a7f2f5f59df879c53489063552fbad2145b707fc1"): handleSfc1IncreasedDelegationPostgres,
 
 		/* SFC1::ClaimedDelegationReward(address indexed from, uint256 indexed stakerID, uint256 reward, uint256 fromEpoch, uint256 untilEpoch) */
 		common.HexToHash("0x2676e1697cf4731b93ddb4ef54e0e5a98c06cccbbbb2202848a3c6286595e6ce"): handleSfc1ClaimedDelegationReward,
@@ -57,8 +63,17 @@ func (lgd *logDispatcher) init() {
 		/* SFC1::PreparedToWithdrawDelegation(address indexed delegator, uint256 indexed stakerID) */
 		common.HexToHash("0x5b1eea49e405ef6d509836aac841959c30bb0673b1fd70859bfc6ae5e4ee3df2"): handleSfc1DeactivatedDelegation,
 
+		/* SFC1::DeactivatedDelegation(address indexed delegator, uint256 indexed stakerID) */
+		common.HexToHash("0x912c4125a208704a342cbdc4726795d26556b0170b7fc95bc706d5cb1f506469"): handleSfc1DeactivatedDelegationPostgres,
+
+		/* SFC1::PreparedToWithdrawDelegation(address indexed delegator, uint256 indexed stakerID) */
+		common.HexToHash("0x5b1eea49e405ef6d509836aac841959c30bb0673b1fd70859bfc6ae5e4ee3df2"): handleSfc1DeactivatedDelegationPostgres,
+
 		/* SFC1::CreatedWithdrawRequest(address indexed auth, address indexed receiver, uint256 indexed stakerID, uint256 wrID, bool delegation, uint256 amount) */
 		common.HexToHash("0xde2d2a87af2fa2de55bde86f04143144eb632fa6be266dc224341a371fb8916d"): handleSfc1CreatedWithdrawRequest,
+
+		/* SFC1::CreatedWithdrawRequest(address indexed auth, address indexed receiver, uint256 indexed stakerID, uint256 wrID, bool delegation, uint256 amount) */
+		common.HexToHash("0xde2d2a87af2fa2de55bde86f04143144eb632fa6be266dc224341a371fb8916d"): handleSfc1CreatedWithdrawRequestPostgres,
 
 		/* SFC1::WithdrawnStake(uint256 indexed stakerID, uint256 penalty) */
 		common.HexToHash("0x8c6548258f8f12a9d4b593fa89a223417ed901d4ee9712ba09beb4d56f5262b6"): handleSfc1WithdrawnStake,
@@ -66,11 +81,20 @@ func (lgd *logDispatcher) init() {
 		/* SFC1::WithdrawnDelegation(address indexed delegator, uint256 indexed stakerID, uint256 penalty) */
 		common.HexToHash("0x87e86b3710b72c10173ca52c6a9f9cf2df27e77ed177741a8b4feb12bb7a606f"): handleSfc1WithdrawnDelegation,
 
+		/* SFC1::WithdrawnDelegation(address indexed delegator, uint256 indexed stakerID, uint256 penalty) */
+		common.HexToHash("0x87e86b3710b72c10173ca52c6a9f9cf2df27e77ed177741a8b4feb12bb7a606f"): handleSfc1WithdrawnDelegationPostgres,
+
 		/* SFC1::PartialWithdrawnByRequest(address indexed auth, address indexed receiver, uint256 indexed stakerID, uint256 wrID, bool delegation, uint256 penalty) */
 		common.HexToHash("0xd5304dabc5bd47105b6921889d1b528c4b2223250248a916afd129b1c0512ddd"): handleSfc1PartialWithdrawByRequest,
 
+		/* SFC1::PartialWithdrawnByRequest(address indexed auth, address indexed receiver, uint256 indexed stakerID, uint256 wrID, bool delegation, uint256 penalty) */
+		common.HexToHash("0xd5304dabc5bd47105b6921889d1b528c4b2223250248a916afd129b1c0512ddd"): handleSfc1PartialWithdrawByRequestPostgres,
+
 		/* SFC1::UpdatedDelegation(address indexed delegator, uint256 indexed oldStakerID, uint256 indexed newStakerID, uint256 amount) */
 		common.HexToHash("0x19b46b9014e4dc8ca74f505b8921797c6a8a489860217d15b3c7d741637dfcff"): handleSfc1UpdatedDelegation,
+
+		/* SFC1::UpdatedDelegation(address indexed delegator, uint256 indexed oldStakerID, uint256 indexed newStakerID, uint256 amount) */
+		common.HexToHash("0x19b46b9014e4dc8ca74f505b8921797c6a8a489860217d15b3c7d741637dfcff"): handleSfc1UpdatedDelegationPostgres,
 
 		/* SFC1::UpdatedStake(uint256 indexed stakerID, uint256 amount, uint256 delegatedMe) */
 		common.HexToHash("0x509404fa75ce234a1273cf9f7918bcf54e0ef19f2772e4f71b6526606a723b7c"): handleSfc1UpdatedStake,
@@ -78,8 +102,14 @@ func (lgd *logDispatcher) init() {
 		/* SFC3::Delegated(address indexed delegator, uint256 indexed toValidatorID, uint256 amount) */
 		common.HexToHash("0x9a8f44850296624dadfd9c246d17e47171d35727a181bd090aa14bbbe00238bb"): handleSfcCreatedDelegation,
 
+		/* SFC3::Delegated(address indexed delegator, uint256 indexed toValidatorID, uint256 amount) */
+		common.HexToHash("0x9a8f44850296624dadfd9c246d17e47171d35727a181bd090aa14bbbe00238bb"): handleSfcCreatedDelegationPostgres,
+
 		/* SFC3::Undelegated(address indexed delegator, uint256 indexed toValidatorID, uint256 indexed wrID, uint256 amount) */
 		common.HexToHash("0xd3bb4e423fbea695d16b982f9f682dc5f35152e5411646a8a5a79a6b02ba8d57"): handleSfcUndelegated,
+
+		/* SFC3::Undelegated(address indexed delegator, uint256 indexed toValidatorID, uint256 indexed wrID, uint256 amount) */
+		common.HexToHash("0xd3bb4e423fbea695d16b982f9f682dc5f35152e5411646a8a5a79a6b02ba8d57"): handleSfcUndelegatedPostgres,
 
 		/* SFC3::Withdrawn(address indexed delegator, uint256 indexed toValidatorID, uint256 indexed wrID, uint256 amount) */
 		common.HexToHash("0x75e161b3e824b114fc1a33274bd7091918dd4e639cede50b78b15a4eea956a21"): handleSfcWithdrawn,

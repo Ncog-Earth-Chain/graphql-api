@@ -32,7 +32,8 @@ func (p *proxy) IsDelegating(addr *common.Address) (bool, error) {
 	return 0 < count, nil
 }
 
-func (p *proxy) IsDelegatingPost(addr *common.Address) (bool, error) {
+// IsDelegatingPostgres returns if the given address is an SFC delegator.
+func (p *proxy) IsDelegatingPostgres(addr *common.Address) (bool, error) {
 	filters := map[string]interface{}{
 		"delegation_address": addr.String(),
 		"delegation_value": map[string]interface{}{
@@ -54,8 +55,8 @@ func (p *proxy) StoreDelegation(dl *types.Delegation) error {
 	return p.db.AddDelegation(dl)
 }
 
-// StoreDelegation stores the delegation in the persistent database.
-func (p *proxy) StoreDelegationPost(dl *types.Delegation) error {
+// StoreDelegationPostgres stores the delegation in the persistent database.
+func (p *proxy) StoreDelegationPostgres(dl *types.Delegation) error {
 	return p.pdDB.AddDelegation(dl)
 }
 

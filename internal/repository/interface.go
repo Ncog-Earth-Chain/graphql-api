@@ -85,6 +85,8 @@ type Repository interface {
 	// UpdateLastKnownBlock update record about last known block.
 	UpdateLastKnownBlock(blockNo *hexutil.Uint64) error
 
+	//AddConfig(string, string) (uint64, error)
+
 	// UpdateLastKnownBlock update record about last known block.
 	UpdateLastKnownBlockPost(blockNo *hexutil.Uint64) error
 
@@ -251,6 +253,9 @@ type Repository interface {
 
 	// StoreDelegation stores a delegation in the persistent repository.
 	StoreDelegation(*types.Delegation) error
+
+	// StoreDelegationPostgres stores a delegation in the persistent repository.
+	StoreDelegationPostgres(*types.Delegation) error
 
 	// UpdateDelegationBalance updates active balance of the given delegation.
 	UpdateDelegationBalance(*common.Address, *hexutil.Big, func(*big.Int) error) error

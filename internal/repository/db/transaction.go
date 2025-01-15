@@ -146,21 +146,6 @@ func (db *MongoDbBridge) shouldAddTransaction(col *mongo.Collection, trx *types.
 	return !exists
 }
 
-// // shouldAddTransaction validates if the transaction should be added to the persistent storage.
-// func (db *PostgreSQLBridge) shouldAddTransaction(tx *sql.Tx, trx *types.Transaction) (bool, error) {
-// 	// Check if the transaction already exists
-// 	var exists bool
-// 	query := `SELECT EXISTS (SELECT 1 FROM transactions WHERE hash = $1)`
-// 	err := tx.QueryRow(query, trx.Hash.String()).Scan(&exists)
-// 	if err != nil {
-// 		db.log.Criticalf("error checking if transaction is known: %s", err.Error())
-// 		return false, err
-// 	}
-
-// 	// Return the opposite of existence, indicating whether the transaction should be added
-// 	return !exists, nil
-// }
-
 func (db *PostgreSQLBridge) shouldAddTransaction(tx *sql.Tx, trx *types.Transaction) (bool, error) {
 	// Check if the transaction already exists
 	var exists bool

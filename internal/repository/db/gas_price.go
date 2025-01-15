@@ -42,8 +42,8 @@ func (db *PostgreSQLBridge) initGasPriceTable() {
 
 	// Define index creation queries
 	queries := []string{
-		`CREATE INDEX IF NOT EXISTS idx_gas_price_time_from ON gas_price (time_from)`,
-		`CREATE INDEX IF NOT EXISTS idx_gas_price_time_to ON gas_price (time_to)`,
+		`CREATE INDEX IF NOT EXISTS idx_gas_price_time_from ON gas_price_periods (time_from)`,
+		`CREATE INDEX IF NOT EXISTS idx_gas_price_time_to ON gas_price_periods (time_to)`,
 	}
 
 	// Execute each query
@@ -90,7 +90,7 @@ func (db *PostgreSQLBridge) AddGasPricePeriod(gp *types.GasPricePeriod) error {
 
 	// Insert the record into the gas price table
 	query := `
-        INSERT INTO gas_price_period (type, open, close, min, max, avg, time_from, time_to, tick)
+        INSERT INTO gas_price_periods (type, open, close, min, max, avg, time_from, time_to, tick)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
 
 	_, err := db.db.Exec(
@@ -108,14 +108,6 @@ func (db *PostgreSQLBridge) AddGasPricePeriod(gp *types.GasPricePeriod) error {
 	if err != nil {
 		db.log.Errorf("cannot store gas price value; %s", err.Error())
 		return err
-	}
-
-	// Ensure the gas price table is initialized with indexes
-	if db.initGasPrice != nil {
-		db.initGasPrice.Do(func() {
-			db.initGasPriceTable()
-			db.initGasPrice = nil
-		})
 	}
 
 	// make sure gas price collection is initialized
