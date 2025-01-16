@@ -156,7 +156,7 @@ func New(cfg *config.Config, log logger.Logger) (*MongoDbBridge, error) {
 // }
 func InitializePostgreSQLBridge(cfg *config.Config, log logger.Logger) (*PostgreSQLBridge, error) {
 	// Build DSN from configuration
-	dsn := "postgres://postgres:King%23123@localhost:5432/ncgobackend"
+	dsn := "postgres://postgres:King%23123@localhost:5432/testone"
 
 	log.Debugf("connecting to PostgreSQL database at %s", dsn)
 
