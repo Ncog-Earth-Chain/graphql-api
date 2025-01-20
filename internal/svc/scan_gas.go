@@ -159,7 +159,7 @@ func (gps *gpsMonitor) flip() {
 	// do we have any collected ticks? store the period if we do
 	if gps.count > 0 {
 		gps.store(now)
-		gps.storePostgres(now)
+		//gps.storePostgres(now)
 	}
 
 	// reset for the next period
@@ -209,30 +209,30 @@ func (gps *gpsMonitor) store(now time.Time) {
 // }
 
 // storePostgres stores the current period's data into PostgreSQL storage.
-func (gps *gpsMonitor) storePostgres(now time.Time) {
-	gpsPeriod := &types.GasPricePeriod{
-		Type:  types.GasPricePeriodTypeSuggestion,
-		Open:  gps.ticks[0],
-		Close: gps.ticks[gps.count-1],
-		Min:   gps.min,
-		Max:   gps.max,
-		Avg:   gps.avg(),
-		From:  *gps.start,
-		To:    now,
-		Tick:  int64(gasPriceSuggestionTickerInterval),
-	}
+// func (gps *gpsMonitor) storePostgres(now time.Time) {
+// 	gpsPeriod := &types.GasPricePeriod{
+// 		Type:  types.GasPricePeriodTypeSuggestion,
+// 		Open:  gps.ticks[0],
+// 		Close: gps.ticks[gps.count-1],
+// 		Min:   gps.min,
+// 		Max:   gps.max,
+// 		Avg:   gps.avg(),
+// 		From:  *gps.start,
+// 		To:    now,
+// 		Tick:  int64(gasPriceSuggestionTickerInterval),
+// 	}
 
-	// Debug log the gas price period before inserting
-	log.Infof("Storing GasPricePeriod to PostgreSQL: %+v", gpsPeriod)
+// 	// Debug log the gas price period before inserting
+// 	log.Infof("Storing GasPricePeriod to PostgreSQL: %+v", gpsPeriod)
 
-	// Attempt to insert the record
-	err := repo.StoreGasPricePeriodPostgres(gpsPeriod)
-	if err != nil {
-		log.Errorf("StoreGasPricePeriodPostgres failed: %s", err)
-	} else {
-		log.Infof("Gas price period successfully stored in PostgreSQL.")
-	}
-}
+// 	// Attempt to insert the record
+// 	err := repo.StoreGasPricePeriodPostgres(gpsPeriod)
+// 	if err != nil {
+// 		log.Errorf("StoreGasPricePeriodPostgres failed: %s", err)
+// 	} else {
+// 		log.Infof("Gas price period successfully stored in PostgreSQL.")
+// 	}
+// }
 
 // avg calculates the average gas price suggestion value of the current period from the collected ticks.
 // Please note we assume the ticks' collection time frames are distributed evenly in the period,

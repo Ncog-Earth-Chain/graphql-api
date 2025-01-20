@@ -55,7 +55,7 @@ func (db *MongoDbBridge) UpdateLastKnownBlock(blockNo *hexutil.Uint64) error {
 
 // UpdateLastKnownBlock stores the last known block into the configuration table in PostgreSQL.
 // UpdateLastKnownBlockPost updates the last known block in PostgreSQL.
-func (db *PostgreSQLBridge) UpdateLastKnownBlockPost(blockNo *hexutil.Uint64) error {
+func (db *PostgreSQLBridge) UpdateLastKnownBlock(blockNo *hexutil.Uint64) error {
 	if blockNo == nil {
 		return fmt.Errorf("cannot add empty block")
 	}
@@ -180,9 +180,9 @@ func (db *MongoDbBridge) lastKnownBlock() (uint64, error) {
 func (db *PostgreSQLBridge) lastKnownBlock() (uint64, error) {
 	// Prepare the SQL query to retrieve the last known block (maximum block number)
 	query := `
-		SELECT block 
+		SELECT block_number 
 		FROM transactions 
-		ORDER BY block DESC 
+		ORDER BY block_number DESC 
 		LIMIT 1;
 	`
 

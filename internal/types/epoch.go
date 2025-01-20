@@ -14,6 +14,8 @@ import (
 type Epoch struct {
 	Id                    hexutil.Uint64 `json:"id"`
 	EndTime               hexutil.Uint64 `json:"end"`
+	StartTime             hexutil.Uint64 `json:"start"`
+	EpochNumber           hexutil.Uint64 `json:"epoch_number"`
 	EpochFee              hexutil.Big    `json:"fee"`
 	TotalBaseRewardWeight hexutil.Big    `json:"trw"`
 	TotalTxRewardWeight   hexutil.Big    `json:"txw"`

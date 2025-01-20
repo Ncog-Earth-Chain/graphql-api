@@ -40,10 +40,6 @@ func handleNewDelegation(lr *types.LogRecord, stakerID *big.Int, addr common.Add
 	if err := repo.StoreDelegation(&dl); err != nil {
 		log.Errorf("failed to store delegation; %s", err.Error())
 	}
-	// // store the delegation
-	// if err := repo.StoreDelegationPostgres(&dl); err != nil {
-	// 	log.Errorf("failed to store delegation; %s", err.Error())
-	// }
 
 }
 

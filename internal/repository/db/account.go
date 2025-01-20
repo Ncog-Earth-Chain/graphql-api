@@ -291,19 +291,27 @@ func (db *PostgreSQLBridge) AddAccount(acc *types.Account) error {
 		conTx = &cx
 	}
 
+	// Use the provided timestamp or default to current time
+	lastActivity := time.Unix(int64(acc.LastActivity), 0)
+	if acc.LastActivity == 0 {
+		lastActivity = time.Now()
+	}
+
 	// SQL query to insert the account into PostgreSQL
 	query := `
-        INSERT INTO accounts (address, sc, type, activity, counter)
+        INSERT INTO accounts (address, sc, type, counter,last_activity)
         VALUES ($1, $2, $3, $4, $5)
-        ON CONFLICT (address) DO NOTHING;`
+        ON CONFLICT (address)
+		DO UPDATE SET last_activity = EXCLUDED.last_activity, counter = EXCLUDED.counter + 1;`
 
 	// Execute the insert query
 	_, err := db.db.ExecContext(context.Background(), query,
 		acc.Address.String(),
 		conTx,
 		acc.Type,
-		uint64(acc.LastActivity),
-		uint64(acc.TrxCounter),
+		//acc.Activity,   // Correct field for activity
+		acc.TrxCounter, // Correct field for counter
+		lastActivity,
 	)
 
 	// Check for errors during the insert
@@ -425,8 +433,8 @@ func (db *MongoDbBridge) AccountCount() (uint64, error) {
 	return db.EstimateCount(db.client.Database(db.dbName).Collection(coAccounts))
 }
 
-func (db *PostgreSQLBridge) AccountCount() (int64, error) {
-	var count int64
+func (db *PostgreSQLBridge) AccountCount() (uint64, error) {
+	var count uint64
 	query := "SELECT COUNT(*) FROM accounts"
 	err := db.db.QueryRow(query).Scan(&count)
 	if err != nil {
@@ -557,18 +565,21 @@ func (db *MongoDbBridge) AccountMarkActivity(addr *common.Address, ts uint64) er
 
 // AccountMarkActivity marks the latest account activity in PostgreSQL.
 func (db *PostgreSQLBridge) AccountMarkActivity(addr *common.Address, ts uint64) error {
-	// Log what we do
-	db.log.Debugf("account %s activity at %s", addr.String(), time.Unix(int64(ts), 0).String())
+	// Convert the timestamp to time.Time
+	timestamp := time.Unix(int64(ts), 0)
+
+	// Log the activity
+	db.log.Debugf("account %s last_activity at %s", addr.String(), timestamp.String())
 
 	// Prepare the SQL query to update account details
 	query := `
         UPDATE accounts 
-        SET last_activity = $1, transaction_counter = transaction_counter + 1
+        SET last_activity = $1, counter = counter + 1
         WHERE address = $2
     `
 
 	// Execute the query to update the account details
-	_, err := db.db.ExecContext(context.Background(), query, ts, addr.String())
+	_, err := db.db.ExecContext(context.Background(), query, timestamp, addr.String())
 	if err != nil {
 		// Log the issue
 		db.log.Errorf("cannot update account %s details; %s", addr.String(), err.Error())

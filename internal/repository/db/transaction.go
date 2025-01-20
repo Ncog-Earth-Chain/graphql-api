@@ -828,8 +828,8 @@ func (db *MongoDbBridge) TransactionsCount() (uint64, error) {
 	return db.EstimateCount(db.client.Database(db.dbName).Collection(coTransactions))
 }
 
-func (db *PostgreSQLBridge) TransactionsCount() (int64, error) {
-	var count int64
+func (db *PostgreSQLBridge) TransactionsCount() (uint64, error) {
+	var count uint64
 	query := "SELECT COUNT(*) FROM transactions"
 	err := db.db.QueryRow(query).Scan(&count)
 	if err != nil {

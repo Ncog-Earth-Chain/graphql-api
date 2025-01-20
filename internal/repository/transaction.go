@@ -25,13 +25,13 @@ var ErrTransactionNotFound = errors.New("requested transaction can not be found 
 
 // StoreTransaction notifies a new incoming transaction from blockchain to the repository.
 func (p *proxy) StoreTransaction(block *types.Block, trx *types.Transaction) error {
-	return p.db.AddTransaction(block, trx)
-}
-
-// StoreTransaction notifies a new incoming transaction from blockchain to the repository.
-func (p *proxy) StoreTransactionPost(block *types.Block, trx *types.Transaction) error {
 	return p.pdDB.AddTransaction(block, trx)
 }
+
+// StoreTransactionPost notifies a new incoming transaction from blockchain to the repository.
+// func (p *proxy) StoreTransactionPost(block *types.Block, trx *types.Transaction) error {
+// 	return p.pdDB.AddTransaction(block, trx)
+// }
 
 // CacheTransaction puts a transaction to the internal ring cache.
 func (p *proxy) CacheTransaction(trx *types.Transaction) {
@@ -148,7 +148,7 @@ func (p *proxy) Transactions(cursor *string, count int32) (*types.TransactionLis
 
 // StoreGasPricePeriod stores the given gas price period data in the persistent storage
 func (p *proxy) StoreGasPricePeriod(gp *types.GasPricePeriod) error {
-	return p.db.AddGasPricePeriod(gp)
+	return p.pdDB.AddGasPricePeriod(gp)
 }
 
 // // ConvertGasPricePeriodToPost converts GasPricePeriod to PostGasPricePeriod for PostgreSQL insertion.
@@ -170,13 +170,13 @@ func (p *proxy) StoreGasPricePeriod(gp *types.GasPricePeriod) error {
 // }
 
 // StoreGasPricePeriodPostgres stores the given gas price period data in the persistent storage (Postgres).
-func (p *proxy) StoreGasPricePeriodPostgres(gp *types.GasPricePeriod) error {
-	// Convert the GasPricePeriod into PostGasPricePeriod
-	// Ensure that the GasPricePeriod is valid
-	if gp == nil {
-		return fmt.Errorf("invalid gas price period")
-	}
+// func (p *proxy) StoreGasPricePeriodPostgres(gp *types.GasPricePeriod) error {
+// 	// Convert the GasPricePeriod into PostGasPricePeriod
+// 	// Ensure that the GasPricePeriod is valid
+// 	if gp == nil {
+// 		return fmt.Errorf("invalid gas price period")
+// 	}
 
-	// Call the AddGasPricePeriod method to store the data in Postgres
-	return p.pdDB.AddGasPricePeriod(gp)
-}
+// 	// Call the AddGasPricePeriod method to store the data in Postgres
+// 	return p.pdDB.AddGasPricePeriod(gp)
+// }

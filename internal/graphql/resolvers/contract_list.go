@@ -37,7 +37,7 @@ func (rs *rootResolver) Contracts(args *struct {
 	args.Count = listLimitCount(args.Count, listMaxEdgesPerRequest)
 
 	// get the contract list from repository
-	cl, err := repository.R().Contracts(args.ValidatedOnly, (*string)(args.Cursor), args.Count)
+	cl, err := repository.R().ContractsPost(args.ValidatedOnly, (*string)(args.Cursor), args.Count)
 	if err != nil {
 		log.Errorf("can not get contracts list; %s", err.Error())
 		return nil, err

@@ -41,24 +41,24 @@ func (p *proxy) BlockHeight() (*hexutil.Big, error) {
 
 // LastKnownBlock returns number of the last block known to the repository.
 func (p *proxy) LastKnownBlock() (uint64, error) {
-	return p.db.LastKnownBlock()
-}
-
-// LastKnownBlock returns the number of the last block known to the repository.
-func (p *proxy) LastKnownBlockPost() (uint64, error) {
-	// Call the PostgreSQL bridge to get the last known block number
 	return p.pdDB.LastKnownBlock()
 }
 
+// LastKnownBlock returns the number of the last block known to the repository.
+// func (p *proxy) LastKnownBlockPost() (uint64, error) {
+// 	// Call the PostgreSQL bridge to get the last known block number
+// 	return p.pdDB.LastKnownBlock()
+// }
+
 // UpdateLastKnownBlock update record about last known block.
 func (p *proxy) UpdateLastKnownBlock(blockNo *hexutil.Uint64) error {
-	return p.db.UpdateLastKnownBlock(blockNo)
+	return p.pdDB.UpdateLastKnownBlock(blockNo)
 }
 
 // UpdateLastKnownBlockPost update record about last known block.
-func (p *proxy) UpdateLastKnownBlockPost(blockNo *hexutil.Uint64) error {
-	return p.pdDB.UpdateLastKnownBlockPost(blockNo)
-}
+// func (p *proxy) UpdateLastKnownBlockPost(blockNo *hexutil.Uint64) error {
+// 	return p.pdDB.UpdateLastKnownBlockPost(blockNo)
+// }
 
 // CacheBlock puts a block to the internal block cache.
 func (p *proxy) CacheBlock(blk *types.Block) {

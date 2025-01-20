@@ -88,7 +88,7 @@ func newRepository() Repository {
 	}
 
 	// create connections
-	caBridge, dbBridge, pgDbBrige, rpcBridge, err := connect(cfg, log)
+	caBridge, pgDbBrige, rpcBridge, err := connect(cfg, log)
 	if err != nil {
 		log.Fatal("repository init failed")
 		return nil
@@ -97,11 +97,11 @@ func newRepository() Repository {
 	// construct the proxy instance
 	p := proxy{
 		cache: caBridge,
-		db:    dbBridge,
-		pdDB:  pgDbBrige,
-		rpc:   rpcBridge,
-		log:   log,
-		cfg:   cfg,
+		//db:    dbBridge,
+		pdDB: pgDbBrige,
+		rpc:  rpcBridge,
+		log:  log,
+		cfg:  cfg,
 
 		// get the map of governance contracts
 		govContracts: governanceContractsMap(&cfg.Governance),
@@ -128,33 +128,33 @@ func governanceContractsMap(cfg *config.Governance) map[string]*config.Governanc
 }
 
 // connect opens connections to the external sources we need.
-func connect(cfg *config.Config, log logger.Logger) (*cache.MemBridge, *db.MongoDbBridge, *db.PostgreSQLBridge, *rpc.NecBridge, error) {
+func connect(cfg *config.Config, log logger.Logger) (*cache.MemBridge, *db.PostgreSQLBridge, *rpc.NecBridge, error) {
 	// create new in-memory cache bridge
 	caBridge, err := cache.New(cfg, log)
 	if err != nil {
 		log.Criticalf("can not create in-memory cache bridge, %s", err.Error())
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// create new database connection bridge
-	dbBridge, err := db.New(cfg, log)
-	if err != nil {
-		log.Criticalf("can not connect backend persistent storage, %s", err.Error())
-		return nil, nil, nil, nil, err
-	}
+	// dbBridge, err := db.New(cfg, log)
+	// if err != nil {
+	// 	log.Criticalf("can not connect backend persistent storage, %s", err.Error())
+	// 	return nil, nil, nil, nil, err
+	// }
 	// PostgreSQL brige db connection
 	PgDbBrige, err := db.InitializePostgreSQLBridge(cfg, log)
 	if err != nil {
 		log.Criticalf("can not connect backend persistent storage, %s", err.Error())
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, err
 	}
 	// create new Forest RPC bridge
 	rpcBridge, err := rpc.New(cfg, log)
 	if err != nil {
 		log.Criticalf("can not connect Forest RPC interface, %s", err.Error())
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, err
 	}
-	return caBridge, dbBridge, PgDbBrige, rpcBridge, nil
+	return caBridge, PgDbBrige, rpcBridge, nil
 }
 
 // Close with close all connections and clean up the pending work for graceful termination.

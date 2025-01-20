@@ -179,7 +179,7 @@ func (p *proxy) Delegation(adr *common.Address, valID *hexutil.Big) (*types.Dele
 	return dlg, nil
 }
 
-// Delegation returns the details of delegation for the given address and validator ID.
+// DelegationPost returns the details of delegation for the given address and validator ID.
 func (p *proxy) DelegationPost(adr *common.Address, valID *hexutil.Big) (*types.Delegation, error) {
 	// Log the operation
 	p.log.Debugf("accessing delegation of %s to #%d", adr.String(), valID.ToInt().Uint64())

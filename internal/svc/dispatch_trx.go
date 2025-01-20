@@ -102,7 +102,7 @@ func (trd *trxDispatcher) execute() {
 		case <-trd.sigStop:
 			return
 		case <-trd.bot.C:
-			trd.updateLastSeenBlock()
+			//trd.updateLastSeenBlock()
 			trd.updateLastSeenBlockPostgres()
 		case evt, ok := <-trd.inTransaction:
 			// is the channel even available for reading
@@ -122,17 +122,17 @@ func (trd *trxDispatcher) execute() {
 
 // updateLastSeenBlock updates the information about last known block
 // in the persistent database.
-func (trd *trxDispatcher) updateLastSeenBlock() {
-	// get the current value
-	lsb := trd.blkObserver.Load()
-	log.Noticef("last seen block is #%d", lsb)
+// func (trd *trxDispatcher) updateLastSeenBlock() {
+// 	// get the current value
+// 	lsb := trd.blkObserver.Load()
+// 	log.Noticef("last seen block is #%d", lsb)
 
-	// make the change in the database so the progress persists
-	err := repo.UpdateLastKnownBlock((*hexutil.Uint64)(&lsb))
-	if err != nil {
-		log.Errorf("could not update last seen block; %s", err.Error())
-	}
-}
+// 	// make the change in the database so the progress persists
+// 	err := repo.UpdateLastKnownBlock((*hexutil.Uint64)(&lsb))
+// 	if err != nil {
+// 		log.Errorf("could not update last seen block; %s", err.Error())
+// 	}
+// }
 
 // updateLastSeenBlockPostgres updates the information about last known block
 // in the persistent database.
@@ -140,7 +140,7 @@ func (trd *trxDispatcher) updateLastSeenBlockPostgres() {
 	lsb := trd.blkObserver.Load()
 	log.Infof("Attempting to update last seen block in Postgres: #%d", lsb)
 
-	err := repo.UpdateLastKnownBlockPost((*hexutil.Uint64)(&lsb))
+	err := repo.UpdateLastKnownBlock((*hexutil.Uint64)(&lsb))
 	if err != nil {
 		log.Errorf("Failed to update last seen block in Postgres: %s", err.Error())
 	} else {
@@ -169,7 +169,7 @@ func (trd *trxDispatcher) process(evt *eventTrx) {
 	// store the transaction into the database once the processing is done
 	// we spawn a lot of go-routines here, so we should test the optimal queue length above
 	go trd.waitAndStore(evt, &wg)
-	go trd.waitAndStorePostgres(evt, &wg)
+	//go trd.waitAndStorePostgres(evt, &wg)
 
 	// broadcast new transaction; if it can not be broadcast quickly, skip
 	select {
@@ -191,18 +191,18 @@ func (trd *trxDispatcher) waitAndStore(evt *eventTrx, wg *sync.WaitGroup) {
 	trd.blkObserver.Store(uint64(evt.blk.Number))
 }
 
-// waitAndStore waits for the transaction processing to finish and stores the transaction into db.
-func (trd *trxDispatcher) waitAndStorePostgres(evt *eventTrx, wg *sync.WaitGroup) {
-	// wait until all the sub-processors finish their job
-	wg.Wait()
-	if err := repo.StoreTransactionPost(evt.blk, evt.trx); err != nil {
-		log.Errorf("can not store trx %s from block #%d", evt.trx.Hash.String(), evt.blk.Number)
-	}
+// waitAndStorePostgres waits for the transaction processing to finish and stores the transaction into db.
+// func (trd *trxDispatcher) waitAndStorePostgres(evt *eventTrx, wg *sync.WaitGroup) {
+// 	// wait until all the sub-processors finish their job
+// 	wg.Wait()
+// 	if err := repo.StoreTransactionPost(evt.blk, evt.trx); err != nil {
+// 		log.Errorf("can not store trx %s from block #%d", evt.trx.Hash.String(), evt.blk.Number)
+// 	}
 
-	repo.IncTrxCountEstimate(1)
-	repo.CacheTransaction(evt.trx)
-	trd.blkObserver.Store(uint64(evt.blk.Number))
-}
+// 	repo.IncTrxCountEstimate(1)
+// 	repo.CacheTransaction(evt.trx)
+// 	trd.blkObserver.Store(uint64(evt.blk.Number))
+// }
 
 // pushAccounts pushes given transaction accounts on both sides observing terminate signal on process.
 func (trd *trxDispatcher) pushAccounts(evt *eventTrx, wg *sync.WaitGroup) bool {

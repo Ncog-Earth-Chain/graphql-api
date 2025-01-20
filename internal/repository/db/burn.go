@@ -287,13 +287,34 @@ func (db *MongoDbBridge) BurnTotal() (int64, error) {
 	return row.Amount, nil
 }
 
+// // BurnTotal aggregates the total amount of burned fee across all blocks.
+// func (db *PostgreSQLBridge) BurnTotal() (int64, error) {
+// 	// Create SQL query to sum the total amount of burned tokens from the "burns" table
+// 	query := `SELECT SUM(amount) FROM burns`
+
+// 	// Execute the query
+// 	var totalBurned int64
+// 	err := db.db.QueryRow(query).Scan(&totalBurned)
+// 	if err != nil {
+// 		if err == sql.ErrNoRows {
+// 			// If no rows are found, return 0 as the total
+// 			return 0, nil
+// 		}
+// 		// Log any other errors that occur during the query
+// 		db.log.Errorf("can not collect total burned fee; %s", err.Error())
+// 		return 0, err
+// 	}
+
+// 	return totalBurned, nil
+// }
+
 // BurnTotal aggregates the total amount of burned fee across all blocks.
 func (db *PostgreSQLBridge) BurnTotal() (int64, error) {
 	// Create SQL query to sum the total amount of burned tokens from the "burns" table
 	query := `SELECT SUM(amount) FROM burns`
 
 	// Execute the query
-	var totalBurned int64
+	var totalBurned sql.NullInt64
 	err := db.db.QueryRow(query).Scan(&totalBurned)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -305,7 +326,12 @@ func (db *PostgreSQLBridge) BurnTotal() (int64, error) {
 		return 0, err
 	}
 
-	return totalBurned, nil
+	// If the result is NULL, return 0
+	if !totalBurned.Valid {
+		return 0, nil
+	}
+
+	return totalBurned.Int64, nil
 }
 
 // BurnList provides list of native NEC burns per blocks stored in the persistent database.

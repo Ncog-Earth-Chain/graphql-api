@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"ncogearthchain-api-graphql/internal/types"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"go.mongodb.org/mongo-driver/bson"
@@ -49,7 +50,7 @@ func (db *PostgreSQLBridge) initEpochsCollection() error {
 	createTableQuery := `
 	CREATE TABLE IF NOT EXISTS epochs (
 		id SERIAL PRIMARY KEY,
-		end_time TIMESTAMP NOT NULL UNIQUE
+		 ended_at TIMESTAMP NOT NULL UNIQUE
 	);`
 
 	// Execute the table creation query
@@ -60,8 +61,8 @@ func (db *PostgreSQLBridge) initEpochsCollection() error {
 
 	// Create an index on the end_time column, sorted in descending order
 	createIndexQuery := `
-	CREATE UNIQUE INDEX IF NOT EXISTS idx_epochs_end_time_desc
-	ON epochs (end_time DESC);`
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_epochs_ ended_at_desc
+	ON epochs ( ended_at DESC);`
 
 	// Execute the index creation query
 	if _, err := db.db.Exec(createIndexQuery); err != nil {
@@ -106,11 +107,50 @@ func (db *MongoDbBridge) AddEpoch(e *types.Epoch) error {
 }
 
 // AddEpoch stores an epoch reference in connected PostgreSQL storage.
+// func (db *PostgreSQLBridge) AddEpoch(e *types.Epoch) error {
+// 	// Validate input data
+// 	if e == nil || e.EndTime == 0 || e.StakeTotalAmount.ToInt().Cmp(intZero) <= 0 {
+// 		return fmt.Errorf("empty or invalid epoch received")
+// 	}
+
+// 	// Initialize the epochs table (if not already done)
+// 	db.initEpochsCollection()
+
+// 	// Check if the epoch is already known
+// 	epochExists, err := db.isEpochKnown(int64(e.Id))
+// 	if err != nil {
+// 		db.log.Errorf("failed to check if epoch is known; %s", err.Error())
+// 		return err
+// 	}
+// 	if epochExists {
+// 		return nil
+// 	}
+
+// 	// Insert the epoch into the database
+// 	query := `
+// 	INSERT INTO epochs (id,  ended_at, stake_total_amount)
+// 	VALUES ($1, $2, $3)
+// 	ON CONFLICT (id) DO NOTHING;`
+
+// 	_, err = db.db.Exec(query, e.Id, e.EndTime, e.StakeTotalAmount.String())
+// 	if err != nil {
+// 		db.log.Criticalf("failed to insert epoch; %s", err.Error())
+// 		return err
+// 	}
+
+// 	// Log the addition
+// 	db.log.Debugf("epoch #%d added to database", e.Id)
+// 	return nil
+// }
+
 func (db *PostgreSQLBridge) AddEpoch(e *types.Epoch) error {
 	// Validate input data
 	if e == nil || e.EndTime == 0 || e.StakeTotalAmount.ToInt().Cmp(intZero) <= 0 {
 		return fmt.Errorf("empty or invalid epoch received")
 	}
+
+	// Convert EndTime (Unix timestamp in hexutil) to time.Time
+	endTime := time.Unix(int64(e.EndTime), 0)
 
 	// Initialize the epochs table (if not already done)
 	db.initEpochsCollection()
@@ -127,11 +167,11 @@ func (db *PostgreSQLBridge) AddEpoch(e *types.Epoch) error {
 
 	// Insert the epoch into the database
 	query := `
-	INSERT INTO epochs (id, end_time, stake_total_amount)
-	VALUES ($1, $2, $3)
+	INSERT INTO epochs (id, epoch_number, started_at, ended_at, stake_total_amount)
+	VALUES ($1, $2, $3, $4, $5)
 	ON CONFLICT (id) DO NOTHING;`
 
-	_, err = db.db.Exec(query, e.Id, e.EndTime, e.StakeTotalAmount.String())
+	_, err = db.db.Exec(query, e.Id, e.EpochNumber, e.StartTime, endTime, e.StakeTotalAmount.String())
 	if err != nil {
 		db.log.Criticalf("failed to insert epoch; %s", err.Error())
 		return err
@@ -199,7 +239,7 @@ func (db *PostgreSQLBridge) LastKnownEpoch() (uint64, error) {
 	query := `
 		SELECT id
 		FROM epochs
-		ORDER BY end_time DESC
+		ORDER BY  ended_at DESC
 		LIMIT 1
 	`
 
@@ -389,7 +429,7 @@ func (db *PostgreSQLBridge) epochListBorderPk(order string) (uint64, error) {
 	query := fmt.Sprintf(`
 		SELECT id
 		FROM epochs
-		ORDER BY end_time %s
+		ORDER BY  ended_at %s
 		LIMIT 1`, order)
 
 	// Execute the query

@@ -98,7 +98,7 @@ func (acc *Account) TxList(args struct {
 	args.Count = listLimitCount(args.Count, accMaxTransactionsPerRequest)
 
 	// get the transaction hash list from repository
-	bl, err := repository.R().AccountTransactionsPost(&acc.Address, args.Recipient, (*string)(args.Cursor), args.Count)
+	bl, err := repository.R().AccountTransactions(&acc.Address, args.Recipient, (*string)(args.Cursor), args.Count)
 	if err != nil {
 		return nil, err
 	}

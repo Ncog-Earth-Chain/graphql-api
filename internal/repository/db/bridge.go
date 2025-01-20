@@ -101,33 +101,33 @@ var intZero = new(big.Int)
 // 	return dbPool, nil
 // }
 
-// New creates a new Mongo Db connection bridge.
-func New(cfg *config.Config, log logger.Logger) (*MongoDbBridge, error) {
-	// log what we do
-	log.Debugf("connecting database at %s/%s", cfg.Db.Url, cfg.Db.DbName)
+// // New creates a new Mongo Db connection bridge.
+// func New(cfg *config.Config, log logger.Logger) (*MongoDbBridge, error) {
+// 	// log what we do
+// 	log.Debugf("connecting database at %s/%s", cfg.Db.Url, cfg.Db.DbName)
 
-	// open the database connection
-	con, err := connectDb(&cfg.Db)
-	if err != nil {
-		log.Criticalf("can not contact the database; %s", err.Error())
-		return nil, err
-	}
+// 	// open the database connection
+// 	con, err := connectDb(&cfg.Db)
+// 	if err != nil {
+// 		log.Criticalf("can not contact the database; %s", err.Error())
+// 		return nil, err
+// 	}
 
-	// log the event
-	log.Notice("connecting database at %s/%s", cfg.Db.Url, cfg.Db.DbName)
-	log.Notice("database connection established")
+// 	// log the event
+// 	log.Notice("connecting database at %s/%s", cfg.Db.Url, cfg.Db.DbName)
+// 	log.Notice("database connection established")
 
-	// return the bridge
-	db := &MongoDbBridge{
-		client: con,
-		log:    log,
-		dbName: cfg.Db.DbName,
-	}
+// 	// return the bridge
+// 	db := &MongoDbBridge{
+// 		client: con,
+// 		log:    log,
+// 		dbName: cfg.Db.DbName,
+// 	}
 
-	// check the state
-	db.CheckDatabaseInitState()
-	return db, nil
-}
+// 	// check the state
+// 	db.CheckDatabaseInitState()
+// 	return db, nil
+// }
 
 // func InitializePostgreSQLBridge(cfg *config.Config, log logger.Logger) (*PostgreSQLBridge, error) {
 // 	// Use default DSN if not provided
@@ -350,9 +350,9 @@ func (db *PostgreSQLBridge) CheckDatabaseInitState() {
 		        address TEXT UNIQUE,
 		        sc TEXT,
 				type TEXT,
-		        activity BIGINT DEFAULT 0,
 		        counter BIGINT DEFAULT 0,
-		       created_at TIMESTAMP DEFAULT NOW()
+				last_activity TIMESTAMP DEFAULT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
 		    )`,
 		"transactions": `
             CREATE TABLE transactions (
@@ -416,10 +416,12 @@ func (db *PostgreSQLBridge) CheckDatabaseInitState() {
 		"erc20_transactions": `
             CREATE TABLE erc20_transactions (
                 id SERIAL PRIMARY KEY,
+				transaction_hash TEXT NOT NULL,
                 token TEXT NOT NULL,
                 sender_account_id INT REFERENCES accounts(id),
                 receiver_account_id INT REFERENCES accounts(id),
                 amount NUMERIC NOT NULL,
+				ordinal INT DEFAULT 0, 
                 timestamp TIMESTAMP DEFAULT NOW()
             )`,
 		"fmint_transactions": `
@@ -435,7 +437,9 @@ func (db *PostgreSQLBridge) CheckDatabaseInitState() {
                 id SERIAL PRIMARY KEY,
                 epoch_number INT NOT NULL,
                 started_at TIMESTAMP NOT NULL,
-                ended_at TIMESTAMP
+                ended_at TIMESTAMP NOT NULL,
+				stake_total_amount TEXT NOT NULL
+
             )`,
 		"gas_price_periods": `
             CREATE TABLE gas_price_periods (
@@ -464,6 +468,17 @@ func (db *PostgreSQLBridge) CheckDatabaseInitState() {
 				value TEXT NOT NULL,        
 				CONSTRAINT unique_key UNIQUE (key)  
 			)`,
+		"trx_daily_Volumne": `
+		CREATE TABLE trx_daily_volume (
+                    transaction_time TIMESTAMP NOT NULL,
+                     volume NUMERIC NOT NULL
+            )`,
+		"burns": `
+			CREATE TABLE burns (
+                 block INT PRIMARY KEY,
+                 amount NUMERIC NOT NULL,
+                 tx_list TEXT[]  -- assuming it's an array of transaction hashes or IDs
+            )`,
 	}
 
 	// Ensure each table exists

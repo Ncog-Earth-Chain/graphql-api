@@ -802,9 +802,9 @@ func (db *MongoDbBridge) TokenTransactionsByCall(trxHash *common.Hash) ([]*types
 func (db *PostgreSQLBridge) TokenTransactionsByCall(trxHash *common.Hash) ([]*types.TokenTransaction, error) {
 	// Prepare the SQL query to fetch token transactions based on the call hash
 	query := `
-		SELECT "token_address","amount", 
+		SELECT "token","amount" 
 		FROM "erc20_transactions"
-		WHERE "call_hash" = $1
+		WHERE "transaction_hash" = $1
 		ORDER BY "ordinal" DESC
 	`
 
