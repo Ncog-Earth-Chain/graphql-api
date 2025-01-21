@@ -74,6 +74,7 @@ func (p *proxy) BlockByNumber(num *hexutil.Uint64) (*types.Block, error) {
 		tag := rpc.BlockTypeLatest
 		return p.blockByTag(&tag)
 	}
+
 	return p.getBlock(num.String(), p.blockByTag)
 }
 

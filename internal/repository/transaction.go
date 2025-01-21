@@ -122,7 +122,7 @@ func (p *proxy) SendTransaction(tx hexutil.Bytes) (*types.Transaction, error) {
 // No-number boundaries are handled as follows:
 //   - For positive count we start from the most recent transaction and scan to older transactions.
 //   - For negative count we start from the first transaction and scan to newer transactions.
-func (p *proxy) Transactions(cursor *string, count int32) (*types.TransactionList, error) {
+func (p *proxy) Transactions(cursor *string, count int32) (*types.PostTransactionList, error) {
 	// we may be able to pull the list faster than from the db
 	if cursor == nil && count > 0 && count < cache.TransactionRingCacheSize {
 		// pull the quick list
@@ -130,7 +130,7 @@ func (p *proxy) Transactions(cursor *string, count int32) (*types.TransactionLis
 
 		// does it make sense? if so, make the list from it
 		if len(tl) > 0 {
-			return &types.TransactionList{
+			return &types.PostTransactionList{
 				Collection: tl,
 				Total:      uint64(p.MustEstimateTransactionsCount()),
 				First:      tl[0].Uid(),
@@ -143,7 +143,7 @@ func (p *proxy) Transactions(cursor *string, count int32) (*types.TransactionLis
 	}
 
 	// use slow trx list pulling
-	return p.db.Transactions(cursor, count, nil)
+	return p.pdDB.Transactions(cursor, count, "")
 }
 
 // StoreGasPricePeriod stores the given gas price period data in the persistent storage

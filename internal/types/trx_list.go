@@ -1,8 +1,6 @@
 // Package types implements different core types of the API.
 package types
 
-import "go.mongodb.org/mongo-driver/bson"
-
 // TransactionList represents a list of transactions.
 type TransactionList struct {
 	// Collection represent list of transactions' hash.
@@ -24,19 +22,19 @@ type TransactionList struct {
 	IsEnd bool
 
 	// Filter represents the base filter used for filtering the list
-	Filter bson.D
+	//Filter bson.D
+	Filter map[string]interface{} `json:"filter"`
 }
 
 type PostTransactionList struct {
-    Collection []*Transaction `json:"collection"` // List of transaction hashes
-    Total      uint64         `json:"total"`      // Total number of transactions
-    First      uint64         `json:"first"`      // Index of the first item on the list
-    Last       uint64         `json:"last"`       // Index of the last item on the list
-    IsStart    bool           `json:"is_start"`   // Indicates if there are no transactions above
-    IsEnd      bool           `json:"is_end"`     // Indicates if there are no transactions below
-    Filter     map[string]interface{} `json:"filter"` // Base filter used for filtering the list (if necessary)
+	Collection []*Transaction         `json:"collection"` // List of transaction hashes
+	Total      uint64                 `json:"total"`      // Total number of transactions
+	First      uint64                 `json:"first"`      // Index of the first item on the list
+	Last       uint64                 `json:"last"`       // Index of the last item on the list
+	IsStart    bool                   `json:"is_start"`   // Indicates if there are no transactions above
+	IsEnd      bool                   `json:"is_end"`     // Indicates if there are no transactions below
+	Filter     map[string]interface{} `json:"filter"`     // Base filter used for filtering the list (if necessary)
 }
-
 
 // Reverse reverses the order of transactions in the list.
 func (b *TransactionList) Reverse() {
@@ -53,6 +51,7 @@ func (b *TransactionList) Reverse() {
 	// swap indexes
 	b.First, b.Last = b.Last, b.First
 }
+
 // Reverse reverses the order of transactions in the list.
 func (b *PostTransactionList) Reverse() {
 	// anything to swap at all?

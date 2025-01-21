@@ -192,7 +192,7 @@ type Repository interface {
 	Transaction(*common.Hash) (*types.Transaction, error)
 
 	// Transactions returns list of transaction hashes at Ncogearthchain blockchain.
-	Transactions(*string, int32) (*types.TransactionList, error)
+	Transactions(*string, int32) (*types.PostTransactionList, error)
 
 	// TransactionsCount returns total number of transactions in the block chain.
 	TransactionsCount() (uint64, error)

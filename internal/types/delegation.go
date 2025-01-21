@@ -46,7 +46,7 @@ type Delegation struct {
 	ID              string         `json:"id"`
 	Transaction     common.Hash    `json:"trx"`
 	Address         common.Address `json:"address"`
-	ToStakerId      *hexutil.Big   `json:"toStakerID"`
+	ToStakerId      *hexutil.Big   `json:"to_staker_id"`
 	ToStakerAddress common.Address `json:"toStakerAddr"`
 	CreatedTime     hexutil.Uint64 `json:"createdTime"`
 	Index           uint64         `json:"ordinalIndex"`

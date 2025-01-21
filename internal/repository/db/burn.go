@@ -48,7 +48,7 @@ func (db *MongoDbBridge) initBurnsCollection(col *mongo.Collection) {
 }
 
 // initBurnsCollection initializes the burn collection indexes in PostgreSQL.
-func (db *PostgreSQLBridge) initBurnsCollection() {
+func (db *PostgreSQLBridge) initBurnstable() {
 	// Prepare SQL queries for creating indexes
 
 	// Index on 'block' column (unique index)
@@ -230,6 +230,10 @@ func (db *PostgreSQLBridge) StoreBurn(burn *types.NecBurn) error {
 	if err != nil {
 		db.log.Errorf("could not commit transaction: %s", err.Error())
 		return err
+	}
+	// make sure burns collection is initialized
+	if db.initBurns != nil {
+		db.initBurns.Do(func() { db.initBurnstable(); db.initBurns = nil })
 	}
 
 	return nil

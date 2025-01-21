@@ -395,7 +395,8 @@ func (db *PostgreSQLBridge) CheckDatabaseInitState() {
                 crt BIGINT NOT NULL,                       
                 amo TEXT NOT NULL,                          
                 act TEXT NOT NULL,                          
-                val NUMERIC NOT NULL,                       
+                val NUMERIC NOT NULL,  
+				to_staker_id TEXT,                     
                 stamp TIMESTAMP NOT NULL,                   
                 UNIQUE (trx)
             )`,

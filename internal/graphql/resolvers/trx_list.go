@@ -27,6 +27,19 @@ func NewTransactionList(txs *types.TransactionList) *TransactionList {
 	}
 }
 
+func ConvertPostTransactionListToTransactionList(postTxs *types.PostTransactionList) *types.TransactionList {
+	// Assuming PostTransactionList and TransactionList have similar fields
+	return &types.TransactionList{
+		Collection: postTxs.Collection, // Assuming this field is the same in both types
+		Total:      postTxs.Total,
+		First:      postTxs.First,
+		Last:       postTxs.Last,
+		IsStart:    postTxs.IsStart,
+		IsEnd:      postTxs.IsEnd,
+		Filter:     postTxs.Filter, // Assuming Filter is also similar
+	}
+}
+
 // Transactions resolves list of blockchain transactions encapsulated in a listable structure.
 func (rs *rootResolver) Transactions(args *struct {
 	Cursor *Cursor
@@ -42,7 +55,11 @@ func (rs *rootResolver) Transactions(args *struct {
 		log.Errorf("can not get transactions list; %s", err.Error())
 		return nil, err
 	}
-	return NewTransactionList(txs), nil
+	// Convert PostTransactionList to TransactionList
+	transactionList := ConvertPostTransactionListToTransactionList(txs)
+
+	// Return the new TransactionList
+	return NewTransactionList(transactionList), nil
 }
 
 // TotalCount resolves the total number of transactions in the list.

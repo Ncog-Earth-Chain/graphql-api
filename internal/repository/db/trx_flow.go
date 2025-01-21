@@ -56,8 +56,8 @@ func (db *PostgreSQLBridge) TrxDailyFlowList(from *time.Time, to *time.Time) ([]
 	// Prepare the SQL query
 	query := `
 		SELECT
-			date_trunc('day', transaction_time) AS date,
-			SUM(volume) AS total_volume
+		date_trunc('day', transaction_time) AS date,
+		SUM(volume) AS total_volume
 		FROM trx_daily_volume
 		WHERE transaction_time BETWEEN $1 AND $2
 		GROUP BY date_trunc('day', transaction_time)

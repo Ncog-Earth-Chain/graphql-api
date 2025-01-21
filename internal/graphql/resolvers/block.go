@@ -30,6 +30,7 @@ func (rs *rootResolver) Block(args *struct {
 	// do we have the number, or hash is not given?
 	if args.Number != nil || args.Hash == nil {
 		b, err := repository.R().BlockByNumber(args.Number)
+		log.Printf("Debug..........................")
 		return NewBlock(b), err
 	}
 
