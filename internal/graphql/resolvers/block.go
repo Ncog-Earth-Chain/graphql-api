@@ -2,6 +2,7 @@
 package resolvers
 
 import (
+	"fmt"
 	"ncogearthchain-api-graphql/internal/repository"
 	"ncogearthchain-api-graphql/internal/types"
 
@@ -12,6 +13,10 @@ import (
 // Block represents resolvable blockchain block structure.
 type Block struct {
 	types.Block
+	//Number       string        `json:"number"`
+	//Hash         string        `json:"hash"`
+	BlockHash    string        `json:"hash"`
+	Transactions []Transaction `json:"transactions"`
 }
 
 // NewBlock builds new resolvable block structure.
@@ -19,31 +24,76 @@ func NewBlock(blk *types.Block) *Block {
 	if blk == nil {
 		return nil
 	}
-	return &Block{Block: *blk}
+	return &Block{
+		Block:     *blk,
+		BlockHash: blk.Hash.Hex(), // Convert to string using Hex()
+	}
 }
 
 // Block resolves blockchain block by number or by hash. If neither is provided, the most recent block is given.
+// func (rs *rootResolver) Block(args *struct {
+// 	Number *hexutil.Uint64
+// 	Hash   *common.Hash
+// }) (*Block, error) {
+// 	// do we have the number, or hash is not given?
+// 	if args.Number != nil || args.Hash == nil {
+// 		b, err := repository.R().BlockByNumber(args.Number)
+// 		log.Printf("Debug..........................")
+// 		return NewBlock(b), err
+// 	}
+
+// 	// simply pull the block by hash
+// 	b, err := repository.R().BlockByHash(args.Hash)
+// 	return NewBlock(b), err
+// }
+
 func (rs *rootResolver) Block(args *struct {
 	Number *hexutil.Uint64
 	Hash   *common.Hash
 }) (*Block, error) {
-	// do we have the number, or hash is not given?
-	if args.Number != nil || args.Hash == nil {
+	if args.Number != nil {
+		log.Printf("Fetching block by number: %v", args.Number)
 		b, err := repository.R().BlockByNumber(args.Number)
-		log.Printf("Debug..........................")
-		return NewBlock(b), err
+		if err != nil {
+			return nil, err
+		}
+
+		// // Ensure parent block exists
+		// if b.ParentHash == (common.Hash{}) {
+		// 	log.Printf("Block %v has no parent.", args.Number)
+		// }
+
+		return NewBlock(b), nil
 	}
 
-	// simply pull the block by hash
-	b, err := repository.R().BlockByHash(args.Hash)
-	return NewBlock(b), err
+	if args.Hash != nil {
+		b, err := repository.R().BlockByHash(args.Hash)
+		if err != nil {
+			return nil, err
+		}
+		return NewBlock(b), nil
+	}
+
+	return nil, fmt.Errorf("invalid block number or hash")
 }
 
 // Parent resolves parent block information to the given block.
+// func (blk *Block) Parent() (*Block, error) {
+// 	// get the parent block by hash
+// 	parent, err := repository.R().BlockByHash(&blk.ParentHash)
+// 	return NewBlock(parent), err
+// }
+
 func (blk *Block) Parent() (*Block, error) {
-	// get the parent block by hash
+	if blk.ParentHash == (common.Hash{}) {
+		return nil, nil // Return nil if no parent
+	}
+
 	parent, err := repository.R().BlockByHash(&blk.ParentHash)
-	return NewBlock(parent), err
+	if err != nil {
+		return nil, err
+	}
+	return NewBlock(parent), nil
 }
 
 // TxHashList resolves list of hashes of transaction bundled in the block.
@@ -79,4 +129,7 @@ func (blk *Block) TxList() ([]*Transaction, error) {
 func (blk *Block) TransactionCount() *int32 {
 	count := int32(len(blk.Txs))
 	return &count
+}
+func (blk *Block) NumberInt64() int64 {
+	return int64(blk.Number) // Convert the Block Number to int64 for GraphQL compatibility
 }

@@ -14,6 +14,7 @@ import (
 	"ncogearthchain-api-graphql/internal/repository/cache"
 	"ncogearthchain-api-graphql/internal/repository/rpc"
 	"ncogearthchain-api-graphql/internal/types"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -75,7 +76,13 @@ func (p *proxy) BlockByNumber(num *hexutil.Uint64) (*types.Block, error) {
 		return p.blockByTag(&tag)
 	}
 
-	return p.getBlock(num.String(), p.blockByTag)
+	// Convert hexutil.Uint64 to a hex string with "0x" prefix
+	blockNumber := num.String()
+	if !strings.HasPrefix(blockNumber, "0x") {
+		blockNumber = fmt.Sprintf("0x%s", blockNumber)
+	}
+
+	return p.getBlock(blockNumber, p.blockByTag)
 }
 
 // BlockByHash returns a block at Ncogearthchain blockchain represented by a hash. Top block is returned if the hash
