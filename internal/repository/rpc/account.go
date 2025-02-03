@@ -14,9 +14,28 @@ We strongly discourage opening Forest RPC interface for unrestricted Internet ac
 package rpc
 
 import (
+	"context"
+	"fmt"
+	"log"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
+
+// Accounts fetches all accounts from the NCOGEarthChain blockchain
+func (n *NecBridge) Accounts() ([]string, error) {
+	// Assuming your blockchain node supports an RPC method like "eth_accounts"
+	var accounts []string
+
+	err := n.rpc.CallContext(context.Background(), &accounts, "nec_accounts")
+	if err != nil {
+		log.Printf("Failed to fetch accounts from blockchain: %v", err)
+		return nil, fmt.Errorf("could not fetch accounts from blockchain: %v", err)
+	}
+
+	log.Printf("Fetched accounts: %v", accounts)
+	return accounts, nil
+}
 
 // AccountBalance reads balance of account from Forest node.
 func (nec *NecBridge) AccountBalance(addr *common.Address) (*hexutil.Big, error) {

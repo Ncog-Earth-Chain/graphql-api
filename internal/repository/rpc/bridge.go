@@ -15,6 +15,7 @@ package rpc
 
 import (
 	"context"
+	"fmt"
 	"ncogearthchain-api-graphql/internal/config"
 	"ncogearthchain-api-graphql/internal/logger"
 	"ncogearthchain-api-graphql/internal/repository/rpc/contracts"
@@ -61,6 +62,9 @@ type NecBridge struct {
 // New creates new Forest RPC connection bridge.
 func New(cfg *config.Config, log logger.Logger) (*NecBridge, error) {
 	cli, con, err := connect(cfg, log)
+	fmt.Println("cli", cli)
+	fmt.Println("con", con)
+	fmt.Println("err", err)
 	if err != nil {
 		log.Criticalf("can not open connection; %s", err.Error())
 		return nil, err
@@ -88,6 +92,15 @@ func New(cfg *config.Config, log logger.Logger) (*NecBridge, error) {
 		headers:  make(chan *etc.Header, rpcHeadProxyChannelCapacity),
 	}
 
+	// Check if nec.rpc (cli) is initialized
+	if br.rpc == nil {
+		log.Errorf("Failed to initialize nec.rpc.") // Log the error
+		fmt.Println("RPC client not initialized!")  // Print to console for debugging
+		return nil, fmt.Errorf("RPC client not initialized")
+	}
+
+	// Log confirmation of successful initialization
+	log.Infof("RPC client initialized successfully.")
 	// inform about the local address of the API node
 	log.Noticef("using signature address %s", br.sigConfig.Address.String())
 
@@ -104,6 +117,8 @@ func connect(cfg *config.Config, log logger.Logger) (*nec.Client, *eth.Client, e
 
 	// try to establish a connection
 	client, err := nec.Dial(cfg.Forest.Url)
+	fmt.Println("client", client)
+	fmt.Println("err", err)
 	if err != nil {
 		log.Critical(err)
 		return nil, nil, err
@@ -115,6 +130,25 @@ func connect(cfg *config.Config, log logger.Logger) (*nec.Client, *eth.Client, e
 		log.Critical(err)
 		return nil, nil, err
 	}
+
+	// Call net_version to get the network version
+	var version string
+	err = client.Call(&version, "net_version") // Call to get the network version
+	if err != nil {
+		log.Criticalf("RPC client failed to respond: %v", err)
+		return nil, nil, err
+	}
+
+	log.Infof("RPC client connected successfully to version: %s", version)
+
+	// Call nec_accounts to get the accounts
+	var accounts []string
+	err = client.CallContext(context.Background(), &accounts, "nec_accounts")
+	if err != nil {
+		log.Errorf("Failed to fetch accounts from nec_accounts: %v", err)
+		return nil, nil, err
+	}
+	log.Infof("Fetched accounts: %v", accounts)
 
 	// log
 	log.Notice("node connection open")

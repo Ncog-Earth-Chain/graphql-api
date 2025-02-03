@@ -11,6 +11,7 @@ package repository
 import (
 	"database/sql"
 	"fmt"
+	"math/big"
 	"ncogearthchain-api-graphql/internal/types"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -86,46 +87,119 @@ func (p *proxy) Account(addr *common.Address) (acc *types.Account, err error) {
 // 	return acc, nil
 // }
 
+// func (p *proxy) getAccount(addr *common.Address) (*types.Account, error) {
+// 	// Check if an address is provided
+// 	if addr == nil {
+// 		p.log.Debugf("No address given")
+// 		return nil, fmt.Errorf("no address given")
+// 	}
+
+// 	// Try to get the account from the database
+// 	var acc types.Account
+// 	query := `SELECT address, type, contract_tx FROM accounts WHERE address = $1`
+// 	row := p.pdDB.QueryRow(query, addr.Hex())
+
+// 	err := row.Scan(&acc.Address, &acc.Type, &acc.ContractTx)
+// 	if err != nil {
+// 		if err == sql.ErrNoRows {
+// 			// Address not found in database
+// 			p.log.Printf("Unknown address %s detected", addr.Hex())
+// 			acc = types.Account{
+// 				Address:    *addr,
+// 				Type:       types.AccountTypeWallet, // Default type for unknown accounts
+// 				ContractTx: nil,                     // No contract transaction
+// 			}
+
+// 			// Log if this is a smart contract account
+// 			var contractTx *string
+// 			query = `SELECT transaction_id FROM contract_transactions WHERE address = $1`
+// 			err = p.pdDB.QueryRow(query, addr.Hex()).Scan(&contractTx)
+// 			if err != nil && err != sql.ErrNoRows {
+// 				p.log.Printf("Error checking for contract transaction for address %s: %v", addr.Hex(), err)
+// 			}
+// 			acc.ContractTx, _ = p.pdDB.ContractTransaction(addr)
+// 		} else {
+// 			p.log.Printf("Cannot get the account %s: %v", addr.Hex(), err)
+// 			return nil, err
+// 		}
+// 	}
+
+// 	// Also keep a copy in the in-memory cache
+// 	if err = p.cache.PushAccount(&acc); err != nil {
+// 		p.log.Printf("Cannot keep account [%s] information in memory: %v", addr.Hex(), err)
+// 	}
+
+// 	return &acc, nil
+// }
+
 func (p *proxy) getAccount(addr *common.Address) (*types.Account, error) {
-	// Check if an address is provided
 	if addr == nil {
-		p.log.Debugf("No address given")
+		p.log.Debugf("No address provided to getAccount")
 		return nil, fmt.Errorf("no address given")
 	}
 
-	// Try to get the account from the database
+	p.log.Infof("Fetching account from DB or blockchain for address: %s", addr.Hex())
+
 	var acc types.Account
-	query := `SELECT address, type, contract_tx FROM accounts WHERE address = $1`
+	query := `SELECT address, type, sc FROM accounts WHERE address = $1`
 	row := p.pdDB.QueryRow(query, addr.Hex())
 
 	err := row.Scan(&acc.Address, &acc.Type, &acc.ContractTx)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			// Address not found in database
-			p.log.Printf("Unknown address %s detected", addr.Hex())
-			acc = types.Account{
-				Address:    *addr,
-				Type:       types.AccountTypeWallet, // Default type for unknown accounts
-				ContractTx: nil,                     // No contract transaction
-			}
+	if err == sql.ErrNoRows {
+		p.log.Infof("Account %s not found in DB, checking blockchain...", addr.Hex())
 
-			// Log if this is a smart contract account
-			var contractTx *string
-			query = `SELECT transaction_id FROM contract_transactions WHERE address = $1`
-			err = p.pdDB.QueryRow(query, addr.Hex()).Scan(&contractTx)
-			if err != nil && err != sql.ErrNoRows {
-				p.log.Printf("Error checking for contract transaction for address %s: %v", addr.Hex(), err)
-			}
-			acc.ContractTx, _ = p.pdDB.ContractTransaction(addr)
-		} else {
-			p.log.Printf("Cannot get the account %s: %v", addr.Hex(), err)
+		accounts, err := p.rpc.Accounts()
+		if err != nil {
+			p.log.Errorf("Failed to fetch accounts from blockchain: %v", err)
 			return nil, err
 		}
+
+		p.log.Infof("Fetched accounts from blockchain: %v", accounts)
+
+		found := false
+		for _, a := range accounts {
+			if a == addr.Hex() {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			p.log.Warningf("Account %s not found in blockchain", addr.Hex())
+			return nil, fmt.Errorf("account %s not found in blockchain", addr.Hex())
+		}
+
+		balance, err := p.rpc.AccountBalance(addr)
+		if err != nil {
+			p.log.Errorf("Failed to get balance for %s: %v", addr.Hex(), err)
+			return nil, err
+		}
+
+		if balance.ToInt().Cmp(big.NewInt(0)) > 0 {
+			p.log.Infof("Account %s found with balance %s. Storing in DB.", addr.Hex(), balance.String())
+
+			acc = types.Account{
+				Address:    *addr,
+				Type:       types.AccountTypeWallet,
+				ContractTx: nil,
+			}
+
+			err = p.StoreAccount(&acc)
+			if err != nil {
+				p.log.Errorf("Failed to store account %s: %v", addr.Hex(), err)
+				return nil, err
+			}
+		} else {
+			p.log.Warningf("Account %s has zero balance, not storing.", addr.Hex())
+			return nil, fmt.Errorf("account %s has zero balance, not storing", addr.Hex())
+		}
+	} else if err != nil {
+		p.log.Errorf("Error retrieving account %s from DB: %v", addr.Hex(), err)
+		return nil, err
 	}
 
-	// Also keep a copy in the in-memory cache
-	if err = p.cache.PushAccount(&acc); err != nil {
-		p.log.Printf("Cannot keep account [%s] information in memory: %v", addr.Hex(), err)
+	if err := p.cache.PushAccount(&acc); err != nil {
+		p.log.Warningf("Cannot cache account %s: %s", addr.Hex(), err.Error())
 	}
 
 	return &acc, nil
@@ -298,12 +372,17 @@ func (p *proxy) AccountIsKnown(addr *common.Address) bool {
 
 // StoreAccount adds specified account detail into the repository.
 func (p *proxy) StoreAccount(acc *types.Account) error {
+	p.log.Infof("Storing account in DB: %s, type: %s", acc.Address.String(), acc.Type)
 	// add this account to the database and remember it's been added
 	err := p.pdDB.AddAccount(acc)
 	if err == nil {
-		p.cache.PushAccountKnown(&acc.Address)
+		p.log.Errorf("Error storing account %s in DB: %v", acc.Address.String(), err)
+
+		// Comment out cache temporarily to check if cache causes issues
+		// p.cache.PushAccountKnown(&acc.Address)return err
 	}
-	return err
+	p.log.Infof("Account %s successfully stored in PostgreSQL!", acc.Address.String())
+	return nil
 }
 
 // StoreAccount adds specified account detail into the repository.

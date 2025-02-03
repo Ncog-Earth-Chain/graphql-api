@@ -301,11 +301,11 @@ func (db *PostgreSQLBridge) AddAccount(acc *types.Account) error {
 	query := `
         INSERT INTO accounts (address, sc, type, counter,last_activity)
         VALUES ($1, $2, $3, $4, $5)
-        ON CONFLICT (address)
-		DO UPDATE SET last_activity = EXCLUDED.last_activity, counter = EXCLUDED.counter + 1;`
+        ON CONFLICT (address) DO UPDATE 
+		SET last_activity = EXCLUDED.last_activity, counter = EXCLUDED.counter + 1;`
 
 	// Execute the insert query
-	_, err := db.db.ExecContext(context.Background(), query,
+	result, err := db.db.ExecContext(context.Background(), query,
 		acc.Address.String(),
 		conTx,
 		acc.Type,
@@ -319,6 +319,9 @@ func (db *PostgreSQLBridge) AddAccount(acc *types.Account) error {
 		db.log.Error("cannot insert new account")
 		return err
 	}
+
+	rowsAffected, _ := result.RowsAffected()
+	db.log.Infof("Account %s stored/updated, Rows affected: %d", acc.Address.String(), rowsAffected)
 
 	// check init state
 	// make sure transactions collection is initialized
