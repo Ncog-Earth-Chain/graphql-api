@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	etc "github.com/ethereum/go-ethereum/core/types"
 	eth "github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 	nec "github.com/ethereum/go-ethereum/rpc"
 	"golang.org/x/sync/singleflight"
 )
@@ -35,10 +36,11 @@ const rpcHeadProxyChannelCapacity = 10000
 
 // NecBridge represents Forest RPC abstraction layer.
 type NecBridge struct {
-	rpc *nec.Client
-	eth *eth.Client
-	log logger.Logger
-	cg  *singleflight.Group
+	Rpc    *nec.Client
+	eth    *eth.Client
+	log    logger.Logger
+	cg     *singleflight.Group
+	client *rpc.Client
 
 	// fMintCfg represents the configuration of the fMint protocol
 	sigConfig     *config.ServerSignature
@@ -72,7 +74,7 @@ func New(cfg *config.Config, log logger.Logger) (*NecBridge, error) {
 
 	// build the bridge structure using the con we have
 	br := &NecBridge{
-		rpc: cli,
+		Rpc: cli,
 		eth: con,
 		log: log,
 		cg:  new(singleflight.Group),
@@ -93,7 +95,7 @@ func New(cfg *config.Config, log logger.Logger) (*NecBridge, error) {
 	}
 
 	// Check if nec.rpc (cli) is initialized
-	if br.rpc == nil {
+	if br.Rpc == nil {
 		log.Errorf("Failed to initialize nec.rpc.") // Log the error
 		fmt.Println("RPC client not initialized!")  // Print to console for debugging
 		return nil, fmt.Errorf("RPC client not initialized")
@@ -174,8 +176,8 @@ func (nec *NecBridge) Close() {
 	nec.terminate()
 
 	// do we have a connection?
-	if nec.rpc != nil {
-		nec.rpc.Close()
+	if nec.Rpc != nil {
+		nec.Rpc.Close()
 		nec.eth.Close()
 		nec.log.Info("blockchain connections are closed")
 	}
@@ -183,7 +185,7 @@ func (nec *NecBridge) Close() {
 
 // Connection returns open Ncogearthchain/Forest connection.
 func (nec *NecBridge) Connection() *nec.Client {
-	return nec.rpc
+	return nec.Rpc
 }
 
 // DefaultCallOpts creates a default record for call options.

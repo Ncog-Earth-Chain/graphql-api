@@ -63,7 +63,7 @@ func (nec *NecBridge) observeBlocks() {
 // blockSubscription provides a subscription for new blocks received
 // by the connected blockchain node.
 func (nec *NecBridge) blockSubscription() ethereum.Subscription {
-	sub, err := nec.rpc.EthSubscribe(context.Background(), nec.headers, "newHeads")
+	sub, err := nec.Rpc.EthSubscribe(context.Background(), nec.headers, "newHeads")
 	if err != nil {
 		nec.log.Criticalf("can not observe new blocks; %s", err.Error())
 		return nil

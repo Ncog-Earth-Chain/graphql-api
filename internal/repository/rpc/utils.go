@@ -35,7 +35,7 @@ func (nec *NecBridge) GasPrice() (hexutil.Big, error) {
 	var price hexutil.Big
 	var try uint8
 	for {
-		err := nec.rpc.Call(&price, "nec_gasPrice")
+		err := nec.Rpc.Call(&price, "nec_gasPrice")
 		if err != nil {
 			nec.log.Error("current gas price could not be obtained")
 			return price, err
@@ -71,7 +71,7 @@ func (nec *NecBridge) GasEstimate(trx *struct {
 	nec.log.Debugf("calling for gas amount estimation")
 
 	var val hexutil.Uint64
-	err := nec.rpc.Call(&val, "nec_estimateGas", trx)
+	err := nec.Rpc.Call(&val, "nec_estimateGas", trx)
 	if err != nil {
 		// missing required argument? incompatibility between old and new RPC API
 		if strings.Contains(err.Error(), "missing value") {
@@ -100,7 +100,7 @@ func (nec *NecBridge) GasEstimateWithBlock(trx *struct {
 	nec.log.Debugf("calling for gas amount estimation with block details")
 
 	var val hexutil.Uint64
-	err := nec.rpc.Call(&val, "nec_estimateGas", trx, BlockTypeLatest)
+	err := nec.Rpc.Call(&val, "nec_estimateGas", trx, BlockTypeLatest)
 	if err != nil {
 		// return error
 		nec.log.Errorf("can not estimate gas; %s", err.Error())

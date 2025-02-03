@@ -29,7 +29,7 @@ func (nec *NecBridge) ValidatorDowntime(valID *hexutil.Big) (uint64, uint64, err
 		Blocks hexutil.Uint64 `json:"offlineBlocks"`
 		Time   hexutil.Uint64 `json:"offlineTime"`
 	}
-	if err := nec.rpc.Call(&dt, "abft_getDowntime", valID); err != nil {
+	if err := nec.Rpc.Call(&dt, "abft_getDowntime", valID); err != nil {
 		nec.log.Errorf("failed to get downtime of validator #%d; %s", valID.ToInt().Uint64(), err.Error())
 		return 0, 0, err
 	}
@@ -41,7 +41,7 @@ func (nec *NecBridge) ValidatorDowntime(valID *hexutil.Big) (uint64, uint64, err
 func (nec *NecBridge) ValidatorEpochUptime(valID *hexutil.Big) (uint64, error) {
 	// use rather the public API, it should be faster since it does not involve contract call
 	var ut hexutil.Uint64
-	if err := nec.rpc.Call(&ut, "abft_getEpochUptime", valID); err != nil {
+	if err := nec.Rpc.Call(&ut, "abft_getEpochUptime", valID); err != nil {
 		nec.log.Errorf("failed to get epoch uptime of validator #%d; %s", valID.ToInt().Uint64(), err.Error())
 		return 0, err
 	}

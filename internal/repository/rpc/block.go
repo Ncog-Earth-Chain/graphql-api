@@ -32,7 +32,7 @@ const (
 // of the blockchain. It returns nil if the block height can not be pulled.
 func (nec *NecBridge) MustBlockHeight() *big.Int {
 	var val hexutil.Big
-	if err := nec.rpc.Call(&val, "nec_blockNumber"); err != nil {
+	if err := nec.Rpc.Call(&val, "nec_blockNumber"); err != nil {
 		nec.log.Errorf("failed block height check; %s", err.Error())
 		return nil
 	}
@@ -46,7 +46,7 @@ func (nec *NecBridge) BlockHeight() (*hexutil.Big, error) {
 
 	// call for data
 	var height hexutil.Big
-	err := nec.rpc.Call(&height, "nec_blockNumber")
+	err := nec.Rpc.Call(&height, "nec_blockNumber")
 	if err != nil {
 		nec.log.Error("block height could not be obtained")
 		return nil, err
@@ -65,7 +65,7 @@ func (nec *NecBridge) Block(numTag *string) (*types.Block, error) {
 
 	// call for data
 	var block types.Block
-	err := nec.rpc.Call(&block, "nec_getBlockByNumber", numTag, false)
+	err := nec.Rpc.Call(&block, "nec_getBlockByNumber", numTag, false)
 	if err != nil {
 		nec.log.Error("block could not be extracted")
 		return nil, err
@@ -90,7 +90,7 @@ func (nec *NecBridge) BlockByHash(hash *string) (*types.Block, error) {
 
 	// call for data
 	var block types.Block
-	err := nec.rpc.Call(&block, "nec_getBlockByHash", hash, false)
+	err := nec.Rpc.Call(&block, "nec_getBlockByHash", hash, false)
 	if err != nil {
 		nec.log.Error("block could not be extracted")
 		return nil, err

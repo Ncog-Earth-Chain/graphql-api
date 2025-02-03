@@ -278,59 +278,78 @@ func (db *MongoDbBridge) AddAccount(acc *types.Account) error {
 	return nil
 }
 
+// func (db *PostgreSQLBridge) AddAccount(acc *types.Account) error {
+// 	// Do we have account data?
+// 	if acc == nil {
+// 		return fmt.Errorf("cannot add empty account")
+// 	}
+
+// 	// Prepare the contract creation transaction if available
+// 	var conTx *string
+// 	if acc.ContractTx != nil {
+// 		cx := acc.ContractTx.String()
+// 		conTx = &cx
+// 	}
+
+// 	// Use the provided timestamp or default to current time
+// 	lastActivity := time.Unix(int64(acc.LastActivity), 0)
+// 	if acc.LastActivity == 0 {
+// 		lastActivity = time.Now()
+// 	}
+
+// 	// SQL query to insert the account into PostgreSQL
+// 	query := `
+//         INSERT INTO accounts (address, sc, type, counter,last_activity)
+//         VALUES ($1, $2, $3, $4, $5)
+//         ON CONFLICT (address) DO UPDATE
+// 		SET last_activity = EXCLUDED.last_activity, counter = EXCLUDED.counter + 1;`
+
+// 	// Execute the insert query
+// 	result, err := db.db.ExecContext(context.Background(), query,
+// 		acc.Address.String(),
+// 		conTx,
+// 		acc.Type,
+// 		//acc.Activity,   // Correct field for activity
+// 		acc.TrxCounter, // Correct field for counter
+// 		lastActivity,
+// 	)
+
+// 	// Check for errors during the insert
+// 	if err != nil {
+// 		db.log.Error("cannot insert new account")
+// 		return err
+// 	}
+
+// 	rowsAffected, _ := result.RowsAffected()
+// 	db.log.Infof("Account %s stored/updated, Rows affected: %d", acc.Address.String(), rowsAffected)
+
+// 	// check init state
+// 	// make sure transactions collection is initialized
+// 	if db.initAccounts != nil {
+// 		db.initAccounts.Do(func() { db.initAccountsTable(); db.initAccounts = nil })
+// 	}
+
+// 	// Log the successful addition
+// 	db.log.Debugf("added account at %s", acc.Address.String())
+
+// 	return nil
+// }
+
 func (db *PostgreSQLBridge) AddAccount(acc *types.Account) error {
-	// Do we have account data?
-	if acc == nil {
-		return fmt.Errorf("cannot add empty account")
-	}
-
-	// Prepare the contract creation transaction if available
-	var conTx *string
-	if acc.ContractTx != nil {
-		cx := acc.ContractTx.String()
-		conTx = &cx
-	}
-
-	// Use the provided timestamp or default to current time
-	lastActivity := time.Unix(int64(acc.LastActivity), 0)
-	if acc.LastActivity == 0 {
-		lastActivity = time.Now()
-	}
-
-	// SQL query to insert the account into PostgreSQL
 	query := `
-        INSERT INTO accounts (address, sc, type, counter,last_activity)
-        VALUES ($1, $2, $3, $4, $5)
-        ON CONFLICT (address) DO UPDATE 
-		SET last_activity = EXCLUDED.last_activity, counter = EXCLUDED.counter + 1;`
-
-	// Execute the insert query
-	result, err := db.db.ExecContext(context.Background(), query,
-		acc.Address.String(),
-		conTx,
-		acc.Type,
-		//acc.Activity,   // Correct field for activity
-		acc.TrxCounter, // Correct field for counter
-		lastActivity,
-	)
-
-	// Check for errors during the insert
+        INSERT INTO accounts (address, type) 
+        VALUES ($1, $2) 
+        ON CONFLICT (address) DO UPDATE SET type = EXCLUDED.type
+    `
+	result, err := db.db.Exec(query, acc.Address.String(), acc.Type)
 	if err != nil {
-		db.log.Error("cannot insert new account")
-		return err
+		return fmt.Errorf("Failed to insert/update account: %v", err)
 	}
 
 	rowsAffected, _ := result.RowsAffected()
-	db.log.Infof("Account %s stored/updated, Rows affected: %d", acc.Address.String(), rowsAffected)
-
-	// check init state
-	// make sure transactions collection is initialized
-	if db.initAccounts != nil {
-		db.initAccounts.Do(func() { db.initAccountsTable(); db.initAccounts = nil })
+	if rowsAffected == 0 {
+		return fmt.Errorf("No rows affected, account not stored")
 	}
-
-	// Log the successful addition
-	db.log.Debugf("added account at %s", acc.Address.String())
 
 	return nil
 }

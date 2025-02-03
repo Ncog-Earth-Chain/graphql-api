@@ -210,6 +210,7 @@ func (db *MongoDbBridge) AddTransaction(block *types.Block, trx *types.Transacti
 
 func (db *PostgreSQLBridge) AddTransaction(block *types.Block, trx *types.Transaction) error {
 	if block == nil || trx == nil {
+		db.log.Errorf("Cannot add empty transaction: block=%v, trx=%v", block, trx)
 		return fmt.Errorf("cannot add empty transaction")
 	}
 

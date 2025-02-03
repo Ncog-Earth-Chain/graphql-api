@@ -27,7 +27,7 @@ func (n *NecBridge) Accounts() ([]string, error) {
 	// Assuming your blockchain node supports an RPC method like "eth_accounts"
 	var accounts []string
 
-	err := n.rpc.CallContext(context.Background(), &accounts, "nec_accounts")
+	err := n.Rpc.CallContext(context.Background(), &accounts, "nec_accounts")
 	if err != nil {
 		log.Printf("Failed to fetch accounts from blockchain: %v", err)
 		return nil, fmt.Errorf("could not fetch accounts from blockchain: %v", err)
@@ -41,7 +41,7 @@ func (n *NecBridge) Accounts() ([]string, error) {
 func (nec *NecBridge) AccountBalance(addr *common.Address) (*hexutil.Big, error) {
 	// use RPC to make the call
 	var balance string
-	err := nec.rpc.Call(&balance, "nec_getBalance", addr.Hex(), "latest")
+	err := nec.Rpc.Call(&balance, "nec_getBalance", addr.Hex(), "latest")
 	if err != nil {
 		nec.log.Errorf("can not get balance of account [%s]", addr.Hex())
 		return nil, err
@@ -60,7 +60,7 @@ func (nec *NecBridge) AccountBalance(addr *common.Address) (*hexutil.Big, error)
 // AccountNonce returns the total number of transaction of account from Forest node.
 func (nec *NecBridge) AccountNonce(addr *common.Address) (*hexutil.Uint64, error) {
 	var nonce hexutil.Uint64
-	err := nec.rpc.Call(&nonce, "nec_getTransactionCount", addr.Hex(), "latest")
+	err := nec.Rpc.Call(&nonce, "nec_getTransactionCount", addr.Hex(), "latest")
 	if err != nil {
 		nec.log.Errorf("can not get number of transaction of account [%s]", addr.Hex())
 		return nil, err

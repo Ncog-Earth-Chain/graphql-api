@@ -14,6 +14,7 @@ We strongly discourage opening Forest RPC interface for unrestricted Internet ac
 package rpc
 
 import (
+	"fmt"
 	"ncogearthchain-api-graphql/internal/types"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -28,7 +29,7 @@ func (nec *NecBridge) Transaction(hash *common.Hash) (*types.Transaction, error)
 
 	// call for data
 	var trx types.Transaction
-	err := nec.rpc.Call(&trx, "nec_getTransactionByHash", hash)
+	err := nec.Rpc.Call(&trx, "nec_getTransactionByHash", hash)
 	if err != nil {
 		nec.log.Error("transaction could not be extracted")
 		return nil, err
@@ -47,7 +48,7 @@ func (nec *NecBridge) Transaction(hash *common.Hash) (*types.Transaction, error)
 		}
 
 		// call for the transaction receipt data
-		err := nec.rpc.Call(&rec, "nec_getTransactionReceipt", hash)
+		err := nec.Rpc.Call(&rec, "nec_getTransactionReceipt", hash)
 		if err != nil {
 			nec.log.Errorf("can not get receipt for transaction %s", hash)
 			return nil, err
@@ -67,13 +68,31 @@ func (nec *NecBridge) Transaction(hash *common.Hash) (*types.Transaction, error)
 	return &trx, nil
 }
 
+// PendingTransactions fetches all pending transactions from the blockchain.
+func (nec *NecBridge) PendingTransactions() ([]types.Transaction, error) {
+	// Log the pending transactions fetch attempt
+	nec.log.Infof("Fetching pending transactions from blockchain RPC...")
+
+	// Call the RPC to get the list of pending transactions
+	var pendingTxs []types.Transaction
+	err := nec.Rpc.Call(&pendingTxs, "nec_pendingTransactions")
+	if err != nil {
+		nec.log.Errorf("Failed to fetch pending transactions: %v", err)
+		return nil, fmt.Errorf("failed to fetch pending transactions: %w", err)
+	}
+
+	// Log and return the fetched pending transactions
+	nec.log.Infof("Fetched %d pending transactions", len(pendingTxs))
+	return pendingTxs, nil
+}
+
 // SendTransaction sends raw signed and RLP encoded transaction to the block chain.
 func (nec *NecBridge) SendTransaction(tx hexutil.Bytes) (*common.Hash, error) {
 	// keep track of the operation
 	nec.log.Debug("sending new transaction to block chain")
 
 	var hash common.Hash
-	err := nec.rpc.Call(&hash, "eth_sendRawTransaction", tx)
+	err := nec.Rpc.Call(&hash, "eth_sendRawTransaction", tx)
 	if err != nil {
 		nec.log.Error("transaction could not be sent")
 		return nil, err
@@ -82,4 +101,23 @@ func (nec *NecBridge) SendTransaction(tx hexutil.Bytes) (*common.Hash, error) {
 	// keep track of the operation
 	nec.log.Debugf("transaction has been accepted with hash %s", hash.String())
 	return &hash, nil
+}
+
+// BlockByNumber fetches block details by block number
+// BlockByNumber fetches block details by block number
+func (nec *NecBridge) BlockByNumber(blockNumber hexutil.Uint64) (*types.Block, error) {
+	// Log the block fetch attempt
+	nec.log.Infof("Fetching block %d from blockchain RPC...", blockNumber)
+
+	// Call the RPC for block data, passing 'true' for full transaction data
+	var block types.Block
+	err := nec.Rpc.Call(&block, "nec_getBlockByNumber", blockNumber, true) // Pass `true` to fetch full transaction data
+	if err != nil {
+		nec.log.Errorf("RPC call failed for block %d: %v", blockNumber, err)
+		return nil, fmt.Errorf("failed to fetch block: %w", err)
+	}
+
+	// Log and return the fetched block
+	nec.log.Infof("Fetched block %d: %+v", blockNumber, block)
+	return &block, nil
 }
