@@ -363,11 +363,12 @@ func (db *PostgreSQLBridge) CheckDatabaseInitState() {
                 value NUMERIC NOT NULL, -- Transaction value
                 gas NUMERIC NOT NULL, -- Gas used
                 gas_price NUMERIC NOT NULL, -- Price per gas unit
-                block_number BIGINT NOT NULL, -- Block number the transaction belongs to
-                block_hash TEXT NOT NULL, -- Hash of the block containing the transaction
-                input TEXT, -- Input data for the transaction
+                block_number BIGINT, -- Block number (nullable for pending transactions)
+                block_hash TEXT, -- Block hash (nullable for pending transactions)
+                input_data TEXT, -- Input data for the transaction
                 nonce BIGINT NOT NULL, -- Transaction nonce
-                timestamp TIMESTAMP DEFAULT NOW() 
+                timestamp TIMESTAMP DEFAULT NOW() ,
+				status VARCHAR(20) DEFAULT 'pending'
             )`,
 		"contracts": `
             CREATE TABLE contracts (

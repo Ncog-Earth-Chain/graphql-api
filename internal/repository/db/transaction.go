@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"ncogearthchain-api-graphql/internal/types"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"go.mongodb.org/mongo-driver/bson"
@@ -208,9 +209,80 @@ func (db *MongoDbBridge) AddTransaction(block *types.Block, trx *types.Transacti
 // 	return fetchBlock(blockNumber)
 // }
 
+// func (db *PostgreSQLBridge) AddTransaction(block *types.Block, trx *types.Transaction) error {
+// 	if block == nil || trx == nil {
+// 		db.log.Errorf("Cannot add empty transaction: block=%v, trx=%v", block, trx)
+// 		return fmt.Errorf("cannot add empty transaction")
+// 	}
+
+// 	tx, err := db.db.Begin()
+// 	if err != nil {
+// 		db.log.Critical(err)
+// 		return fmt.Errorf("failed to begin database transaction: %v", err)
+// 	}
+// 	defer tx.Rollback()
+
+// 	shouldAdd, err := db.shouldAddTransaction(tx, trx)
+// 	if err != nil {
+// 		db.log.Critical(err)
+// 		return fmt.Errorf("failed to check if transaction exists: %v", err)
+// 	}
+
+// 	if !shouldAdd {
+// 		if err := db.UpdateTransaction(tx, trx); err != nil {
+// 			db.log.Critical(err)
+// 			return fmt.Errorf("failed to update transaction: %v", err)
+// 		}
+// 		return tx.Commit()
+// 	}
+
+// 	toAccount := ""
+// 	if trx.To != nil {
+// 		toAccount = trx.To.String()
+// 	}
+// 	inputData := hex.EncodeToString(trx.InputData)
+// 	//timestamp := time.Unix(int64(trx.TimeStamp), 0)
+
+// 	query := `
+//         INSERT INTO transactions (hash, from_account, to_account, value, gas, gas_price, block_number, block_hash, input, nonce)
+//         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+//     `
+
+// 	_, err = tx.Exec(
+// 		query,
+// 		trx.Hash.String(),
+// 		trx.From.String(),
+// 		toAccount,
+// 		trx.Value.String(),
+// 		trx.Gas,
+// 		trx.GasPrice.String(),
+// 		block.Number,
+// 		block.Hash.String(),
+// 		inputData,
+// 		trx.Nonce,
+// 		//timestamp,
+// 	)
+// 	if err != nil {
+// 		db.log.Critical(err)
+// 		return fmt.Errorf("failed to insert transaction: %v", err)
+// 	}
+
+// 	if err := tx.Commit(); err != nil {
+// 		db.log.Critical(err)
+// 		return fmt.Errorf("failed to commit database transaction: %v", err)
+// 	}
+
+// 	db.log.Debugf("transaction %s added to database", trx.Hash.String())
+// 	if db.initTransactions != nil {
+// 		db.initTransactions.Do(func() { db.initTransactionsTable(); db.initTransactions = nil })
+// 	}
+
+// 	return nil
+// }
+
 func (db *PostgreSQLBridge) AddTransaction(block *types.Block, trx *types.Transaction) error {
-	if block == nil || trx == nil {
-		db.log.Errorf("Cannot add empty transaction: block=%v, trx=%v", block, trx)
+	if trx == nil || trx.Hash.String() == "" {
+		db.log.Errorf("Cannot add empty transaction: trx=%v", trx)
 		return fmt.Errorf("cannot add empty transaction")
 	}
 
@@ -240,11 +312,21 @@ func (db *PostgreSQLBridge) AddTransaction(block *types.Block, trx *types.Transa
 		toAccount = trx.To.String()
 	}
 	inputData := hex.EncodeToString(trx.InputData)
-	//timestamp := time.Unix(int64(trx.TimeStamp), 0)
+
+	// Determine transaction status
+	status := "pending"
+	blockNumber := sql.NullInt64{Valid: false}
+	blockHash := sql.NullString{Valid: false}
+
+	if block != nil {
+		status = "confirmed"
+		blockNumber = sql.NullInt64{Int64: int64(block.Number), Valid: true} // Corrected conversion
+		blockHash = sql.NullString{String: block.Hash.String(), Valid: true}
+	}
 
 	query := `
-        INSERT INTO transactions (hash, from_account, to_account, value, gas, gas_price, block_number, block_hash, input, nonce)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        INSERT INTO transactions (hash, from_account, to_account, value, gas, gas_price, block_number, block_hash, input_data, nonce, status)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
     `
 
 	_, err = tx.Exec(
@@ -255,11 +337,11 @@ func (db *PostgreSQLBridge) AddTransaction(block *types.Block, trx *types.Transa
 		trx.Value.String(),
 		trx.Gas,
 		trx.GasPrice.String(),
-		block.Number,
-		block.Hash.String(),
+		blockNumber,
+		blockHash,
 		inputData,
 		trx.Nonce,
-		//timestamp,
+		status,
 	)
 	if err != nil {
 		db.log.Critical(err)
@@ -271,7 +353,7 @@ func (db *PostgreSQLBridge) AddTransaction(block *types.Block, trx *types.Transa
 		return fmt.Errorf("failed to commit database transaction: %v", err)
 	}
 
-	db.log.Debugf("transaction %s added to database", trx.Hash.String())
+	db.log.Debugf("Transaction %s added to database with status: %s", trx.Hash.String(), status)
 	if db.initTransactions != nil {
 		db.initTransactions.Do(func() { db.initTransactionsTable(); db.initTransactions = nil })
 	}
@@ -310,7 +392,7 @@ func (db *MongoDbBridge) UpdateTransaction(col *mongo.Collection, trx *types.Tra
 func (db *PostgreSQLBridge) UpdateTransaction(tx *sql.Tx, trx *types.Transaction) error {
 	query := `
 		UPDATE transactions
-		SET from_account = $2, to_account = $3, value = $4, gas = $5, gas_price = $6, block_number = $7, block_hash = $8, input = $9, nonce = $10
+		SET from_account = $2, to_account = $3, value = $4, gas = $5, gas_price = $6, block_number = $7, block_hash = $8, input_data = $9, nonce = $10
 		WHERE hash = $1
 	`
 	_, err := tx.Exec(
@@ -420,18 +502,31 @@ func (db *MongoDbBridge) initTrxList(col *mongo.Collection, cursor *string, coun
 }
 
 // initTrxList initializes a list of transactions based on the provided cursor and count.
+// initTrxList initializes a filtered transaction list.
 func (db *PostgreSQLBridge) initTrxList(cursor *string, count int32, filter string, args ...interface{}) (*types.PostTransactionList, error) {
-	// Count the total number of transactions matching the filter
+	// Ensure filter does not contain 'WHERE'
+	filter = strings.TrimSpace(filter)
+	if filter == "" {
+		filter = "TRUE" // Use TRUE instead of 1=1
+	}
+
+	// Construct the query safely using parameterization
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM transactions WHERE %s", filter)
+
+	// Debugging logs
+	db.log.Debugf("Executing SQL Count Query: %s", countQuery)
+	db.log.Debugf("Arguments: %+v", args)
+
+	// Execute the query safely
 	var total int64
-	countQuery := `SELECT COUNT(*) FROM transactions WHERE ` + filter
 	err := db.db.QueryRow(countQuery, args...).Scan(&total)
 	if err != nil {
-		db.log.Errorf("cannot count transactions: %s", err.Error())
+		db.log.Errorf("cannot count transactions: %v", err)
 		return nil, err
 	}
 
 	// Create the transaction list
-	db.log.Debugf("found %d filtered transactions", total)
+	db.log.Debugf("Found %d filtered transactions", total)
 	list := &types.PostTransactionList{
 		Collection: make([]*types.Transaction, 0),
 		Total:      uint64(total),
@@ -442,7 +537,7 @@ func (db *PostgreSQLBridge) initTrxList(cursor *string, count int32, filter stri
 		Filter:     make(map[string]interface{}), // Initialize filter as an empty map
 	}
 
-	// If there are transactions, calculate range marks and load them
+	// If transactions exist, calculate range marks and load them
 	if total > 0 {
 		updatedList, err := db.trxListWithRangeMarks(list, cursor, count, filter, args...)
 		if err != nil {
@@ -451,8 +546,8 @@ func (db *PostgreSQLBridge) initTrxList(cursor *string, count int32, filter stri
 		return updatedList, nil
 	}
 
-	// If the list is empty, return the empty list
-	db.log.Debug("empty transaction list created")
+	// If no transactions, return the empty list
+	db.log.Debug("Empty transaction list created")
 	return list, nil
 }
 
@@ -499,8 +594,80 @@ func (db *MongoDbBridge) trxListWithRangeMarks(
 	return list, nil
 }
 
+// // trxListWithRangeMarks loads a list of transactions with proper range marks.
+// func (db *PostgreSQLBridge) trxListWithRangeMarks(list *types.PostTransactionList, cursor *string, count int32, filter string, args ...interface{}) (*types.PostTransactionList, error) {
+// 	// Define the sorting direction
+// 	sortDirection := "ASC"
+// 	if count < 0 {
+// 		sortDirection = "DESC"
+// 		count = -count
+// 	}
+
+// 	// Add range filtering based on the cursor
+// 	if cursor != nil {
+// 		filter += ` AND hash >= $` + fmt.Sprintf("%d", len(args)+1)
+// 		args = append(args, *cursor)
+// 	}
+
+// 	// **Avoid using fmt.Sprintf for parameter placeholders**
+// 	query := `
+//         SELECT hash, block_hash, block_number, timestamp, from_account, to_account,
+//                value, gas, gas_price, nonce,
+//                input_data, status
+//         FROM transactions
+//         WHERE ` + filter + `
+//         ORDER BY block_number ` + sortDirection + `
+//         LIMIT $1`
+
+// 	// Append count as a query parameter
+// 	args = append(args, count)
+
+// 	// Debugging log
+// 	db.log.Debugf("Executing Query: %s", query)
+// 	db.log.Debugf("Arguments: %+v", args)
+
+// 	// Execute the query
+// 	rows, err := db.db.Query(query, args...)
+// 	if err != nil {
+// 		db.log.Errorf("failed to load transactions: %s", err.Error())
+// 		return nil, err
+// 	}
+// 	defer rows.Close()
+
+// 	// Populate the transaction list
+// 	for rows.Next() {
+// 		var trx types.Transaction
+// 		err := rows.Scan(
+// 			&trx.Hash,
+// 			&trx.BlockHash,
+// 			&trx.BlockNumber,
+// 			&trx.TimeStamp,
+// 			&trx.From,
+// 			&trx.To,
+// 			&trx.Value,
+// 			&trx.Gas,
+// 			&trx.GasPrice,
+// 			&trx.Nonce,
+// 			&trx.InputData,
+// 			&trx.Status,
+// 		)
+// 		if err != nil {
+// 			db.log.Errorf("failed to scan transaction: %s", err.Error())
+// 			return nil, err
+// 		}
+// 		list.Collection = append(list.Collection, &trx)
+// 	}
+
+// 	return list, nil
+// }
+
 // trxListWithRangeMarks loads a list of transactions with proper range marks.
-func (db *PostgreSQLBridge) trxListWithRangeMarks(list *types.PostTransactionList, cursor *string, count int32, filter string, args ...interface{}) (*types.PostTransactionList, error) {
+func (db *PostgreSQLBridge) trxListWithRangeMarks(
+	list *types.PostTransactionList,
+	cursor *string, count int32,
+	filter string, args ...interface{},
+) (*types.PostTransactionList, error) {
+
 	// Define the sorting direction
 	sortDirection := "ASC"
 	if count < 0 {
@@ -510,20 +677,19 @@ func (db *PostgreSQLBridge) trxListWithRangeMarks(list *types.PostTransactionLis
 
 	// Add range filtering based on the cursor
 	if cursor != nil {
-		filter += ` AND hash >= $` + fmt.Sprintf("%d", len(args)+1)
+		filter += fmt.Sprintf(" AND hash >= $%d", len(args)+1)
 		args = append(args, *cursor)
 	}
 
 	// Query to load the transactions
 	query := fmt.Sprintf(`
         SELECT hash, block_hash, block_number, timestamp, from_account, to_account,
-               value, gas, gas_used, cumulative_gas_used, gas_price, nonce,
-               contract_address, trx_index, input_data, status
+               value, gas, gas_price, nonce, input_data, status
         FROM transactions
         WHERE %s
-        ORDER BY block_number %s, trx_index %s
+        ORDER BY block_number %s
         LIMIT $%d
-    `, filter, sortDirection, sortDirection, len(args)+1)
+    `, filter, sortDirection, len(args)+1)
 
 	args = append(args, count)
 
@@ -538,21 +704,20 @@ func (db *PostgreSQLBridge) trxListWithRangeMarks(list *types.PostTransactionLis
 	// Populate the transaction list
 	for rows.Next() {
 		var trx types.Transaction
+		var hashStr, fromStr string
+		var toStr, blockHashStr *string // Nullable fields
+
 		err := rows.Scan(
-			&trx.Hash,
-			&trx.BlockHash,
+			&hashStr,      // hash TEXT -> string
+			&blockHashStr, // block_hash TEXT -> string (nullable)
 			&trx.BlockNumber,
 			&trx.TimeStamp,
-			&trx.From,
-			&trx.To,
+			&fromStr, // from_account TEXT -> string
+			&toStr,   // to_account TEXT -> string (nullable)
 			&trx.Value,
 			&trx.Gas,
-			&trx.GasUsed,
-			&trx.CumulativeGasUsed,
 			&trx.GasPrice,
 			&trx.Nonce,
-			&trx.ContractAddress,
-			&trx.TrxIndex,
 			&trx.InputData,
 			&trx.Status,
 		)
@@ -560,6 +725,21 @@ func (db *PostgreSQLBridge) trxListWithRangeMarks(list *types.PostTransactionLis
 			db.log.Errorf("failed to scan transaction: %s", err.Error())
 			return nil, err
 		}
+
+		// Convert TEXT to common.Hash
+		trx.Hash = common.HexToHash(hashStr)    // Convert hash string to common.Hash
+		trx.From = common.HexToAddress(fromStr) // Convert from_account string to common.Address
+
+		if blockHashStr != nil {
+			trx.BlockHash = new(common.Hash)
+			*trx.BlockHash = common.HexToHash(*blockHashStr)
+		}
+
+		if toStr != nil {
+			trx.To = new(common.Address)
+			*trx.To = common.HexToAddress(*toStr)
+		}
+
 		list.Collection = append(list.Collection, &trx)
 	}
 
@@ -774,7 +954,7 @@ func (db *PostgreSQLBridge) txListLoad(cursor *string, count int32, list *types.
 	// Construct the query
 	query := fmt.Sprintf(`
         SELECT hash, block_hash, block_number, timestamp, from_account, to_account,
-               value, gas, gas_used, cumulative_gas_used, gas_price, nonce,
+               value, gas, cumulative_gas_used, gas_price, nonce,
                contract_address, trx_index, input_data, status
         FROM transactions
         WHERE %s
@@ -811,7 +991,7 @@ func (db *PostgreSQLBridge) txListLoad(cursor *string, count int32, list *types.
 			&row.To,
 			&row.Value,
 			&row.Gas,
-			&row.GasUsed,
+			// &row.GasUsed,
 			&row.CumulativeGasUsed,
 			&row.GasPrice,
 			&row.Nonce,
@@ -896,7 +1076,18 @@ func (db *PostgreSQLBridge) TransactionsCount() (uint64, error) {
 // }
 
 // Transactions pulls a list of transactions starting at the specified cursor.
+// Transactions pulls a list of transactions starting at the specified cursor.
 func (db *PostgreSQLBridge) Transactions(cursor *string, count int32, filter string, args ...interface{}) (*types.PostTransactionList, error) {
+	// Ensure filter does not start with WHERE (this is handled in initTrxList)
+	filter = strings.TrimSpace(filter)
+	if filter == "" {
+		filter = "TRUE"
+	}
+
+	// Debugging: Print query before executing
+	db.log.Debugf("Fetching transactions with filter: %s", filter)
+	db.log.Debugf("Arguments: %+v", args)
+
 	// Nothing to load?
 	if count == 0 {
 		return nil, fmt.Errorf("nothing to do, zero transactions requested")

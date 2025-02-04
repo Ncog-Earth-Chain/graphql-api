@@ -64,9 +64,6 @@ type NecBridge struct {
 // New creates new Forest RPC connection bridge.
 func New(cfg *config.Config, log logger.Logger) (*NecBridge, error) {
 	cli, con, err := connect(cfg, log)
-	fmt.Println("cli", cli)
-	fmt.Println("con", con)
-	fmt.Println("err", err)
 	if err != nil {
 		log.Criticalf("can not open connection; %s", err.Error())
 		return nil, err
@@ -119,8 +116,6 @@ func connect(cfg *config.Config, log logger.Logger) (*nec.Client, *eth.Client, e
 
 	// try to establish a connection
 	client, err := nec.Dial(cfg.Forest.Url)
-	fmt.Println("client", client)
-	fmt.Println("err", err)
 	if err != nil {
 		log.Critical(err)
 		return nil, nil, err
@@ -132,26 +127,6 @@ func connect(cfg *config.Config, log logger.Logger) (*nec.Client, *eth.Client, e
 		log.Critical(err)
 		return nil, nil, err
 	}
-
-	// Call net_version to get the network version
-	var version string
-	err = client.Call(&version, "net_version") // Call to get the network version
-	if err != nil {
-		log.Criticalf("RPC client failed to respond: %v", err)
-		return nil, nil, err
-	}
-
-	log.Infof("RPC client connected successfully to version: %s", version)
-
-	// Call nec_accounts to get the accounts
-	var accounts []string
-	err = client.CallContext(context.Background(), &accounts, "nec_accounts")
-	if err != nil {
-		log.Errorf("Failed to fetch accounts from nec_accounts: %v", err)
-		return nil, nil, err
-	}
-	log.Infof("Fetched accounts: %v", accounts)
-
 	// log
 	log.Notice("node connection open")
 	return client, con, nil
