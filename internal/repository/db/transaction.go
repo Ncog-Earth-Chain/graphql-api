@@ -594,106 +594,33 @@ func (db *MongoDbBridge) trxListWithRangeMarks(
 	return list, nil
 }
 
-// // trxListWithRangeMarks loads a list of transactions with proper range marks.
-// func (db *PostgreSQLBridge) trxListWithRangeMarks(list *types.PostTransactionList, cursor *string, count int32, filter string, args ...interface{}) (*types.PostTransactionList, error) {
-// 	// Define the sorting direction
-// 	sortDirection := "ASC"
-// 	if count < 0 {
-// 		sortDirection = "DESC"
-// 		count = -count
-// 	}
-
-// 	// Add range filtering based on the cursor
-// 	if cursor != nil {
-// 		filter += ` AND hash >= $` + fmt.Sprintf("%d", len(args)+1)
-// 		args = append(args, *cursor)
-// 	}
-
-// 	// **Avoid using fmt.Sprintf for parameter placeholders**
-// 	query := `
-//         SELECT hash, block_hash, block_number, timestamp, from_account, to_account,
-//                value, gas, gas_price, nonce,
-//                input_data, status
-//         FROM transactions
-//         WHERE ` + filter + `
-//         ORDER BY block_number ` + sortDirection + `
-//         LIMIT $1`
-
-// 	// Append count as a query parameter
-// 	args = append(args, count)
-
-// 	// Debugging log
-// 	db.log.Debugf("Executing Query: %s", query)
-// 	db.log.Debugf("Arguments: %+v", args)
-
-// 	// Execute the query
-// 	rows, err := db.db.Query(query, args...)
-// 	if err != nil {
-// 		db.log.Errorf("failed to load transactions: %s", err.Error())
-// 		return nil, err
-// 	}
-// 	defer rows.Close()
-
-// 	// Populate the transaction list
-// 	for rows.Next() {
-// 		var trx types.Transaction
-// 		err := rows.Scan(
-// 			&trx.Hash,
-// 			&trx.BlockHash,
-// 			&trx.BlockNumber,
-// 			&trx.TimeStamp,
-// 			&trx.From,
-// 			&trx.To,
-// 			&trx.Value,
-// 			&trx.Gas,
-// 			&trx.GasPrice,
-// 			&trx.Nonce,
-// 			&trx.InputData,
-// 			&trx.Status,
-// 		)
-// 		if err != nil {
-// 			db.log.Errorf("failed to scan transaction: %s", err.Error())
-// 			return nil, err
-// 		}
-// 		list.Collection = append(list.Collection, &trx)
-// 	}
-
-// 	return list, nil
-// }
-
 // trxListWithRangeMarks loads a list of transactions with proper range marks.
-func (db *PostgreSQLBridge) trxListWithRangeMarks(
-	list *types.PostTransactionList,
-	cursor *string, count int32,
-	filter string, args ...interface{},
-) (*types.PostTransactionList, error) {
-
-	// Define the sorting direction
+func (db *PostgreSQLBridge) trxListWithRangeMarks(list *types.PostTransactionList, cursor *string, count int32, filter string, args ...interface{}) (*types.PostTransactionList, error) {
+	// Define sorting direction
 	sortDirection := "ASC"
 	if count < 0 {
 		sortDirection = "DESC"
 		count = -count
 	}
 
-	// Add range filtering based on the cursor
+	// Add cursor filtering
 	if cursor != nil {
-		filter += fmt.Sprintf(" AND hash >= $%d", len(args)+1)
+		filter += ` AND hash >= $` + fmt.Sprintf("%d", len(args)+1)
 		args = append(args, *cursor)
 	}
 
-	// Query to load the transactions
-	query := fmt.Sprintf(`
+	// Query transactions
+	query := `
         SELECT hash, block_hash, block_number, timestamp, from_account, to_account,
-               value, gas, gas_price, nonce, input_data, status
+               value, gas, gas_price, nonce,
+               input_data, status
         FROM transactions
-        WHERE %s
-        ORDER BY block_number %s
-        LIMIT $%d
-    `, filter, sortDirection, len(args)+1)
+        WHERE ` + filter + `
+        ORDER BY block_number ` + sortDirection + `
+        LIMIT $1`
 
 	args = append(args, count)
 
-	// Execute the query
 	rows, err := db.db.Query(query, args...)
 	if err != nil {
 		db.log.Errorf("failed to load transactions: %s", err.Error())
@@ -701,45 +628,35 @@ func (db *PostgreSQLBridge) trxListWithRangeMarks(
 	}
 	defer rows.Close()
 
-	// Populate the transaction list
+	// Process query results
 	for rows.Next() {
 		var trx types.Transaction
-		var hashStr, fromStr string
-		var toStr, blockHashStr *string // Nullable fields
+		var hashBytes, blockHashBytes, fromBytes, toBytes []byte
+		//var valueDecimal sql.NullString // Value will be scanned as []byte
 
 		err := rows.Scan(
-			&hashStr,      // hash TEXT -> string
-			&blockHashStr, // block_hash TEXT -> string (nullable)
-			&trx.BlockNumber,
-			&trx.TimeStamp,
-			&fromStr, // from_account TEXT -> string
-			&toStr,   // to_account TEXT -> string (nullable)
-			&trx.Value,
-			&trx.Gas,
-			&trx.GasPrice,
-			&trx.Nonce,
-			&trx.InputData,
-			&trx.Status,
+			&hashBytes, &blockHashBytes, &trx.BlockNumber, &trx.TimeStamp,
+			&fromBytes, &toBytes, &trx.Gas, &trx.GasPrice, &trx.Nonce,
+			&trx.InputData, &trx.Status,
 		)
 		if err != nil {
 			db.log.Errorf("failed to scan transaction: %s", err.Error())
 			return nil, err
 		}
 
-		// Convert TEXT to common.Hash
-		trx.Hash = common.HexToHash(hashStr)    // Convert hash string to common.Hash
-		trx.From = common.HexToAddress(fromStr) // Convert from_account string to common.Address
-
-		if blockHashStr != nil {
+		// Convert BYTEA back to common.Hash / common.Address
+		trx.Hash = common.BytesToHash(hashBytes)
+		if blockHashBytes != nil {
 			trx.BlockHash = new(common.Hash)
-			*trx.BlockHash = common.HexToHash(*blockHashStr)
+			*trx.BlockHash = common.BytesToHash(blockHashBytes)
 		}
-
-		if toStr != nil {
+		trx.From = common.BytesToAddress(fromBytes)
+		if toBytes != nil {
 			trx.To = new(common.Address)
-			*trx.To = common.HexToAddress(*toStr)
+			*trx.To = common.BytesToAddress(toBytes)
 		}
 
+		// Append the transaction to the list
 		list.Collection = append(list.Collection, &trx)
 	}
 
