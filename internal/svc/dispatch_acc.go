@@ -50,6 +50,7 @@ func (acd *accDispatcher) run() {
 // loop in a separate thread.
 func (acd *accDispatcher) execute() {
 	// don't forget to sign off after we are done
+	log.Debug("execute function is running")
 	defer func() {
 		close(acd.sigStop)
 		acd.mgr.finished(acd)
@@ -157,6 +158,8 @@ func (acd *accDispatcher) process(acc *eventAcc) error {
 // wallet processes a simple non-contract wallet account into the database
 // based on the account details (it still could be the SFC, be cautious about it)
 func (acd *accDispatcher) wallet(acc *eventAcc) error {
+
+	log.Debugf("wallet function called for account %s", acc.addr.String())
 	// notify new account detected
 	log.Debugf("found new account %s", acc.addr.String())
 

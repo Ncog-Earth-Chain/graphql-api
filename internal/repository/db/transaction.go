@@ -5,11 +5,16 @@ import (
 	"context"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"log"
+	"math/big"
 	"ncogearthchain-api-graphql/internal/types"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -331,8 +336,8 @@ func (db *PostgreSQLBridge) AddTransaction(block *types.Block, trx *types.Transa
 
 	_, err = tx.Exec(
 		query,
-		trx.Hash.String(),
-		trx.From.String(),
+		trx.Hash.Hex(),
+		trx.From.Hex(),
 		toAccount,
 		trx.Value.String(),
 		trx.Gas,
@@ -594,6 +599,31 @@ func (db *MongoDbBridge) trxListWithRangeMarks(
 	return list, nil
 }
 
+func toHexBigInt(s sql.NullString) *hexutil.Big {
+	if s.Valid {
+		hexString := ensureHexPrefix(s.String) // Ensure 0x prefix
+		bigInt := new(hexutil.Big)
+		*bigInt = (hexutil.Big)(*hexutil.MustDecodeBig(hexString))
+		return bigInt
+	}
+	return nil
+}
+
+func ensureHexPrefix(s string) string {
+	s = strings.TrimSpace(s) // Remove extra spaces
+	if s == "" {
+		return "0x0" // Return minimal valid hex instead of an empty string
+	}
+	if !strings.HasPrefix(s, "0x") {
+		s = "0x" + s
+	}
+	// Validate hex format
+	if _, err := hexutil.Decode(s); err != nil {
+		return "0x0" // Return a valid minimal hex instead of breaking
+	}
+	return s
+}
+
 // trxListWithRangeMarks loads a list of transactions with proper range marks.
 func (db *PostgreSQLBridge) trxListWithRangeMarks(list *types.PostTransactionList, cursor *string, count int32, filter string, args ...interface{}) (*types.PostTransactionList, error) {
 	// Define sorting direction
@@ -631,29 +661,81 @@ func (db *PostgreSQLBridge) trxListWithRangeMarks(list *types.PostTransactionLis
 	// Process query results
 	for rows.Next() {
 		var trx types.Transaction
-		var hashBytes, blockHashBytes, fromBytes, toBytes []byte
-		//var valueDecimal sql.NullString // Value will be scanned as []byte
+		var hashStr, blockHashStr, fromStr, toStr, gasPriceStr, valueStr, inputDataStr, statusStr sql.NullString
+		var nonce uint64
+		var timestamp sql.NullTime
+		var gas uint64
+		var blockNumber sql.NullInt64
+		//var row types.Transaction
 
 		err := rows.Scan(
-			&hashBytes, &blockHashBytes, &trx.BlockNumber, &trx.TimeStamp,
-			&fromBytes, &toBytes, &trx.Gas, &trx.GasPrice, &trx.Nonce,
-			&trx.InputData, &trx.Status,
+			&hashStr, &blockHashStr, &blockNumber, &timestamp,
+			&fromStr, &toStr, &valueStr, &gas, &gasPriceStr, &nonce,
+			&inputDataStr, &statusStr,
 		)
 		if err != nil {
 			db.log.Errorf("failed to scan transaction: %s", err.Error())
 			return nil, err
 		}
 
-		// Convert BYTEA back to common.Hash / common.Address
-		trx.Hash = common.BytesToHash(hashBytes)
-		if blockHashBytes != nil {
-			trx.BlockHash = new(common.Hash)
-			*trx.BlockHash = common.BytesToHash(blockHashBytes)
+		// Convert scanned values into required types
+		trx.Hash = common.HexToHash(hashStr.String) // Convert manually
+		if blockHashStr.Valid {
+			hash := common.HexToHash(blockHashStr.String)
+			trx.BlockHash = &hash
 		}
-		trx.From = common.BytesToAddress(fromBytes)
-		if toBytes != nil {
-			trx.To = new(common.Address)
-			*trx.To = common.BytesToAddress(toBytes)
+
+		if fromStr.Valid {
+			trx.From = common.HexToAddress(fromStr.String)
+		}
+
+		if toStr.Valid {
+			addr := common.HexToAddress(toStr.String)
+			trx.To = &addr
+		}
+
+		if valueStr.Valid && valueStr.String != "" {
+			hexValue := ensureHexPrefix(valueStr.String)
+			if decoded, err := hexutil.DecodeBig(hexValue); err == nil {
+				trx.Value = (hexutil.Big)(*decoded)
+			} else {
+				trx.Value = (hexutil.Big)(*big.NewInt(0)) // Default to 0 if invalid
+			}
+		}
+		if gasPriceStr.Valid && gasPriceStr.String != "" {
+			hexGasPrice := ensureHexPrefix(gasPriceStr.String)
+			if decoded, err := hexutil.DecodeBig(hexGasPrice); err == nil {
+				trx.GasPrice = (hexutil.Big)(*decoded)
+			} else {
+				trx.GasPrice = (hexutil.Big)(*big.NewInt(0)) // Default to 0 if invalid
+			}
+		}
+
+		if inputDataStr.Valid && inputDataStr.String != "" {
+			trx.InputData = hexutil.MustDecode(ensureHexPrefix(inputDataStr.String))
+		} else {
+			trx.InputData = []byte{} // Assign an empty byte array instead of decoding an empty string
+		}
+
+		if statusStr.Valid && statusStr.String != "" {
+			status := hexutil.MustDecodeBig(ensureHexPrefix(statusStr.String)).Uint64()
+			statusHex := hexutil.Uint64(status)
+			trx.Status = &statusHex
+		} else {
+			statusHex := hexutil.Uint64(0) // Default to 0 if empty
+			trx.Status = &statusHex
+		}
+
+		if blockNumber.Valid {
+			blockNum := hexutil.Uint64(blockNumber.Int64)
+			trx.BlockNumber = &blockNum
+		}
+
+		// Handle the nullable timestamp
+		if timestamp.Valid {
+			trx.TimeStamp = timestamp.Time // Safely assign the time
+		} else {
+			trx.TimeStamp = time.Time{} // Default to the zero time if invalid
 		}
 
 		// Append the transaction to the list
@@ -810,7 +892,7 @@ func (db *PostgreSQLBridge) txListOptions(count int32) (string, int64) {
 	}
 
 	// Return the ORDER BY clause and the limit
-	return fmt.Sprintf("ORDER BY ordinal_index %s", sortDirection), limit + 1
+	return fmt.Sprintf("ORDER BY id %s", sortDirection), limit + 1
 }
 
 // txListLoad load the initialized list from database
@@ -859,20 +941,32 @@ func (db *PostgreSQLBridge) txListOptions(count int32) (string, int64) {
 
 // txListLoad loads the initialized list of transactions from the PostgreSQL database.
 func (db *PostgreSQLBridge) txListLoad(cursor *string, count int32, list *types.PostTransactionList, filter string, args ...interface{}) error {
+
+	if db == nil {
+		log.Println("ERROR: PostgreSQLBridge is nil")
+		return errors.New("database connection is not initialized")
+	}
+
+	// Ensure list.Collection is initialized
+	if list.Collection == nil {
+		log.Println("INFO: Initializing list.Collection")
+		list.Collection = make([]*types.Transaction, 0)
+	}
+
 	// Determine sorting and limit
 	orderBy, limit := db.txListOptions(count)
 
 	// Add range filtering based on cursor
 	if cursor != nil {
-		filter += ` AND ordinal_index >= $` + fmt.Sprintf("%d", len(args)+1)
+		filter += ` AND id >= $` + fmt.Sprintf("%d", len(args)+1)
 		args = append(args, *cursor)
 	}
 
 	// Construct the query
 	query := fmt.Sprintf(`
         SELECT hash, block_hash, block_number, timestamp, from_account, to_account,
-               value, gas, cumulative_gas_used, gas_price, nonce,
-               contract_address, trx_index, input_data, status
+               value, gas, gas_price, nonce,
+             input_data, status
         FROM transactions
         WHERE %s
         %s
@@ -889,37 +983,107 @@ func (db *PostgreSQLBridge) txListLoad(cursor *string, count int32, list *types.
 	}
 	defer rows.Close()
 
+	// Check if rows is nil
+	if rows == nil {
+		log.Println("ERROR: rows is nil, database query returned no data")
+		return errors.New("no transactions found")
+	}
+
 	// Loop and load transactions
 	var trx *types.Transaction
+	var hashStr, blockHashStr, fromStr, toStr, valueStr, gasPriceStr, inputDataStr, statusStr sql.NullString
+	var nonce uint64
+	var timestamp sql.NullTime
+	var gas uint64
+	var blockNumber sql.NullInt64
+
 	for rows.Next() {
 		// Process the previously found transaction
-		if trx != nil {
-			list.Collection = append(list.Collection, trx)
-		}
-
+		// if trx != nil {
+		// 	list.Collection = append(list.Collection, trx)
+		// }
+		trx = &types.Transaction{}
 		// Decode the current row
 		var row types.Transaction
 		err := rows.Scan(
-			&row.Hash,
-			&row.BlockHash,
-			&row.BlockNumber,
-			&row.TimeStamp,
-			&row.From,
-			&row.To,
-			&row.Value,
-			&row.Gas,
+			&hashStr,
+			&blockHashStr,
+			&blockNumber,
+			&timestamp,
+			&fromStr,
+			&toStr,
+			&valueStr,
+			&gas,
 			// &row.GasUsed,
-			&row.CumulativeGasUsed,
-			&row.GasPrice,
-			&row.Nonce,
-			&row.ContractAddress,
-			&row.TrxIndex,
-			&row.InputData,
-			&row.Status,
+			// &row.CumulativeGasUsed,
+			&gasPriceStr,
+			&nonce,
+			// &row.ContractAddress,
+			// &row.TrxIndex,
+			&inputDataStr,
+			&statusStr,
 		)
 		if err != nil {
 			db.log.Errorf("failed to scan transaction: %s", err.Error())
 			return err
+		}
+
+		// Convert scanned values into required types
+		trx.Hash = common.HexToHash(hashStr.String) // Convert manually
+		if blockHashStr.Valid {
+			hash := common.HexToHash(blockHashStr.String)
+			trx.BlockHash = &hash
+		}
+
+		if fromStr.Valid {
+			trx.From = common.HexToAddress(fromStr.String)
+		}
+
+		if toStr.Valid {
+			addr := common.HexToAddress(toStr.String)
+			trx.To = &addr
+		}
+
+		if valueStr.Valid && valueStr.String != "" {
+			hexValue := ensureHexPrefix(valueStr.String)
+			if decoded, err := hexutil.DecodeBig(hexValue); err == nil {
+				trx.Value = (hexutil.Big)(*decoded)
+			} else {
+				trx.Value = (hexutil.Big)(*big.NewInt(0)) // Default to 0 if invalid
+			}
+		}
+
+		if gasPriceStr.Valid && gasPriceStr.String != "" {
+			hexGasPrice := ensureHexPrefix(gasPriceStr.String)
+			if decoded, err := hexutil.DecodeBig(hexGasPrice); err == nil {
+				trx.GasPrice = (hexutil.Big)(*decoded)
+			} else {
+				trx.GasPrice = (hexutil.Big)(*big.NewInt(0)) // Default to 0 if invalid
+			}
+		}
+		if inputDataStr.Valid && inputDataStr.String != "" {
+			trx.InputData = hexutil.MustDecode(ensureHexPrefix(inputDataStr.String))
+		} else {
+			trx.InputData = []byte{} // Assign an empty byte array instead of decoding an empty string
+		}
+		if statusStr.Valid && statusStr.String != "" {
+			status := hexutil.MustDecodeBig(ensureHexPrefix(statusStr.String)).Uint64()
+			statusHex := hexutil.Uint64(status)
+			trx.Status = &statusHex
+		} else {
+			statusHex := hexutil.Uint64(0) // Default to 0 if empty
+			trx.Status = &statusHex
+		}
+
+		if blockNumber.Valid {
+			blockNum := hexutil.Uint64(blockNumber.Int64)
+			trx.BlockNumber = &blockNum
+		}
+		// Handle the nullable timestamp
+		if timestamp.Valid {
+			trx.TimeStamp = timestamp.Time // Safely assign the time
+		} else {
+			trx.TimeStamp = time.Time{} // Default to the zero time if invalid
 		}
 
 		trx = &row
@@ -995,6 +1159,10 @@ func (db *PostgreSQLBridge) TransactionsCount() (uint64, error) {
 // Transactions pulls a list of transactions starting at the specified cursor.
 // Transactions pulls a list of transactions starting at the specified cursor.
 func (db *PostgreSQLBridge) Transactions(cursor *string, count int32, filter string, args ...interface{}) (*types.PostTransactionList, error) {
+	if db == nil {
+		log.Println("ERROR: PostgreSQLBridge is nil")
+		return nil, errors.New("database connection is not initialized")
+	}
 	// Ensure filter does not start with WHERE (this is handled in initTrxList)
 	filter = strings.TrimSpace(filter)
 	if filter == "" {

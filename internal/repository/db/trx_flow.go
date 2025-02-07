@@ -409,13 +409,13 @@ func (db *PostgreSQLBridge) TrxDailyFlowUpdate(from time.Time) error {
 	query := `
 		WITH aggregated AS (
 			SELECT
-				date_trunc('day', transaction_time) AS stamp,
+				date_trunc('day', timestamp) AS stamp,
 				SUM(volume) AS total_volume,
 				SUM(gas_use) AS total_gas,
 				COUNT(*) AS total_count
 			FROM transactions
 			WHERE transaction_time >= $1
-			GROUP BY date_trunc('day', transaction_time)
+			GROUP BY date_trunc('day', timestamp)
 		)
 		INSERT INTO trx_volume (stamp, volume, gas, value)
 		SELECT

@@ -804,7 +804,7 @@ func (db *PostgreSQLBridge) TokenTransactionsByCall(trxHash *common.Hash) ([]*ty
 	query := `
 		SELECT "token","amount" 
 		FROM "erc20_transactions"
-		WHERE "transaction_hash" = $1
+		WHERE "" = $1
 		ORDER BY "ordinal" DESC
 	`
 

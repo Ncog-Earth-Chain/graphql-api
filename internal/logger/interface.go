@@ -5,12 +5,13 @@ The app is expected to log detailed internal processes and state changes. Each d
 the level of log to be captured and provided to end user and/or automated log management facility.
 
 Supported logging levels, ordered by increasing details of internal state change recording, are:
-	- CRITICAL
-    - ERROR
-    - WARNING
-    - NOTICE
-    - INFO
-    - DEBUG
+  - CRITICAL
+  - ERROR
+  - WARNING
+  - NOTICE
+  - INFO
+  - DEBUG
+
 Corresponding configuration package accepts one of these levels as a string literal.
 
 For formatting specification see pkg/fmt package.

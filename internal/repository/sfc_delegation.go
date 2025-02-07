@@ -35,7 +35,7 @@ func (p *proxy) IsDelegating(addr *common.Address) (bool, error) {
 // IsDelegatingPostgres returns if the given address is an SFC delegator.
 func (p *proxy) IsDelegatingPostgres(addr *common.Address) (bool, error) {
 	filters := map[string]interface{}{
-		"adr": addr.String(),
+		"delegation_address": addr.String(),
 		"delegation_value": map[string]interface{}{
 			"$gt": 0,
 		},
@@ -224,7 +224,7 @@ func (p *proxy) DelegationsByAddressPost(addr *common.Address, cursor *string, c
 	p.log.Debugf("loading delegations of %s", addr.String())
 
 	// Define the filter as the delegator's address
-	filter := "adr = $1"
+	filter := "delegation_address = $1"
 	args := []interface{}{addr.String()}
 
 	// Fetch delegations using the PostgreSQL bridge

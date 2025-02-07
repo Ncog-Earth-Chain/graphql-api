@@ -2,6 +2,7 @@
 package resolvers
 
 import (
+	"errors"
 	"fmt"
 	"ncogearthchain-api-graphql/internal/repository"
 	"ncogearthchain-api-graphql/internal/types"
@@ -26,28 +27,91 @@ func NewTransaction(trx *types.Transaction) *Transaction {
 }
 
 // Transaction resolves blockchain transaction by transaction hash.
+// func (rs *rootResolver) Transaction(args *struct{ Hash common.Hash }) (tx *Transaction, err error) {
+// 	// Check if resolver is nil
+// 	if rs == nil {
+// 		log.Printf("ERROR: GraphQL resolver is nil")
+// 		return nil, errors.New("GraphQL resolver is not initialized")
+// 	}
+
+// 	// Check if repository is properly initialized
+// 	if repository.R() == nil {
+// 		log.Printf("ERROR: Repository is nil")
+// 		return nil, errors.New("Repository is not initialized")
+// 	}
+// 	defer func() {
+// 		if r := recover(); r != nil {
+// 			log.Criticalf("transaction loader crashed on %s", args.Hash.String())
+// 			err = fmt.Errorf("failed to load transaction %s", args.Hash.String())
+// 			tx = nil
+// 		}
+// 	}()
+
+// 	// get the transaction from repository
+// 	trx, err := repository.R().Transaction(&args.Hash)
+// 	if err != nil {
+// 		log.Warningf("can not get transaction %s", args.Hash)
+// 		return nil, err
+// 	}
+
+// 	// transaction not found, yet no error?
+// 	if trx == nil {
+// 		log.Errorf("transaction %s not found", args.Hash.String())
+// 		return nil, fmt.Errorf("transaction %s not found", args.Hash.String())
+// 	}
+// 	return NewTransaction(trx), nil
+// }
+
+// Transaction resolves blockchain transaction by transaction hash.
 func (rs *rootResolver) Transaction(args *struct{ Hash common.Hash }) (tx *Transaction, err error) {
+	// Check if resolver is nil
+	if rs == nil {
+		log.Printf("ERROR: GraphQL resolver is nil")
+		return nil, errors.New("GraphQL resolver is not initialized")
+	}
+
+	// Check if repository is properly initialized
+	if repository.R() == nil {
+		log.Printf("ERROR: Repository is nil")
+		return nil, errors.New("Repository is not initialized")
+	}
+
+	// Log the args.Hash to ensure it's being passed correctly
+	log.Printf("Transaction requested for hash: %s", args.Hash.String())
+
+	// Error handling in case of panic
 	defer func() {
 		if r := recover(); r != nil {
-			log.Criticalf("transaction loader crashed on %s", args.Hash.String())
+			log.Criticalf("Transaction loader crashed on %s", args.Hash.String())
 			err = fmt.Errorf("failed to load transaction %s", args.Hash.String())
 			tx = nil
 		}
 	}()
 
-	// get the transaction from repository
+	// Fetch the transaction from the repository
 	trx, err := repository.R().Transaction(&args.Hash)
 	if err != nil {
-		log.Warningf("can not get transaction %s", args.Hash)
+		log.Warningf("Cannot get transaction %s: %v", args.Hash.String(), err)
 		return nil, err
 	}
 
-	// transaction not found, yet no error?
+	// Handle case where transaction is not found
 	if trx == nil {
-		log.Errorf("transaction %s not found", args.Hash.String())
+		log.Errorf("Transaction %s not found", args.Hash.String())
 		return nil, fmt.Errorf("transaction %s not found", args.Hash.String())
 	}
-	return NewTransaction(trx), nil
+
+	// Log the transaction object to ensure it's correctly populated
+	log.Printf("Transaction fetched: %+v", trx)
+
+	// Check if NewTransaction is working as expected
+	tx = NewTransaction(trx)
+	if tx == nil {
+		log.Errorf("Failed to create Transaction object for %s", args.Hash.String())
+		return nil, fmt.Errorf("failed to create transaction object for %s", args.Hash.String())
+	}
+
+	return tx, nil
 }
 
 // SendTransaction sends raw signed and RLP encoded transaction to the blockchain.

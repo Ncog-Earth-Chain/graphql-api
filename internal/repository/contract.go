@@ -117,10 +117,12 @@ func compareContractCode(tx *types.Transaction, code string) (bool, error) {
 	if len(tx.InputData) < len(bc) {
 		return false, nil
 	}
+	// Convert tx.InputData (string) to []byte
+	txInputData := []byte(tx.InputData)
 
 	// compare only up to <bc> length, the rest is metadata
 	// and constructor parameters
-	res := bytes.Compare(bc, tx.InputData[:len(bc)])
+	res := bytes.Compare(bc, txInputData[:len(bc)])
 
 	// return the comparison result
 	return res == 0, nil

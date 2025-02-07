@@ -105,9 +105,10 @@ func (bls *blkScanner) boundaries() (uint64, error) {
 	}
 
 	// apply re-scan
-	if lnb > bls.cfg.BlockScanReScan {
-		log.Debugf("last known block is #%d, re-scanning %d blocks", lnb, bls.cfg.BlockScanReScan)
-		lnb = lnb - bls.cfg.BlockScanReScan
+	// Force a rescan of the last 10 blocks (adjust as needed)
+	if lnb > 10 {
+		log.Infof("Forcing re-scan from block #%d", lnb-10)
+		lnb = lnb - 10
 	}
 	return lnb, nil
 }

@@ -24,6 +24,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/common"
 	etc "github.com/ethereum/go-ethereum/core/types"
 	eth "github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -127,6 +128,23 @@ func connect(cfg *config.Config, log logger.Logger) (*nec.Client, *eth.Client, e
 		log.Critical(err)
 		return nil, nil, err
 	}
+
+	// Fetch accounts (nec_accounts)
+	var accounts []string
+	err = client.CallContext(context.Background(), &accounts, "nec_accounts")
+	if err != nil {
+		log.Criticalf("Failed to fetch accounts from blockchain: %v", err)
+		return nil, nil, err
+	}
+	log.Infof("Fetched accounts from blockchain: %v", accounts)
+
+	// Optionally, process accounts into common.Address or your required type
+	var result []common.Address
+	for _, acc := range accounts {
+		address := common.HexToAddress(acc)
+		result = append(result, address)
+	}
+
 	// log
 	log.Notice("node connection open")
 	return client, con, nil

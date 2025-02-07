@@ -362,7 +362,7 @@ func (db *PostgreSQLBridge) CheckDatabaseInitState() {
                 to_account TEXT, -- Account receiving the transaction (nullable if not always present)
                 value NUMERIC NOT NULL, -- Transaction value
                 gas NUMERIC NOT NULL, -- Gas used
-                gas_price NUMERIC NOT NULL, -- Price per gas unit
+                gas_price TEXT NOT NULL, -- Price per gas unit
                 block_number BIGINT, -- Block number (nullable for pending transactions)
                 block_hash TEXT, -- Block hash (nullable for pending transactions)
                 input_data TEXT, -- Input data for the transaction

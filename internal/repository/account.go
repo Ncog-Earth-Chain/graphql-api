@@ -88,6 +88,15 @@ func (p *proxy) getAccount(addr *common.Address) (*types.Account, error) {
 
 func (p *proxy) getAccountsFromBlockchain() ([]common.Address, error) {
 	p.log.Infof("Fetching accounts from blockchain via RPC")
+	// Check if RPC is correctly set up
+	if p.rpc.Rpc == nil {
+		p.log.Error("RPC client is nil")
+		return nil, fmt.Errorf("RPC client is nil")
+	}
+
+	// Log the request being sent
+	request := `{"jsonrpc":"2.0","method":"nec_accounts","params":[],"id":1}`
+	p.log.Infof("Sending RPC request: %s", request)
 
 	var accounts []string
 	err := p.rpc.Rpc.CallContext(context.Background(), &accounts, "nec_accounts")
@@ -279,6 +288,13 @@ func (p *proxy) StoreAccount(acc *types.Account) error {
 	if err != nil {
 		p.log.Errorf("Error fetching accounts from blockchain: %v", err)
 		return err
+	}
+
+	p.log.Infof("Fetched %d accounts from blockchain", len(blockchainAccounts))
+	// If no accounts were fetched, log a warning
+	if len(blockchainAccounts) == 0 {
+		p.log.Warning("No blockchain accounts were fetched")
+		return fmt.Errorf("no blockchain accounts found")
 	}
 
 	// Loop through fetched accounts and store them
