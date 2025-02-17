@@ -3,9 +3,10 @@ package svc
 
 import (
 	"fmt"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"math/big"
 	"time"
+
+	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
 // stiScannerTickDurationSlow represents the long delay between STI info pull attempts.

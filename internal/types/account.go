@@ -28,15 +28,15 @@ const (
 	AccountTypeERC1155Contract = "ERC1155"
 )
 
-
-
 // Account represents an Ncogearthchain account at the blockchain.
 type Account struct {
-	Address      common.Address `json:"address"`
-	ContractTx   *common.Hash   `json:"contract"`
-	Type         string         `json:"type"`
-	LastActivity hexutil.Uint64 `json:"ats"`
-	TrxCounter   hexutil.Uint64 `json:"trc"`
+	Address      common.Address  `json:"address"`
+	ContractTx   *common.Hash    `json:"contract"`
+	Type         string          `json:"type"`
+	LastActivity hexutil.Uint64  `json:"ats"`
+	TrxCounter   hexutil.Uint64  `json:"trc"`
+	Balance      *hexutil.Big    `json:"balance,omitempty"`
+	Nonce        *hexutil.Uint64 `json:"nonce,omitempty"`
 }
 
 // UnmarshalAccount parses the JSON-encoded account data.

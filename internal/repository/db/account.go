@@ -11,9 +11,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	_ "github.com/lib/pq"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 const (
@@ -83,11 +80,11 @@ type PostAccountRow struct {
 	ScHash   *common.Hash
 }
 
-// initAccountsCollection initializes the account collection with
-// indexes and additional parameters needed by the app.
-func (db *MongoDbBridge) initAccountsCollection() {
-	db.log.Debugf("accounts collection initialized")
-}
+// // initAccountsCollection initializes the account collection with
+// // indexes and additional parameters needed by the app.
+// func (db *MongoDbBridge) initAccountsCollection() {
+// 	db.log.Debugf("accounts collection initialized")
+// }
 
 // indexes and additional parameters needed by the app.
 func (db *PostgreSQLBridge) initAccountsTable() {
@@ -155,48 +152,48 @@ func (db *PostgreSQLBridge) initAccountsTable() {
 // 	db.log.Debugf("accounts table and index initialized successfully")
 // }
 
-// Account tries to load an account identified by the address given from
-// the off-chain database.
-func (db *MongoDbBridge) Account(addr *common.Address) (*types.Account, error) {
-	// get the collection for account transactions
-	col := db.client.Database(db.dbName).Collection(coAccounts)
+// // Account tries to load an account identified by the address given from
+// // the off-chain database.
+// func (db *MongoDbBridge) Account(addr *common.Address) (*types.Account, error) {
+// 	// get the collection for account transactions
+// 	col := db.client.Database(db.dbName).Collection(coAccounts)
 
-	// try to find the account
-	sr := col.FindOne(context.Background(), bson.D{{Key: fiAccountPk, Value: addr.String()}}, options.FindOne())
+// 	// try to find the account
+// 	sr := col.FindOne(context.Background(), bson.D{{Key: fiAccountPk, Value: addr.String()}}, options.FindOne())
 
-	// error on lookup?
-	if sr.Err() != nil {
-		// may be ErrNoDocuments, which we seek
-		if sr.Err() == mongo.ErrNoDocuments {
-			return nil, nil
-		}
+// 	// error on lookup?
+// 	if sr.Err() != nil {
+// 		// may be ErrNoDocuments, which we seek
+// 		if sr.Err() == mongo.ErrNoDocuments {
+// 			return nil, nil
+// 		}
 
-		db.log.Error("can not get existing account %s; %s", addr.String(), sr.Err().Error())
-		return nil, sr.Err()
-	}
+// 		db.log.Error("can not get existing account %s; %s", addr.String(), sr.Err().Error())
+// 		return nil, sr.Err()
+// 	}
 
-	// try to decode the row
-	var row AccountRow
-	err := sr.Decode(&row)
-	if err != nil {
-		db.log.Error("can not decode account %s; %s", addr.String(), err.Error())
-		return nil, err
-	}
+// 	// try to decode the row
+// 	var row AccountRow
+// 	err := sr.Decode(&row)
+// 	if err != nil {
+// 		db.log.Error("can not decode account %s; %s", addr.String(), err.Error())
+// 		return nil, err
+// 	}
 
-	// any hash?
-	if row.Sc != nil {
-		h := common.HexToHash(*row.Sc)
-		row.ScHash = &h
-	}
+// 	// any hash?
+// 	if row.Sc != nil {
+// 		h := common.HexToHash(*row.Sc)
+// 		row.ScHash = &h
+// 	}
 
-	return &types.Account{
-		Address:      *addr,
-		ContractTx:   row.ScHash,
-		Type:         row.Type,
-		LastActivity: hexutil.Uint64(row.Activity),
-		TrxCounter:   hexutil.Uint64(row.Counter),
-	}, nil
-}
+// 	return &types.Account{
+// 		Address:      *addr,
+// 		ContractTx:   row.ScHash,
+// 		Type:         row.Type,
+// 		LastActivity: hexutil.Uint64(row.Activity),
+// 		TrxCounter:   hexutil.Uint64(row.Counter),
+// 	}, nil
+// }
 
 func (db *PostgreSQLBridge) Account(addr *common.Address) (*types.Account, error) {
 	// Prepare the SQL query to retrieve the account from PostgreSQL
@@ -235,47 +232,85 @@ func (db *PostgreSQLBridge) Account(addr *common.Address) (*types.Account, error
 	}, nil
 }
 
-// AddAccount stores an account in the blockchain if not exists.
-func (db *MongoDbBridge) AddAccount(acc *types.Account) error {
-	// do we have account data?
-	if acc == nil {
-		return fmt.Errorf("can not add empty account")
+// // AddAccount stores an account in the blockchain if not exists.
+// func (db *MongoDbBridge) AddAccount(acc *types.Account) error {
+// 	// do we have account data?
+// 	if acc == nil {
+// 		return fmt.Errorf("can not add empty account")
+// 	}
+
+// 	// get the collection for account transactions
+// 	col := db.client.Database(db.dbName).Collection(coAccounts)
+
+// 	// extract contract creation transaction if available
+// 	var conTx *string
+// 	if acc.ContractTx != nil {
+// 		cx := acc.ContractTx.String()
+// 		conTx = &cx
+// 	}
+
+// 	// do the update based on given PK; we don't need to pull the document updated
+// 	_, err := col.InsertOne(context.Background(), bson.D{
+// 		{Key: fiAccountPk, Value: acc.Address.String()},
+// 		{Key: fiScCreationTx, Value: conTx},
+// 		{Key: fiAccountType, Value: acc.Type},
+// 		{Key: fiAccountLastActivity, Value: uint64(acc.LastActivity)},
+// 		{Key: fiAccountTransactionCounter, Value: uint64(acc.TrxCounter)},
+// 	})
+
+// 	// error on lookup?
+// 	if err != nil {
+// 		db.log.Error("can not insert new account")
+// 		return err
+// 	}
+
+// 	// check init state
+// 	// make sure transactions collection is initialized
+// 	if db.initAccounts != nil {
+// 		db.initAccounts.Do(func() { db.initAccountsCollection(); db.initAccounts = nil })
+// 	}
+
+// 	// log what we have done
+// 	db.log.Debugf("added account at %s", acc.Address.String())
+// 	return nil
+// }
+
+func (db *PostgreSQLBridge) GetAllAccounts() ([]*types.Account, error) {
+	var accounts []*types.Account
+
+	// Ensure the database connection is active
+	if err := db.db.Ping(); err != nil {
+		db.log.Errorf("Database connection lost: %v", err)
+		return nil, fmt.Errorf("database connection lost: %v", err)
 	}
 
-	// get the collection for account transactions
-	col := db.client.Database(db.dbName).Collection(coAccounts)
+	query := `SELECT address FROM accounts ORDER BY last_activity DESC;`
+	//db.log.Infof("Running fresh DB query: %s", query)
 
-	// extract contract creation transaction if available
-	var conTx *string
-	if acc.ContractTx != nil {
-		cx := acc.ContractTx.String()
-		conTx = &cx
-	}
-
-	// do the update based on given PK; we don't need to pull the document updated
-	_, err := col.InsertOne(context.Background(), bson.D{
-		{Key: fiAccountPk, Value: acc.Address.String()},
-		{Key: fiScCreationTx, Value: conTx},
-		{Key: fiAccountType, Value: acc.Type},
-		{Key: fiAccountLastActivity, Value: uint64(acc.LastActivity)},
-		{Key: fiAccountTransactionCounter, Value: uint64(acc.TrxCounter)},
-	})
-
-	// error on lookup?
+	rows, err := db.db.Query(query)
 	if err != nil {
-		db.log.Error("can not insert new account")
-		return err
+		db.log.Errorf("Query failed: %v", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var addressStr string
+		if err := rows.Scan(&addressStr); err != nil {
+			db.log.Errorf("Row scan failed: %v", err)
+			continue
+		}
+
+		//  Convert string to common.Address
+		address := common.HexToAddress(addressStr)
+
+		accounts = append(accounts, &types.Account{
+			Address: address,
+		})
 	}
 
-	// check init state
-	// make sure transactions collection is initialized
-	if db.initAccounts != nil {
-		db.initAccounts.Do(func() { db.initAccountsCollection(); db.initAccounts = nil })
-	}
-
-	// log what we have done
-	db.log.Debugf("added account at %s", acc.Address.String())
-	return nil
+	db.log.Infof("DB returned %d accounts: %v", len(accounts), accounts)
+	return accounts, nil
 }
 
 // func (db *PostgreSQLBridge) AddAccount(acc *types.Account) error {
@@ -336,12 +371,29 @@ func (db *MongoDbBridge) AddAccount(acc *types.Account) error {
 // }
 
 func (db *PostgreSQLBridge) AddAccount(acc *types.Account) error {
+	tx, err := db.db.Begin()
+	if err := db.db.Ping(); err != nil {
+		db.log.Errorf("Database connection lost: %v", err)
+		return fmt.Errorf("database connection lost: %v", err)
+	}
+
+	// Use the provided timestamp or default to current time
+	lastActivity := time.Unix(int64(acc.LastActivity), 0)
+	if acc.LastActivity == 0 {
+		lastActivity = time.Now()
+	}
+
 	query := `
-        INSERT INTO accounts (address, type) 
-        VALUES ($1, $2) 
-        ON CONFLICT (address) DO UPDATE SET type = EXCLUDED.type
+        INSERT INTO accounts (address, type, last_activity, counter) 
+        VALUES ($1, $2,$3, $4) 
+        ON CONFLICT (address) DO UPDATE SET type = EXCLUDED.type,
+		last_activity = EXCLUDED.last_activity, counter =  accounts.counter + 1;; 
     `
-	result, err := db.db.Exec(query, acc.Address.String(), acc.Type)
+
+	// Debugging - print SQL execution
+	//fmt.Printf("Executing query: %s\n With values: %s, %s, %v, %d\n", query, acc.Address.String(), acc.Type, lastActivity, 1)
+
+	result, err := db.db.Exec(query, acc.Address.String(), acc.Type, lastActivity, 1)
 	if err != nil {
 		return fmt.Errorf("Failed to insert/update account: %v", err)
 	}
@@ -350,79 +402,40 @@ func (db *PostgreSQLBridge) AddAccount(acc *types.Account) error {
 	if rowsAffected == 0 {
 		return fmt.Errorf("No rows affected, account not stored")
 	}
-
-	return nil
-}
-
-// func (db *PostgreSQLBridge) AddAccount(acc *types.Account) error {
-
-// 	// Static data for testing
-// 	account := &PostAccountRow{
-// 		Address:    "0x1234567890abcdef1234567890abcdef12345678",           // Static Address
-// 		ContractTx: &types.Transaction{Hash: common.HexToHash("0xabc123")}, // No contract transaction data
-// 		Type:       "ERC20",                                                // Static type
-// 		//LastActivity: time.Now().Unix(),                            // Current Unix timestamp for LastActivity
-// 		TrxCounter: 10, // Static transaction counter value
-// 	}
-
-// 	// Check for nil account
-// 	if acc == nil {
-// 		return fmt.Errorf("cannot add empty account")
-// 	}
-
-// 	// Prepare the contract creation transaction if available
-// 	var conTx *string
-// 	if account.ContractTx != nil {
-// 		cx := account.ContractTx.Hash.String()
-// 		conTx = &cx
-// 	}
-// 	// SQL query to insert the account into PostgreSQL
-// 	query := `
-//   INSERT INTO accounts (address, sc, type, activity, counter)
-//   VALUES ($1, $2, $3, $4, $5)
-//   ON CONFLICT (address) DO NOTHING;`
-
-// 	// Execute the insert query
-// 	_, err := db.db.ExecContext(context.Background(), query,
-// 		account.Address,
-// 		conTx,
-// 		account.Type,
-// 		uint64(account.LastActivity),
-// 		uint64(account.TrxCounter),
-// 	)
-// 	if err != nil {
-// 		db.log.Error("cannot insert new account", err)
-// 		return err
-// 	}
-
-// 	// Log the successful addition
-// 	db.log.Debugf("Added account at %s", account.Address)
-// 	return nil
-// }
-
-// IsAccountKnown checks if an account document already exists in the database.
-func (db *MongoDbBridge) IsAccountKnown(addr *common.Address) (bool, error) {
-	// get the collection for account transactions
-	col := db.client.Database(db.dbName).Collection(coAccounts)
-
-	// try to find the account in the database (it may already exist)
-	sr := col.FindOne(context.Background(), bson.D{
-		{Key: fiAccountPk, Value: addr.String()},
-	}, options.FindOne().SetProjection(bson.D{{Key: fiAccountPk, Value: true}}))
-
-	// error on lookup?
-	if sr.Err() != nil {
-		// may be ErrNoDocuments, which we seek
-		if sr.Err() == mongo.ErrNoDocuments {
-			return false, nil
-		}
-
-		db.log.Error("can not get existing account pk")
-		return false, sr.Err()
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		db.log.Errorf("Transaction commit failed: %v", err)
+		return fmt.Errorf("transaction commit failed: %v", err)
 	}
 
-	return true, nil
+	db.log.Infof("Account %s stored successfully!", acc.Address.String())
+	return nil
+
 }
+
+// // IsAccountKnown checks if an account document already exists in the database.
+// func (db *MongoDbBridge) IsAccountKnown(addr *common.Address) (bool, error) {
+// 	// get the collection for account transactions
+// 	col := db.client.Database(db.dbName).Collection(coAccounts)
+
+// 	// try to find the account in the database (it may already exist)
+// 	sr := col.FindOne(context.Background(), bson.D{
+// 		{Key: fiAccountPk, Value: addr.String()},
+// 	}, options.FindOne().SetProjection(bson.D{{Key: fiAccountPk, Value: true}}))
+
+// 	// error on lookup?
+// 	if sr.Err() != nil {
+// 		// may be ErrNoDocuments, which we seek
+// 		if sr.Err() == mongo.ErrNoDocuments {
+// 			return false, nil
+// 		}
+
+// 		db.log.Error("can not get existing account pk")
+// 		return false, sr.Err()
+// 	}
+
+// 	return true, nil
+// }
 
 // IsAccountKnown checks if an account exists in the PostgreSQL database.
 func (db *PostgreSQLBridge) IsAccountKnown(addr *common.Address) (bool, error) {
@@ -450,10 +463,10 @@ func (db *PostgreSQLBridge) IsAccountKnown(addr *common.Address) (bool, error) {
 	return exists == 1, nil
 }
 
-// AccountCount calculates total number of accounts in the database.
-func (db *MongoDbBridge) AccountCount() (uint64, error) {
-	return db.EstimateCount(db.client.Database(db.dbName).Collection(coAccounts))
-}
+// // AccountCount calculates total number of accounts in the database.
+// func (db *MongoDbBridge) AccountCount() (uint64, error) {
+// 	return db.EstimateCount(db.client.Database(db.dbName).Collection(coAccounts))
+// }
 
 func (db *PostgreSQLBridge) AccountCount() (uint64, error) {
 	var count uint64
@@ -562,84 +575,80 @@ func (db *PostgreSQLBridge) AccountTransactions(addr string, rec *string, cursor
 
 }
 
-// AccountMarkActivity marks the latest account activity in the repository.
-func (db *MongoDbBridge) AccountMarkActivity(addr *common.Address, ts uint64) error {
-	// log what we do
-	db.log.Debugf("account %s activity at %s", addr.String(), time.Unix(int64(ts), 0).String())
+// // AccountMarkActivity marks the latest account activity in the repository.
+// func (db *MongoDbBridge) AccountMarkActivity(addr *common.Address, ts uint64) error {
+// 	// log what we do
+// 	db.log.Debugf("account %s activity at %s", addr.String(), time.Unix(int64(ts), 0).String())
 
-	// get the collection for contracts
-	col := db.client.Database(db.dbName).Collection(coAccounts)
+// 	// get the collection for contracts
+// 	col := db.client.Database(db.dbName).Collection(coAccounts)
 
-	// update the contract details
-	if _, err := col.UpdateOne(context.Background(),
-		bson.D{{Key: fiAccountPk, Value: addr.String()}},
-		bson.D{
-			{Key: "$set", Value: bson.D{{Key: fiAccountLastActivity, Value: ts}}},
-			{Key: "$inc", Value: bson.D{{Key: fiAccountTransactionCounter, Value: 1}}},
-		}); err != nil {
-		// log the issue
-		db.log.Errorf("can not update account %s details; %s", addr.String(), err.Error())
-		return err
-	}
+// 	// update the contract details
+// 	if _, err := col.UpdateOne(context.Background(),
+// 		bson.D{{Key: fiAccountPk, Value: addr.String()}},
+// 		bson.D{
+// 			{Key: "$set", Value: bson.D{{Key: fiAccountLastActivity, Value: ts}}},
+// 			{Key: "$inc", Value: bson.D{{Key: fiAccountTransactionCounter, Value: 1}}},
+// 		}); err != nil {
+// 		// log the issue
+// 		db.log.Errorf("can not update account %s details; %s", addr.String(), err.Error())
+// 		return err
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
 // AccountMarkActivity marks the latest account activity in PostgreSQL.
 func (db *PostgreSQLBridge) AccountMarkActivity(addr *common.Address, ts uint64) error {
-	// Convert the timestamp to time.Time
 	timestamp := time.Unix(int64(ts), 0)
-
-	// Log the activity
 	db.log.Debugf("account %s last_activity at %s", addr.String(), timestamp.String())
 
-	// Prepare the SQL query to update account details
+	// **Ensure the account exists before updating**
 	query := `
-        UPDATE accounts 
-        SET last_activity = $1, counter = counter + 1
-        WHERE address = $2
+        INSERT INTO accounts (address, last_activity, counter)
+        VALUES ($1, $2, 1)
+        ON CONFLICT (address) DO UPDATE 
+        SET last_activity = EXCLUDED.last_activity, 
+            counter = accounts.counter + 1;
     `
 
-	// Execute the query to update the account details
-	_, err := db.db.ExecContext(context.Background(), query, timestamp, addr.String())
+	_, err := db.db.ExecContext(context.Background(), query, addr.String(), timestamp)
 	if err != nil {
-		// Log the issue
 		db.log.Errorf("cannot update account %s details; %s", addr.String(), err.Error())
 		return fmt.Errorf("failed to update account activity: %v", err)
 	}
-
 	return nil
 }
 
-// Erc20TokensList returns a list of known ERC20 tokens ordered by their activity.
-func (db *MongoDbBridge) Erc20TokensList(count int32) ([]common.Address, error) {
-	// make sure the count is positive; use default size if not
-	if count <= 0 {
-		count = defaultTokenListLength
-	}
+// // Erc20TokensList returns a list of known ERC20 tokens ordered by their activity.
+// func (db *MongoDbBridge) Erc20TokensList(count int32) ([]common.Address, error) {
+// 	// make sure the count is positive; use default size if not
+// 	if count <= 0 {
+// 		count = defaultTokenListLength
+// 	}
 
-	// log what we do
-	db.log.Debugf("loading %d most active ERC20 token accounts", count)
+// 	// log what we do
+// 	db.log.Debugf("loading %d most active ERC20 token accounts", count)
 
-	// get the collection for contracts
-	col := db.client.Database(db.dbName).Collection(coAccounts)
+// 	// get the collection for contracts
+// 	col := db.client.Database(db.dbName).Collection(coAccounts)
 
-	// make the filter for ERC20 tokens only and pull them ordered by activity
-	filter := bson.D{{Key: "type", Value: types.AccountTypeERC20Token}}
-	opt := options.Find().SetSort(bson.D{
-		{Key: fiAccountTransactionCounter, Value: -1},
-		{Key: fiAccountLastActivity, Value: -1},
-	}).SetLimit(int64(count))
+// 	// make the filter for ERC20 tokens only and pull them ordered by activity
+// 	filter := bson.D{{Key: "type", Value: types.AccountTypeERC20Token}}
+// 	opt := options.Find().SetSort(bson.D{
+// 		{Key: fiAccountTransactionCounter, Value: -1},
+// 		{Key: fiAccountLastActivity, Value: -1},
+// 	}).SetLimit(int64(count))
 
-	// load the data
-	cursor, err := col.Find(context.Background(), filter, opt)
-	if err != nil {
-		db.log.Errorf("error loading ERC20 tokens list; %s", err.Error())
-		return nil, err
-	}
+// 	// load the data
+// 	cursor, err := col.Find(context.Background(), filter, opt)
+// 	if err != nil {
+// 		db.log.Errorf("error loading ERC20 tokens list; %s", err.Error())
+// 		return nil, err
+// 	}
 
-	return db.loadErcContractsList(cursor)
-}
+// 	return db.loadErcContractsList(cursor)
+// }
 
 // Erc20TokensList returns a list of known ERC20 tokens ordered by their activity.
 func (db *PostgreSQLBridge) Erc20TokensList(count int32) ([]common.Address, error) {
@@ -689,35 +698,35 @@ func (db *PostgreSQLBridge) Erc20TokensList(count int32) ([]common.Address, erro
 	return addresses, nil
 }
 
-// Erc721ContractsList returns a list of known ERC20 tokens ordered by their activity.
-func (db *MongoDbBridge) Erc721ContractsList(count int32) ([]common.Address, error) {
-	// make sure the count is positive; use default size if not
-	if count <= 0 {
-		count = defaultTokenListLength
-	}
+// // Erc721ContractsList returns a list of known ERC20 tokens ordered by their activity.
+// func (db *MongoDbBridge) Erc721ContractsList(count int32) ([]common.Address, error) {
+// 	// make sure the count is positive; use default size if not
+// 	if count <= 0 {
+// 		count = defaultTokenListLength
+// 	}
 
-	// log what we do
-	db.log.Debugf("loading %d most active ERC721 token accounts", count)
+// 	// log what we do
+// 	db.log.Debugf("loading %d most active ERC721 token accounts", count)
 
-	// get the collection for contracts
-	col := db.client.Database(db.dbName).Collection(coAccounts)
+// 	// get the collection for contracts
+// 	col := db.client.Database(db.dbName).Collection(coAccounts)
 
-	// make the filter for ERC20 tokens only and pull them ordered by activity
-	filter := bson.D{{Key: "type", Value: types.AccountTypeERC721Contract}}
-	opt := options.Find().SetSort(bson.D{
-		{Key: fiAccountTransactionCounter, Value: -1},
-		{Key: fiAccountLastActivity, Value: -1},
-	}).SetLimit(int64(count))
+// 	// make the filter for ERC20 tokens only and pull them ordered by activity
+// 	filter := bson.D{{Key: "type", Value: types.AccountTypeERC721Contract}}
+// 	opt := options.Find().SetSort(bson.D{
+// 		{Key: fiAccountTransactionCounter, Value: -1},
+// 		{Key: fiAccountLastActivity, Value: -1},
+// 	}).SetLimit(int64(count))
 
-	// load the data
-	cursor, err := col.Find(context.Background(), filter, opt)
-	if err != nil {
-		db.log.Errorf("error loading ERC721 tokens list; %s", err.Error())
-		return nil, err
-	}
+// 	// load the data
+// 	cursor, err := col.Find(context.Background(), filter, opt)
+// 	if err != nil {
+// 		db.log.Errorf("error loading ERC721 tokens list; %s", err.Error())
+// 		return nil, err
+// 	}
 
-	return db.loadErcContractsList(cursor)
-}
+// 	return db.loadErcContractsList(cursor)
+// }
 
 // Erc721ContractsList returns a list of known ERC721 contracts ordered by their activity.
 func (db *PostgreSQLBridge) Erc721ContractsList(count int32) ([]common.Address, error) {
@@ -767,35 +776,35 @@ func (db *PostgreSQLBridge) Erc721ContractsList(count int32) ([]common.Address, 
 	return addresses, nil
 }
 
-// Erc1155ContractsList returns a list of known ERC1155 contracts ordered by their activity.
-func (db *MongoDbBridge) Erc1155ContractsList(count int32) ([]common.Address, error) {
-	// make sure the count is positive; use default size if not
-	if count <= 0 {
-		count = defaultTokenListLength
-	}
+// // Erc1155ContractsList returns a list of known ERC1155 contracts ordered by their activity.
+// func (db *MongoDbBridge) Erc1155ContractsList(count int32) ([]common.Address, error) {
+// 	// make sure the count is positive; use default size if not
+// 	if count <= 0 {
+// 		count = defaultTokenListLength
+// 	}
 
-	// log what we do
-	db.log.Debugf("loading %d most active ERC1155 token accounts", count)
+// 	// log what we do
+// 	db.log.Debugf("loading %d most active ERC1155 token accounts", count)
 
-	// get the collection for contracts
-	col := db.client.Database(db.dbName).Collection(coAccounts)
+// 	// get the collection for contracts
+// 	col := db.client.Database(db.dbName).Collection(coAccounts)
 
-	// make the filter for ERC20 tokens only and pull them ordered by activity
-	filter := bson.D{{Key: "type", Value: types.AccountTypeERC1155Contract}}
-	opt := options.Find().SetSort(bson.D{
-		{Key: fiAccountTransactionCounter, Value: -1},
-		{Key: fiAccountLastActivity, Value: -1},
-	}).SetLimit(int64(count))
+// 	// make the filter for ERC20 tokens only and pull them ordered by activity
+// 	filter := bson.D{{Key: "type", Value: types.AccountTypeERC1155Contract}}
+// 	opt := options.Find().SetSort(bson.D{
+// 		{Key: fiAccountTransactionCounter, Value: -1},
+// 		{Key: fiAccountLastActivity, Value: -1},
+// 	}).SetLimit(int64(count))
 
-	// load the data
-	cursor, err := col.Find(context.Background(), filter, opt)
-	if err != nil {
-		db.log.Errorf("error loading ERC1155 tokens list; %s", err.Error())
-		return nil, err
-	}
+// 	// load the data
+// 	cursor, err := col.Find(context.Background(), filter, opt)
+// 	if err != nil {
+// 		db.log.Errorf("error loading ERC1155 tokens list; %s", err.Error())
+// 		return nil, err
+// 	}
 
-	return db.loadErcContractsList(cursor)
-}
+// 	return db.loadErcContractsList(cursor)
+// }
 
 // Erc1155ContractsList returns a list of known ERC1155 contracts ordered by their activity.
 func (db *PostgreSQLBridge) Erc1155ContractsList(count int32) ([]common.Address, error) {
@@ -845,26 +854,26 @@ func (db *PostgreSQLBridge) Erc1155ContractsList(count int32) ([]common.Address,
 	return addresses, nil
 }
 
-func (db *MongoDbBridge) loadErcContractsList(cursor *mongo.Cursor) ([]common.Address, error) {
-	// close the cursor as we leave
-	defer db.closeCursor(cursor)
+// func (db *MongoDbBridge) loadErcContractsList(cursor *mongo.Cursor) ([]common.Address, error) {
+// 	// close the cursor as we leave
+// 	defer db.closeCursor(cursor)
 
-	// loop and load
-	list := make([]common.Address, 0)
-	var row AccountRow
-	for cursor.Next(context.Background()) {
-		// try to decode the next row
-		if err := cursor.Decode(&row); err != nil {
-			db.log.Errorf("can not decode ERC contracts list row; %s", err.Error())
-			return nil, err
-		}
+// 	// loop and load
+// 	list := make([]common.Address, 0)
+// 	var row AccountRow
+// 	for cursor.Next(context.Background()) {
+// 		// try to decode the next row
+// 		if err := cursor.Decode(&row); err != nil {
+// 			db.log.Errorf("can not decode ERC contracts list row; %s", err.Error())
+// 			return nil, err
+// 		}
 
-		// decode the value
-		list = append(list, common.HexToAddress(row.Address))
-	}
+// 		// decode the value
+// 		list = append(list, common.HexToAddress(row.Address))
+// 	}
 
-	return list, nil
-}
+// 	return list, nil
+// }
 
 // loadErcContractsList loads a list of ERC contracts from PostgreSQL.
 func (db *PostgreSQLBridge) loadErcContractsList(rows *sql.Rows) ([]common.Address, error) {

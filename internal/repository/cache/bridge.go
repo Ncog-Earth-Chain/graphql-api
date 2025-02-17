@@ -5,6 +5,8 @@ import (
 	"ncogearthchain-api-graphql/internal/config"
 	"ncogearthchain-api-graphql/internal/logger"
 	"ncogearthchain-api-graphql/internal/repository/cache/ring"
+	"ncogearthchain-api-graphql/internal/types"
+	"sync"
 	"time"
 
 	"github.com/allegro/bigcache"
@@ -20,13 +22,23 @@ const BlockRingCacheSize = 75
 
 // MemBridge represents BigCache abstraction layer.
 type MemBridge struct {
-	cache *bigcache.BigCache
-	log   logger.Logger
+	cache    *bigcache.BigCache
+	log      logger.Logger
+	mu       sync.Mutex // Mutex for thread safety
+	accounts map[string]*types.Account
 
 	// ring of the most recent blocks and transactions
 	blkRing *ring.Ring
 	trxRing *ring.Ring
 }
+
+// func (c *MemBridge) Reset() {
+// 	c.mu.Lock()
+// 	defer c.mu.Unlock()
+
+// 	c.accounts = make(map[string]*types.Account) // Clear all cached accounts
+// 	log.Infof("Cache reset successfully")
+// }
 
 // New creates a new BigCache bridge.
 func New(cfg *config.Config, log logger.Logger) (*MemBridge, error) {

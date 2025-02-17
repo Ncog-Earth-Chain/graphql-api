@@ -13,7 +13,6 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
-	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -60,6 +59,10 @@ type PostgreSQLBridge struct {
 	initBurns        *sync.Once
 }
 
+func (db *PostgreSQLBridge) Begin() (*sql.Tx, error) {
+	panic("unimplemented")
+}
+
 func (p *PostgreSQLBridge) QueryRow(query string, args ...interface{}) *sql.Row {
 	return p.db.QueryRow(query, args...)
 }
@@ -72,88 +75,6 @@ const docListCountAggregationTimeout = 500 * time.Millisecond
 // intZero represents an empty big value.
 var intZero = new(big.Int)
 
-// func initializeDB() (*pgxpool.Pool, error) {
-// 	connString := "postgres://postgres:King%23123@localhost:5432/ncog_backend"
-
-// 	// Create a new connection pool
-// 	config, err := pgxpool.ParseConfig(connString)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to parse PostgreSQL config: %v", err)
-// 	}
-
-// 	// Optional: Configure pool settings (e.g., max connections, timeouts)
-// 	config.MaxConns = 10
-// 	config.MinConns = 1
-// 	config.MaxConnLifetime = time.Hour
-
-// 	// Establish the connection pool
-// 	dbPool, err := pgxpool.NewWithConfig(context.Background(), config)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to create PostgreSQL connection pool: %v", err)
-// 	}
-
-// 	// Test the connection
-// 	if err := dbPool.Ping(context.Background()); err != nil {
-// 		return nil, fmt.Errorf("failed to ping PostgreSQL database: %v", err)
-// 	}
-
-// 	log.Println("PostgreSQL database connection established")
-// 	return dbPool, nil
-// }
-
-// // New creates a new Mongo Db connection bridge.
-// func New(cfg *config.Config, log logger.Logger) (*MongoDbBridge, error) {
-// 	// log what we do
-// 	log.Debugf("connecting database at %s/%s", cfg.Db.Url, cfg.Db.DbName)
-
-// 	// open the database connection
-// 	con, err := connectDb(&cfg.Db)
-// 	if err != nil {
-// 		log.Criticalf("can not contact the database; %s", err.Error())
-// 		return nil, err
-// 	}
-
-// 	// log the event
-// 	log.Notice("connecting database at %s/%s", cfg.Db.Url, cfg.Db.DbName)
-// 	log.Notice("database connection established")
-
-// 	// return the bridge
-// 	db := &MongoDbBridge{
-// 		client: con,
-// 		log:    log,
-// 		dbName: cfg.Db.DbName,
-// 	}
-
-// 	// check the state
-// 	db.CheckDatabaseInitState()
-// 	return db, nil
-// }
-
-// func InitializePostgreSQLBridge(cfg *config.Config, log logger.Logger) (*PostgreSQLBridge, error) {
-// 	// Use default DSN if not provided
-
-// 	//dsn := "postgres://postgres:King%23123@localhost:5432/ncgobackend"
-// 	dsn := "postgres://postgres:King%23123@localhost:5432/ncgobackend"
-// 	// Open a connection to the database
-// 	db, err := sql.Open("postgres", dsn)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to open a DB connection: %v", err)
-// 	}
-
-// 	// Test the connection
-// 	if err := db.Ping(); err != nil {
-// 		db.Close()
-// 		return nil, fmt.Errorf("failed to connect to the database: %v", err)
-// 	}
-// 	log.Notice("PgSql database connection established")
-
-// 	return &PostgreSQLBridge{
-// 		db:     db,
-// 		log:    log,
-// 		dbName: "ncgobackend",
-// 	}, nil
-
-// }
 func InitializePostgreSQLBridge(cfg *config.Config, log logger.Logger) (*PostgreSQLBridge, error) {
 	// Build DSN from configuration
 	dsn := "postgres://postgres:King%23123@localhost:5432/ncgobackend"
@@ -228,54 +149,54 @@ func (db *MongoDbBridge) Close() {
 	}
 }
 
-// getAggregateValue extract single aggregate value for a given collection and aggregation pipeline.
-func (db *MongoDbBridge) getAggregateValue(col *mongo.Collection, pipeline *bson.A) (uint64, error) {
-	// work with context
-	ctx := context.Background()
+// // getAggregateValue extract single aggregate value for a given collection and aggregation pipeline.
+// func (db *MongoDbBridge) getAggregateValue(col *mongo.Collection, pipeline *bson.A) (uint64, error) {
+// 	// work with context
+// 	ctx := context.Background()
 
-	// use aggregate pipeline to get the result set, should be just one row
-	res, err := col.Aggregate(ctx, *pipeline)
-	if err != nil {
-		db.log.Errorf("can not get aggregate value; %s", err.Error())
-		return 0, err
-	}
+// 	// use aggregate pipeline to get the result set, should be just one row
+// 	res, err := col.Aggregate(ctx, *pipeline)
+// 	if err != nil {
+// 		db.log.Errorf("can not get aggregate value; %s", err.Error())
+// 		return 0, err
+// 	}
 
-	// don't forget to close the result cursor
-	defer func() {
-		// close the cursor
-		err = res.Close(ctx)
-		if err != nil {
-			db.log.Errorf("closing aggregation cursor failed; %s", err.Error())
-		}
-	}()
+// 	// don't forget to close the result cursor
+// 	defer func() {
+// 		// close the cursor
+// 		err = res.Close(ctx)
+// 		if err != nil {
+// 			db.log.Errorf("closing aggregation cursor failed; %s", err.Error())
+// 		}
+// 	}()
 
-	// get the value
-	if !res.Next(ctx) {
-		db.log.Error("aggregate document not found")
-		return 0, err
-	}
+// 	// get the value
+// 	if !res.Next(ctx) {
+// 		db.log.Error("aggregate document not found")
+// 		return 0, err
+// 	}
 
-	// prep container; we are interested in just one value
-	var row struct {
-		Id    string `bson:"_id"`
-		Value int64  `bson:"value"`
-	}
+// 	// prep container; we are interested in just one value
+// 	var row struct {
+// 		Id    string `bson:"_id"`
+// 		Value int64  `bson:"value"`
+// 	}
 
-	// try to decode the response
-	err = res.Decode(&row)
-	if err != nil {
-		db.log.Errorf("can not parse aggregate value; %s", err.Error())
-		return 0, err
-	}
+// 	// try to decode the response
+// 	err = res.Decode(&row)
+// 	if err != nil {
+// 		db.log.Errorf("can not parse aggregate value; %s", err.Error())
+// 		return 0, err
+// 	}
 
-	// not a valid aggregate value
-	if row.Value < 0 {
-		db.log.Error("aggregate value not found")
-		return 0, fmt.Errorf("item not found")
-	}
+// 	// not a valid aggregate value
+// 	if row.Value < 0 {
+// 		db.log.Error("aggregate value not found")
+// 		return 0, fmt.Errorf("item not found")
+// 	}
 
-	return uint64(row.Value), nil
-}
+// 	return uint64(row.Value), nil
+// }
 
 // getAggregateValue extracts a single aggregate value for a given SQL query in PostgreSQL.
 func (db *PostgreSQLBridge) getAggregateValue(query string, args ...interface{}) (uint64, error) {
@@ -306,18 +227,18 @@ func (db *MongoDbBridge) CheckDatabaseInitState() {
 	// log what we do
 	db.log.Debugf("checking database init state")
 
-	db.collectionNeedInit("accounts", db.AccountCount, &db.initAccounts)
-	db.collectionNeedInit("transactions", db.TransactionsCount, &db.initTransactions)
-	db.collectionNeedInit("contracts", db.ContractCount, &db.initContracts)
-	db.collectionNeedInit("swaps", db.SwapCount, &db.initSwaps)
-	db.collectionNeedInit("delegations", db.DelegationsCount, &db.initDelegations)
-	db.collectionNeedInit("withdrawals", db.WithdrawalsCount, &db.initWithdrawals)
-	db.collectionNeedInit("rewards", db.RewardsCount, &db.initRewards)
-	db.collectionNeedInit("erc20 transactions", db.ErcTransactionCount, &db.initErc20Trx)
-	db.collectionNeedInit("fmint transactions", db.FMintTransactionCount, &db.initFMintTrx)
-	db.collectionNeedInit("epochs", db.EpochsCount, &db.initEpochs)
-	db.collectionNeedInit("gas price periods", db.GasPricePeriodCount, &db.initGasPrice)
-	db.collectionNeedInit("burned fees", db.BurnCount, &db.initBurns)
+	//db.collectionNeedInit("accounts", db.AccountCount, &db.initAccounts)
+	//db.collectionNeedInit("transactions", db.TransactionsCount, &db.initTransactions)
+	//db.collectionNeedInit("contracts", db.ContractCount, &db.initContracts)
+	//db.collectionNeedInit("swaps", db.SwapCount, &db.initSwaps)
+	//db.collectionNeedInit("delegations", db.DelegationsCount, &db.initDelegations)
+	//db.collectionNeedInit("withdrawals", db.WithdrawalsCount, &db.initWithdrawals)
+	//db.collectionNeedInit("rewards", db.RewardsCount, &db.initRewards)
+	//db.collectionNeedInit("erc20 transactions", db.ErcTransactionCount, &db.initErc20Trx)
+	//db.collectionNeedInit("fmint transactions", db.FMintTransactionCount, &db.initFMintTrx)
+	//db.collectionNeedInit("epochs", db.EpochsCount, &db.initEpochs)
+	//db.collectionNeedInit("gas price periods", db.GasPricePeriodCount, &db.initGasPrice)
+	//db.collectionNeedInit("burned fees", db.BurnCount, &db.initBurns)
 }
 
 // CheckDatabaseInitState verifies if database tables have been
@@ -357,7 +278,7 @@ func (db *PostgreSQLBridge) CheckDatabaseInitState() {
 		"transactions": `
             CREATE TABLE transactions (
                 id SERIAL PRIMARY KEY,
-                hash TEXT NOT NULL, -- To store the transaction hash
+                hash TEXT NOT NULL UNIQUE, -- Ensure each transaction is unique
                 from_account TEXT NOT NULL, -- Account initiating the transaction
                 to_account TEXT, -- Account receiving the transaction (nullable if not always present)
                 value NUMERIC NOT NULL, -- Transaction value
@@ -518,26 +439,26 @@ func (db *PostgreSQLBridge) ensureTableExists(tableName, createTableQuery string
 	return nil
 }
 
-// checkAccountCollectionState checks the Accounts' collection state.
-func (db *MongoDbBridge) collectionNeedInit(name string, counter func() (uint64, error), init **sync.Once) {
-	// use the counter to get the collection size
-	count, err := counter()
-	if err != nil {
-		db.log.Errorf("can not check %s count; %s", name, err.Error())
-		return
-	}
+// // checkAccountCollectionState checks the Accounts' collection state.
+// func (db *MongoDbBridge) collectionNeedInit(name string, counter func() (uint64, error), init **sync.Once) {
+// 	// use the counter to get the collection size
+// 	count, err := counter()
+// 	if err != nil {
+// 		db.log.Errorf("can not check %s count; %s", name, err.Error())
+// 		return
+// 	}
 
-	// collection not empty,
-	if 0 != count {
-		db.log.Debugf("found %d %s", count, name)
-		return
-	}
+// 	// collection not empty,
+// 	if 0 != count {
+// 		db.log.Debugf("found %d %s", count, name)
+// 		return
+// 	}
 
-	// collection init needed, create the init control
-	db.log.Noticef("%s collection empty", name)
-	var once sync.Once
-	*init = &once
-}
+// 	// collection init needed, create the init control
+// 	db.log.Noticef("%s collection empty", name)
+// 	var once sync.Once
+// 	*init = &once
+// }
 
 func (db *PostgreSQLBridge) tableNeedInit(name string, createTableQuery string, counter func() (int64, error), init **sync.Once) {
 	// Check if the table exists
@@ -565,21 +486,21 @@ func (db *PostgreSQLBridge) tableNeedInit(name string, createTableQuery string, 
 	db.log.Noticef("table %s created successfully", name)
 }
 
-// CountFiltered calculates total number of documents in the given collection for the given filter.
-func (db *MongoDbBridge) CountFiltered(col *mongo.Collection, filter *bson.D) (uint64, error) {
-	// make sure some filter is used
-	if nil == filter {
-		filter = &bson.D{}
-	}
+// // CountFiltered calculates total number of documents in the given collection for the given filter.
+// func (db *MongoDbBridge) CountFiltered(col *mongo.Collection, filter *bson.D) (uint64, error) {
+// 	// make sure some filter is used
+// 	if nil == filter {
+// 		filter = &bson.D{}
+// 	}
 
-	// do the counting
-	val, err := col.CountDocuments(context.Background(), *filter)
-	if err != nil {
-		db.log.Errorf("can not count documents in rewards collection; %s", err.Error())
-		return 0, err
-	}
-	return uint64(val), nil
-}
+// 	// do the counting
+// 	val, err := col.CountDocuments(context.Background(), *filter)
+// 	if err != nil {
+// 		db.log.Errorf("can not count documents in rewards collection; %s", err.Error())
+// 		return 0, err
+// 	}
+// 	return uint64(val), nil
+// }
 
 // CountFiltered calculates the total number of records in the given table for the given filter.
 func (db *PostgreSQLBridge) CountFiltered(tableName string, filter map[string]interface{}) (uint64, error) {
@@ -619,16 +540,16 @@ func (db *PostgreSQLBridge) CountFiltered(tableName string, filter map[string]in
 	return uint64(count), nil
 }
 
-// EstimateCount calculates an estimated number of documents in the given collection.
-func (db *MongoDbBridge) EstimateCount(col *mongo.Collection) (uint64, error) {
-	// do the counting
-	val, err := col.EstimatedDocumentCount(context.Background())
-	if err != nil {
-		db.log.Errorf("can not count documents in rewards collection; %s", err.Error())
-		return 0, err
-	}
-	return uint64(val), nil
-}
+// // EstimateCount calculates an estimated number of documents in the given collection.
+// func (db *MongoDbBridge) EstimateCount(col *mongo.Collection) (uint64, error) {
+// 	// do the counting
+// 	val, err := col.EstimatedDocumentCount(context.Background())
+// 	if err != nil {
+// 		db.log.Errorf("can not count documents in rewards collection; %s", err.Error())
+// 		return 0, err
+// 	}
+// 	return uint64(val), nil
+// }
 
 // EstimateCount calculates an estimated number of records in the given table.
 func (db *PostgreSQLBridge) EstimateCount(tableName string) (uint64, error) {
@@ -647,26 +568,26 @@ func (db *PostgreSQLBridge) EstimateCount(tableName string) (uint64, error) {
 	return uint64(estimatedCount), nil
 }
 
-// listDocumentsCount tries to calculate precise documents count and if it's not counted in limited
-// time, use general estimation to speed up the loader.
-func (db *MongoDbBridge) listDocumentsCount(col *mongo.Collection, filter *bson.D) (int64, error) {
-	// try to count the proper way
-	total, err := col.CountDocuments(context.Background(), filter, options.Count().SetMaxTime(docListCountAggregationTimeout))
-	if err == nil {
-		return total, nil
-	}
+// // listDocumentsCount tries to calculate precise documents count and if it's not counted in limited
+// // time, use general estimation to speed up the loader.
+// func (db *MongoDbBridge) listDocumentsCount(col *mongo.Collection, filter *bson.D) (int64, error) {
+// 	// try to count the proper way
+// 	total, err := col.CountDocuments(context.Background(), filter, options.Count().SetMaxTime(docListCountAggregationTimeout))
+// 	if err == nil {
+// 		return total, nil
+// 	}
 
-	// it failed in the limited time we gave it
-	db.log.Errorf("can not count documents properly; %s", err.Error())
+// 	// it failed in the limited time we gave it
+// 	db.log.Errorf("can not count documents properly; %s", err.Error())
 
-	// just estimate the whole collection size
-	total, err = col.EstimatedDocumentCount(context.Background())
-	if err != nil {
-		db.log.Errorf("can not count documents")
-		return 0, err
-	}
-	return total, nil
-}
+// 	// just estimate the whole collection size
+// 	total, err = col.EstimatedDocumentCount(context.Background())
+// 	if err != nil {
+// 		db.log.Errorf("can not count documents")
+// 		return 0, err
+// 	}
+// 	return total, nil
+// }
 
 // listDocumentsCount tries to calculate precise records count and if it's not counted in limited
 // time, use general estimation to speed up the loader.

@@ -95,6 +95,45 @@ func (p *proxy) TokenTransactions(tokenType string, token *common.Address, token
 	return p.db.Erc20Transactions(cursor, count, &fi)
 }
 
+// func (p *proxy) TokenTransactions(
+// 	tokenType string, token *common.Address, tokenId *big.Int, acc *common.Address, txType []int32, cursor *string, count int32,
+// ) (*types.TokenTransactionList, error) {
+// 	// Initialize the filter for ERC20 transactions
+// 	filter := &types.TokenTransactionList{}
+
+// 	// Token type (ERC20, ERC721, ERC1155...)
+// 	filter.TokenType = tokenType
+
+// 	// Filter specific token
+// 	if token != nil {
+// 		filter.Token = token.String()
+// 	}
+
+// 	// Filter specific token ID
+// 	if tokenId != nil {
+// 		filter.TokenID = (*hexutil.Big)(tokenId).String()
+// 	}
+
+// 	// Common address (sender or recipient)
+// 	if acc != nil {
+// 		filter.Sender = acc.String()
+// 		filter.Recipient = acc.String()
+// 	}
+
+// 	// Filter transaction types (for ERC20)
+// 	if txType != nil && len(txType) > 0 {
+// 		filter.TxType = txType
+// 	}
+
+// 	// Call the `Erc20Transactions` function to fetch the list of ERC20 transactions
+// 	if tokenType == "ERC20" {
+// 		return p.db.Erc20Transactions(cursor, count, filter)
+// 	}
+
+// 	// If tokenType is not ERC20, return an error or another appropriate fallback
+// 	return nil, fmt.Errorf("unsupported token type: %s", tokenType)
+// }
+
 // Erc20Assets provides a list of known assets for the given owner.
 func (p *proxy) Erc20Assets(owner common.Address, count int32) ([]common.Address, error) {
 	return p.pdDB.Erc20Assets(owner, count)

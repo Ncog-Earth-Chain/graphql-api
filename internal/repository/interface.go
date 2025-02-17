@@ -9,6 +9,7 @@ results. BigCache for in-memory object storage to speed up loading of frequently
 package repository
 
 import (
+	"database/sql"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/config"
 	"ncogearthchain-api-graphql/internal/repository/rpc/contracts"
@@ -118,10 +119,10 @@ type Repository interface {
 	//ContractPost(*common.Address) (*types.Contract, error)
 
 	// Contracts returns list of smart contracts at Ncogearthchain blockchain.
-	//Contracts(bool, *string, int32) (*types.ContractList, error)
+	Contracts(bool, *string, int32) (*types.ContractList, error)
 
 	// Contracts returns list of smart contracts at Ncogearthchain blockchain.
-	ContractsPost(bool, *string, int32) (*types.ContractList, error)
+	//ContractsPost(bool, *string, int32) (*types.ContractList, error)
 
 	// ValidateContract tries to validate contract byte code using
 	// provided source code. If successful, the contract information
@@ -254,9 +255,6 @@ type Repository interface {
 	// StoreDelegation stores a delegation in the persistent repository.
 	StoreDelegation(*types.Delegation) error
 
-	// StoreDelegationPostgres stores a delegation in the persistent repository.
-	StoreDelegationPostgres(*types.Delegation) error
-
 	// UpdateDelegationBalance updates active balance of the given delegation.
 	UpdateDelegationBalance(*common.Address, *hexutil.Big, func(*big.Int) error) error
 
@@ -303,14 +301,15 @@ type Repository interface {
 	StoreWithdrawRequest(*types.WithdrawRequest) error
 
 	// UpdateWithdrawRequest stores the updated withdraw request in persistent storage.
-	UpdateWithdrawRequest(*types.WithdrawRequest) error
+	// UpdateWithdrawRequest(*types.WithdrawRequest) error
+	UpdateWithdrawRequest(*sql.Tx, *types.WithdrawRequest) error
 
 	// WithdrawRequest extracts details of a withdraw request specified by the delegator, validator and request ID.
 	WithdrawRequest(*common.Address, *hexutil.Big, *hexutil.Big) (*types.WithdrawRequest, error)
 
 	// WithdrawRequests extracts a list of withdraw requests for the given address and validator.
-	WithdrawRequests(*common.Address, *hexutil.Big, *string, int32) (*types.WithdrawRequestList, error)
-
+	//WithdrawRequests(*common.Address, *hexutil.Big, *string, int32) (*types.WithdrawRequestList, error)
+	WithdrawRequests(*common.Address, *hexutil.Big, *string, int32) (*types.PostWithdrawRequestList, error)
 	// WithdrawRequestsPendingTotal is the total value of all pending withdrawal requests
 	// for the given delegator and target staker ID.
 	WithdrawRequestsPendingTotal(*common.Address, *hexutil.Big) (*big.Int, error)
@@ -319,7 +318,7 @@ type Repository interface {
 	StoreRewardClaim(*types.RewardClaim) error
 
 	// StoreRewardClaim stores reward claim record in the persistent repository.
-	StoreRewardClaimPost(*types.RewardClaim) error
+	//StoreRewardClaimPost(*types.RewardClaim) error
 
 	// RewardsClaimed returns the sum of all the claimed rewards
 	// for the given delegator address and validator ID.
@@ -404,7 +403,7 @@ type Repository interface {
 	AddFMintTransaction(*types.FMintTransaction) error
 
 	// AddFMintTransaction adds the specified fMint transaction to persistent storage.
-	AddFMintTransactionPost(*types.FMintTransaction) error
+	//AddFMintTransactionPost(*types.FMintTransaction) error
 
 	// UniswapPairs returns list of all token pairs managed by Uniswap core.
 	UniswapPairs() ([]common.Address, error)
@@ -493,7 +492,7 @@ type Repository interface {
 	Erc20TokensList(int32) ([]common.Address, error)
 
 	// Erc20TokensList returns a list of known ERC20 tokens ordered by their activity.
-	Erc20TokensListPost(int32) ([]common.Address, error)
+	//Erc20TokensListPost(int32) ([]common.Address, error)
 
 	// Erc20Assets provides list of ERC20 tokens involved with the given owner.
 	Erc20Assets(common.Address, int32) ([]common.Address, error)

@@ -111,7 +111,7 @@ func (p *proxy) Erc721IsApprovedForAll(token *common.Address, owner *common.Addr
 
 // Erc721ContractsList returns a list of known ERC721 tokens ordered by their activity.
 func (p *proxy) Erc721ContractsList(count int32) ([]common.Address, error) {
-	return p.db.Erc721ContractsList(count)
+	return p.pdDB.Erc721ContractsList(count)
 }
 
 // Erc721ContractsList returns a list of known ERC721 tokens ordered by their activity.

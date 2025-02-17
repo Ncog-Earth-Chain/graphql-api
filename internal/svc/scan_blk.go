@@ -96,20 +96,33 @@ func (bls *blkScanner) close() {
 }
 
 // boundaries provides the block scanner initial range.
+// boundaries provides the block scanner initial range.
 func (bls *blkScanner) boundaries() (uint64, error) {
-	// get the newest known transaction
+	// Get the newest known transaction block
 	lnb, err := repo.LastKnownBlock()
 	if err != nil {
-		log.Critical("can not scan blockchain; %s", err.Error())
-		return 0, err
+		// If the error is due to an empty database, start at the latest blockchain block
+		log.Critical("Can not scan blockchain; %s", err.Error())
+
+		// Fetch the latest blockchain height instead of always starting at 1
+		bh, bhErr := repo.BlockHeight()
+		if bhErr != nil {
+			log.Warning("Unable to determine latest block height, defaulting to block #1")
+			return 1, nil
+		}
+
+		latestBlock := bh.ToInt().Uint64()
+		log.Warningf("No transactions found in database. Starting from latest block #%d", latestBlock)
+		return latestBlock, nil
 	}
 
-	// apply re-scan
-	// Force a rescan of the last 10 blocks (adjust as needed)
-	if lnb > 10 {
-		log.Infof("Forcing re-scan from block #%d", lnb-10)
-		lnb = lnb - 10
+	// Apply re-scan logic
+	const reScanDepth = 10 // Adjust depth if needed
+	if lnb > reScanDepth {
+		log.Infof("Forcing re-scan from block #%d", lnb-reScanDepth)
+		lnb -= reScanDepth
 	}
+
 	return lnb, nil
 }
 

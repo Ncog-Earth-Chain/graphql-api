@@ -35,7 +35,6 @@ func handleSfcRewardClaim(lr *types.LogRecord, addr common.Address, valID *hexut
 	}
 }
 
-
 // handleSfcCommonRewardClaim handles the common reward claim on SFC contract.
 func handleSfcCommonRewardClaim(lr *types.LogRecord, isRestake bool) {
 	// sanity check for data (3x uint256 = 3x32 bytes = 96 bytes)

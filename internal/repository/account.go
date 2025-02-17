@@ -54,49 +54,62 @@ func (p *proxy) Account(addr *common.Address) (acc *types.Account, err error) {
 
 // getAccount builds the account representation after validating it against Forest node.
 func (p *proxy) getAccount(addr *common.Address) (*types.Account, error) {
-	// any address given?
 	if addr == nil {
 		p.log.Error("no address given")
 		return nil, fmt.Errorf("no address given")
 	}
 
-	// try to get the account from database first
-	acc, err := p.db.Account(addr)
+	// Try fetching from database first
+	acc, err := p.pdDB.Account(addr)
 	if err != nil {
 		p.log.Errorf("can not get the account %s; %s", addr.String(), err.Error())
 		return nil, err
 	}
 
-	// found the account in database?
+	// If not found in DB, fetch from blockchain
 	if acc == nil {
-		// log an unknown address
-		p.log.Debugf("unknown address %s detected", addr.String())
+		p.log.Debugf("Fetching account %s from blockchain", addr.String())
 
-		// at least we know the account existed
-		acc = &types.Account{Address: *addr, Type: types.AccountTypeWallet}
+		balance, err := p.rpc.AccountBalance(addr)
+		if err != nil {
+			p.log.Errorf("Failed to fetch balance for %s: %s", addr.String(), err.Error())
+			return nil, err
+		}
 
-		// check if this is a smart contract account; we log the error on the call
-		acc.ContractTx, _ = p.db.ContractTransaction(addr)
+		nonce, err := p.rpc.AccountNonce(addr)
+		if err != nil {
+			p.log.Errorf("Failed to fetch nonce for %s: %s", addr.String(), err.Error())
+			return nil, err
+		}
+
+		acc = &types.Account{
+			Address: *addr,
+			Type:    types.AccountTypeWallet,
+			Balance: balance,
+			Nonce:   nonce,
+		}
+
+		// Store in DB
+		err = p.pdDB.AddAccount(acc)
+		if err != nil {
+			p.log.Errorf("Failed to store account %s in DB: %s", addr.String(), err.Error())
+		}
 	}
 
-	// also keep a copy at the in-memory cache
+	// Add to cache
 	if err = p.cache.PushAccount(acc); err != nil {
-		p.log.Warningf("can not keep account [%s] information in memory; %s", addr.Hex(), err.Error())
+		p.log.Warningf("Failed to cache account %s: %s", addr.Hex(), err.Error())
 	}
+
 	return acc, nil
 }
 
 func (p *proxy) getAccountsFromBlockchain() ([]common.Address, error) {
-	p.log.Infof("Fetching accounts from blockchain via RPC")
-	// Check if RPC is correctly set up
+
 	if p.rpc.Rpc == nil {
 		p.log.Error("RPC client is nil")
 		return nil, fmt.Errorf("RPC client is nil")
 	}
-
-	// Log the request being sent
-	request := `{"jsonrpc":"2.0","method":"nec_accounts","params":[],"id":1}`
-	p.log.Infof("Sending RPC request: %s", request)
 
 	var accounts []string
 	err := p.rpc.Rpc.CallContext(context.Background(), &accounts, "nec_accounts")
@@ -105,13 +118,15 @@ func (p *proxy) getAccountsFromBlockchain() ([]common.Address, error) {
 		return nil, err
 	}
 
-	p.log.Infof("Fetched accounts from blockchain: %v", accounts)
+	// Log all blockchain accounts fetched
+	p.log.Infof("Fetched %d accounts from blockchain: %v", len(accounts), accounts)
 
 	var result []common.Address
 	for _, acc := range accounts {
 		address := common.HexToAddress(acc)
 		result = append(result, address)
 	}
+
 	return result, nil
 }
 
@@ -258,31 +273,7 @@ func (p *proxy) AccountIsKnown(addr *common.Address) bool {
 	return known
 }
 
-// AccountIsKnown checks if the account of the given address is known to the API server.
-// func (p *proxy) AccountIsKnownPost(addr *common.Address) bool {
-// 	// try cache first
-// 	stat := p.cache.CheckAccountKnown(addr)
-// 	if stat != nil {
-// 		return *stat
-// 	}
-
-// 	// check if the database knows the address
-// 	known, err := p.pdDB.IsAccountKnown(addr)
-// 	if err != nil {
-// 		p.log.Errorf("can not check account %s existence; %s", addr.String(), err.Error())
-// 		return false
-// 	}
-
-// 	// if the account is known already, mark it in cache for faster resolving
-// 	if known {
-// 		p.cache.PushAccountKnown(addr)
-// 	}
-// 	return known
-// }
-
 func (p *proxy) StoreAccount(acc *types.Account) error {
-	p.log.Infof("Fetching accounts from blockchain to store in DB")
-
 	// Fetch accounts from blockchain
 	blockchainAccounts, err := p.getAccountsFromBlockchain()
 	if err != nil {
@@ -333,9 +324,3 @@ func (p *proxy) StoreAccount(acc *types.Account) error {
 func (p *proxy) AccountMarkActivity(addr *common.Address, timestamp uint64) error {
 	return p.pdDB.AccountMarkActivity(addr, timestamp)
 }
-
-// // AccountMarkActivity marks the latest account activity in the repository.
-// func (p *proxy) AccountMarkActivityPost(addr *common.Address, ts uint64) error {
-// 	// Call the PostgreSQL bridge to mark the account activity
-// 	return p.pdDB.AccountMarkActivity(addr, ts)
-// }

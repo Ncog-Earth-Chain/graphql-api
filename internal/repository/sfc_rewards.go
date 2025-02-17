@@ -15,45 +15,44 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 // StoreRewardClaim stores reward claim record in the persistent repository.
-func (p *proxy) StoreRewardClaim(rc *types.RewardClaim) error {
-	return p.db.AddRewardClaim(rc)
-}
+// func (p *proxy) StoreRewardClaim(rc *types.RewardClaim) error {
+// 	return p.db.AddRewardClaim(rc)
+// }
 
 // StoreRewardClaim stores reward claim record in the persistent repository.
-func (p *proxy) StoreRewardClaimPost(rc *types.RewardClaim) error {
+func (p *proxy) StoreRewardClaim(rc *types.RewardClaim) error {
 	return p.pdDB.AddRewardClaim(rc)
 }
 
 // RewardClaims provides a list of reward claims for the given delegation and/or filter.
+// func (p *proxy) RewardClaims(adr *common.Address, valID *big.Int, cursor *string, count int32) (*types.RewardClaimsList, error) {
+// 	// prep the filter
+// 	fi := bson.D{}
+
+// 	// add delegator address to the filter
+// 	if adr != nil {
+// 		fi = append(fi, bson.E{
+// 			Key:   types.FiRewardClaimAddress,
+// 			Value: adr.String(),
+// 		})
+// 	}
+
+// 	// add validator ID to the filter
+// 	if valID != nil {
+// 		fi = append(fi, bson.E{
+// 			Key:   types.FiRewardClaimToValidator,
+// 			Value: (*hexutil.Big)(valID).String(),
+// 		})
+// 	}
+// 	return p.db.RewardClaims(cursor, count, &fi)
+// }
+
+// RewardClaimsPostgres provides a list of reward claims for the given delegation and/or filter.
+// RewardClaimsPostgres provides a list of reward claims for the given delegation and/or filter.
 func (p *proxy) RewardClaims(adr *common.Address, valID *big.Int, cursor *string, count int32) (*types.RewardClaimsList, error) {
-	// prep the filter
-	fi := bson.D{}
-
-	// add delegator address to the filter
-	if adr != nil {
-		fi = append(fi, bson.E{
-			Key:   types.FiRewardClaimAddress,
-			Value: adr.String(),
-		})
-	}
-
-	// add validator ID to the filter
-	if valID != nil {
-		fi = append(fi, bson.E{
-			Key:   types.FiRewardClaimToValidator,
-			Value: (*hexutil.Big)(valID).String(),
-		})
-	}
-	return p.db.RewardClaims(cursor, count, &fi)
-}
-
-// RewardClaimsPostgres provides a list of reward claims for the given delegation and/or filter.
-// RewardClaimsPostgres provides a list of reward claims for the given delegation and/or filter.
-func (p *proxy) RewardClaimsPostgres(adr *common.Address, valID *big.Int, cursor *string, count int32) (*types.RewardClaimsList, error) {
 	// Prep the filter
 	filter := ""
 
@@ -98,46 +97,46 @@ func (p *proxy) RewardClaimsPostgres(adr *common.Address, valID *big.Int, cursor
 }
 
 // RewardsClaimed returns sum of all claimed rewards for the given delegator address and validator ID.
-func (p *proxy) RewardsClaimed(adr *common.Address, valId *big.Int, since *int64, until *int64) (*big.Int, error) {
-	// prep the filter
-	fi := bson.D{}
+// func (p *proxy) RewardsClaimed(adr *common.Address, valId *big.Int, since *int64, until *int64) (*big.Int, error) {
+// 	// prep the filter
+// 	fi := bson.D{}
 
-	// filter by delegator address
-	if adr != nil {
-		fi = append(fi, bson.E{
-			Key:   types.FiRewardClaimAddress,
-			Value: adr.String(),
-		})
-	}
+// 	// filter by delegator address
+// 	if adr != nil {
+// 		fi = append(fi, bson.E{
+// 			Key:   types.FiRewardClaimAddress,
+// 			Value: adr.String(),
+// 		})
+// 	}
 
-	// filter by validator ID
-	if valId != nil {
-		fi = append(fi, bson.E{
-			Key:   types.FiRewardClaimToValidator,
-			Value: (*hexutil.Big)(valId).String(),
-		})
-	}
+// 	// filter by validator ID
+// 	if valId != nil {
+// 		fi = append(fi, bson.E{
+// 			Key:   types.FiRewardClaimToValidator,
+// 			Value: (*hexutil.Big)(valId).String(),
+// 		})
+// 	}
 
-	// starting time stamp provided
-	if since != nil {
-		fi = append(fi, bson.E{
-			Key:   types.FiRewardClaimedTimeStamp,
-			Value: bson.D{{Key: "$gte", Value: time.Unix(*since, 0)}},
-		})
-	}
+// 	// starting time stamp provided
+// 	if since != nil {
+// 		fi = append(fi, bson.E{
+// 			Key:   types.FiRewardClaimedTimeStamp,
+// 			Value: bson.D{{Key: "$gte", Value: time.Unix(*since, 0)}},
+// 		})
+// 	}
 
-	// ending time stamp provided
-	if until != nil {
-		fi = append(fi, bson.E{
-			Key:   types.FiRewardClaimedTimeStamp,
-			Value: bson.D{{Key: "$lte", Value: time.Unix(*until, 0)}},
-		})
-	}
-	return p.db.RewardsSumValue(&fi)
-}
+// 	// ending time stamp provided
+// 	if until != nil {
+// 		fi = append(fi, bson.E{
+// 			Key:   types.FiRewardClaimedTimeStamp,
+// 			Value: bson.D{{Key: "$lte", Value: time.Unix(*until, 0)}},
+// 		})
+// 	}
+// 	return p.db.RewardsSumValue(&fi)
+// }
 
 // RewardsClaimed returns sum of all claimed rewards for the given delegator address and validator ID.
-func (p *proxy) RewardsClaimedPost(adr *common.Address, valId *big.Int, since *int64, until *int64) (*big.Int, error) {
+func (p *proxy) RewardsClaimed(adr *common.Address, valId *big.Int, since *int64, until *int64) (*big.Int, error) {
 	// Prep the filter and arguments for the PostgreSQL query
 	filter := ""
 	args := []interface{}{}

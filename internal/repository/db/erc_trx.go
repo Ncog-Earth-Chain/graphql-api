@@ -175,9 +175,9 @@ func (db *PostgreSQLBridge) isErcTransactionKnown(trx *types.TokenTransaction) b
 
 // ErcTransactionCountFiltered calculates total number of ERC20 transactions
 // in the database for the given filter.
-func (db *MongoDbBridge) ErcTransactionCountFiltered(filter *bson.D) (uint64, error) {
-	return db.CountFiltered(db.client.Database(db.dbName).Collection(colErcTransactions), filter)
-}
+// func (db *MongoDbBridge) ErcTransactionCountFiltered(filter *bson.D) (uint64, error) {
+// 	return db.CountFiltered(db.client.Database(db.dbName).Collection(colErcTransactions), filter)
+// }
 
 // ErcTransactionCountFiltered calculates the total number of ERC20 transactions
 // in the database for the given filter.
@@ -207,10 +207,10 @@ func (db *PostgreSQLBridge) ErcTransactionCountFiltered(filter map[string]interf
 	return count, nil
 }
 
-// ErcTransactionCount calculates total number of ERC20 transactions in the database.
-func (db *MongoDbBridge) ErcTransactionCount() (uint64, error) {
-	return db.EstimateCount(db.client.Database(db.dbName).Collection(colErcTransactions))
-}
+// // ErcTransactionCount calculates total number of ERC20 transactions in the database.
+// func (db *MongoDbBridge) ErcTransactionCount() (uint64, error) {
+// 	return db.EstimateCount(db.client.Database(db.dbName).Collection(colErcTransactions))
+// }
 
 // ErcTransactionCount calculates the total number of ERC20 transactions in the database.
 func (db *PostgreSQLBridge) ErcTransactionCount() (int64, error) {
@@ -804,7 +804,7 @@ func (db *PostgreSQLBridge) TokenTransactionsByCall(trxHash *common.Hash) ([]*ty
 	query := `
 		SELECT "token","amount" 
 		FROM "erc20_transactions"
-		WHERE "" = $1
+		WHERE "transaction_hash" = $1
 		ORDER BY "ordinal" DESC
 	`
 

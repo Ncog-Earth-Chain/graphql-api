@@ -26,10 +26,9 @@ var ErrTransactionNotFound = errors.New("requested transaction can not be found 
 
 // StoreTransaction notifies a new incoming transaction from blockchain to the repository.
 // func (p *proxy) StoreTransaction(block *types.Block, trx *types.Transaction) error {
-// 	return p.pdDB.AddTransaction(block, trx)
+// 	return p.db.AddTransaction(block, trx)
 // }
 
-// StoreTransaction stores a transaction to the database.
 // StoreTransaction stores a transaction to the database.
 func (p *proxy) StoreTransaction(block *types.Block, trx *types.Transaction) error {
 	p.log.Infof("Fetching pending transactions from blockchain to store in DB")

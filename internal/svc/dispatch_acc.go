@@ -47,7 +47,6 @@ func (acd *accDispatcher) run() {
 }
 
 // execute runs the main account requests monitor and dispatcher
-// loop in a separate thread.
 func (acd *accDispatcher) execute() {
 	// don't forget to sign off after we are done
 	log.Debug("execute function is running")
@@ -121,6 +120,7 @@ func (acd *accDispatcher) process(acc *eventAcc) error {
 
 	// check if the account is new; if we already know it, we are done
 	if repo.AccountIsKnown(acc.addr) {
+		log.Debugf("Skipping account %s, already exists in DB", acc.addr.String())
 		return repo.AccountMarkActivity(acc.addr, uint64(acc.blk.TimeStamp))
 	}
 

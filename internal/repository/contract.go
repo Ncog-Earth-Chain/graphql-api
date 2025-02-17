@@ -75,7 +75,7 @@ func (p *proxy) Contract(addr *common.Address) (*types.Contract, error) {
 // }
 
 // Contracts returns list of smart contracts at Ncogearthchain blockchain.
-func (p *proxy) ContractsPost(validatedOnly bool, cursor *string, count int32) (*types.ContractList, error) {
+func (p *proxy) Contracts(validatedOnly bool, cursor *string, count int32) (*types.ContractList, error) {
 	// go to the database for the list of contracts searched
 	return p.pdDB.Contracts(validatedOnly, cursor, count)
 }

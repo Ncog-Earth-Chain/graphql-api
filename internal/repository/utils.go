@@ -56,13 +56,13 @@ func (p *proxy) GasPriceExtended() (*types.GasPrice, error) {
 }
 
 // GasPriceTicks provides a list of gas price ticks for the given time period.
-func (p *proxy) GasPriceTicks(from *time.Time, to *time.Time) ([]types.GasPricePeriod, error) {
-	return p.db.GasPriceTicks(from, to)
-}
+// func (p *proxy) GasPriceTicks(from *time.Time, to *time.Time) ([]types.GasPricePeriod, error) {
+// 	return p.db.GasPriceTicks(from, to)
+// }
 
 // GasPriceTicks provides a list of gas price ticks for the given time period.
-func (p *proxy) GasPriceTicksPost(from *time.Time, to *time.Time) ([]types.GasPricePeriod, error) {
-	return p.db.GasPriceTicks(from, to)
+func (p *proxy) GasPriceTicks(from *time.Time, to *time.Time) ([]types.GasPricePeriod, error) {
+	return p.pdDB.GasPriceTicks(from, to)
 }
 
 // GasEstimate calculates the estimated amount of Gas required to perform

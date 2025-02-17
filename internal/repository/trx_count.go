@@ -50,8 +50,3 @@ func (p *proxy) UpdateTrxCountEstimate(val uint64) {
 func (p *proxy) TransactionsCount() (uint64, error) {
 	return p.pdDB.TransactionsCount()
 }
-
-// TransactionsCount returns total number of transactions in the block chain.
-// func (p *proxy) TransactionsCountPost() (int64, error) {
-// 	return p.pdDB.TransactionsCount()
-// }

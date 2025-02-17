@@ -16,61 +16,90 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"go.mongodb.org/mongo-driver/bson"
 )
+
+// // StoreWithdrawRequest stores the given withdraw request in persistent storage.
+// func (p *proxy) StoreWithdrawRequest(wr *types.WithdrawRequest) error {
+// 	return p.db.AddWithdrawal(wr)
+// }
 
 // StoreWithdrawRequest stores the given withdraw request in persistent storage.
 func (p *proxy) StoreWithdrawRequest(wr *types.WithdrawRequest) error {
-	return p.db.AddWithdrawal(wr)
-}
-
-// StoreWithdrawRequest stores the given withdraw request in persistent storage.
-func (p *proxy) StoreWithdrawRequestPost(wr *types.WithdrawRequest) error {
 	return p.pdDB.AddWithdrawal(wr)
 }
 
 // UpdateWithdrawRequest stores the given updated withdraw request in persistent storage.
-func (p *proxy) UpdateWithdrawRequest(wr *types.WithdrawRequest) error {
-	return p.db.UpdateWithdrawal(wr)
+// func (p *proxy) UpdateWithdrawRequest(wr *types.WithdrawRequest) error {
+// 	return p.db.UpdateWithdrawal(wr)
+// }
+
+func (p *proxy) UpdateWithdrawRequest(tx *sql.Tx, wr *types.WithdrawRequest) error {
+	// If no transaction is provided, start a new one
+	if tx == nil {
+		var err error
+		tx, err = p.pdDB.Begin()
+		if err != nil {
+			log.Errorf("failed to start transaction: %s", err.Error())
+			return err
+		}
+		defer func() {
+			if err != nil {
+				tx.Rollback()
+				log.Errorf("transaction rolled back due to error: %s", err.Error())
+			}
+		}()
+	}
+
+	// Update withdrawal request in the database
+	err := p.pdDB.UpdateWithdrawal(tx, wr)
+	if err != nil {
+		if tx == nil {
+			tx.Rollback() // Rollback if we started this transaction
+		}
+		return err
+	}
+
+	// Commit only if we started the transaction
+	if tx == nil {
+		return tx.Commit()
+	}
+
+	return nil
 }
 
-func (p *proxy) UpdateWithdrawRequestPost(tx *sql.Tx, wr *types.WithdrawRequest) error {
-	return p.pdDB.UpdateWithdrawal(tx, wr)
-}
+// // WithdrawRequest extracts details of a withdraw request specified by the delegator, validator and request ID.
+// func (p *proxy) WithdrawRequest(addr *common.Address, valID *hexutil.Big, reqID *hexutil.Big) (*types.WithdrawRequest, error) {
+// 	return p.db.Withdrawal(addr, valID, reqID)
+// }
 
 // WithdrawRequest extracts details of a withdraw request specified by the delegator, validator and request ID.
 func (p *proxy) WithdrawRequest(addr *common.Address, valID *hexutil.Big, reqID *hexutil.Big) (*types.WithdrawRequest, error) {
-	return p.db.Withdrawal(addr, valID, reqID)
-}
-
-// WithdrawRequest extracts details of a withdraw request specified by the delegator, validator and request ID.
-func (p *proxy) WithdrawRequestPost(addr *common.Address, valID *hexutil.Big, reqID *hexutil.Big) (*types.WithdrawRequest, error) {
 	return p.pdDB.Withdrawal(addr, valID, reqID)
 }
 
 // WithdrawRequests extracts a list of partial withdraw requests for the given address.
-func (p *proxy) WithdrawRequests(addr *common.Address, stakerID *hexutil.Big, cursor *string, count int32) (*types.WithdrawRequestList, error) {
-	if addr == nil {
-		return nil, fmt.Errorf("address not given")
-	}
+// func (p *proxy) WithdrawRequests(addr *common.Address, stakerID *hexutil.Big, cursor *string, count int32) (*types.WithdrawRequestList, error) {
+// 	if addr == nil {
+// 		return nil, fmt.Errorf("address not given")
+// 	}
 
-	// get all the requests for the given delegator address
-	if stakerID == nil {
-		// log the action and pull the list for all vals
-		p.log.Debugf("loading withdraw requests of %s to any validator", addr.String())
-		return p.db.Withdrawals(cursor, count, &bson.D{{Key: types.FiWithdrawalAddress, Value: addr.String()}})
-	}
+// 	// get all the requests for the given delegator address
+// 	if stakerID == nil {
+// 		// log the action and pull the list for all vals
+// 		p.log.Debugf("loading withdraw requests of %s to any validator", addr.String())
+// 		return p.db.Withdrawals(cursor, count, &bson.D{{Key: types.FiWithdrawalAddress, Value: addr.String()}})
+// 	}
 
-	// log the action and pull the list for specific address and val
-	p.log.Debugf("loading withdraw requests of %s to #%d", addr.String(), stakerID.ToInt().Uint64())
-	return p.db.Withdrawals(cursor, count, &bson.D{
-		{Key: types.FiWithdrawalAddress, Value: addr.String()},
-		{Key: types.FiWithdrawalToValidator, Value: stakerID.String()},
-	})
-}
+// 	// log the action and pull the list for specific address and val
+// 	p.log.Debugf("loading withdraw requests of %s to #%d", addr.String(), stakerID.ToInt().Uint64())
+// 	return p.db.Withdrawals(cursor, count, &bson.D{
+// 		{Key: types.FiWithdrawalAddress, Value: addr.String()},
+// 		{Key: types.FiWithdrawalToValidator, Value: stakerID.String()},
+// 	})
+// }
 
 // WithdrawRequests extracts a list of partial withdraw requests for the given address.
-func (p *proxy) WithdrawRequestsPost(addr *common.Address, stakerID *hexutil.Big, cursor *string, count int32) (*types.PostWithdrawRequestList, error) {
+func (p *proxy) WithdrawRequests(addr *common.Address, stakerID *hexutil.Big, cursor *string, count int32) (*types.PostWithdrawRequestList, error) {
 	if addr == nil {
 		return nil, fmt.Errorf("address not given")
 	}
@@ -91,32 +120,32 @@ func (p *proxy) WithdrawRequestsPost(addr *common.Address, stakerID *hexutil.Big
 	return p.pdDB.Withdrawals(cursor, count, filter)
 }
 
-// WithdrawRequestsPendingTotal is the total value of all pending withdrawal requests
-// for the given delegator and target staker ID.
-func (p *proxy) WithdrawRequestsPendingTotal(addr *common.Address, stakerID *hexutil.Big) (*big.Int, error) {
-	if addr == nil {
-		return nil, fmt.Errorf("address not given")
-	}
+// // WithdrawRequestsPendingTotal is the total value of all pending withdrawal requests
+// // for the given delegator and target staker ID.
+// func (p *proxy) WithdrawRequestsPendingTotal(addr *common.Address, stakerID *hexutil.Big) (*big.Int, error) {
+// 	if addr == nil {
+// 		return nil, fmt.Errorf("address not given")
+// 	}
 
-	// all withdrawals for the address regardless of the target staker
-	if stakerID == nil {
-		return p.db.WithdrawalsSumValue(&bson.D{
-			{Key: types.FiWithdrawalAddress, Value: addr.String()},
-			{Key: types.FiWithdrawalFinTrx, Value: bson.D{{Key: "$type", Value: 10}}},
-		})
-	}
+// 	// all withdrawals for the address regardless of the target staker
+// 	if stakerID == nil {
+// 		return p.db.WithdrawalsSumValue(&bson.D{
+// 			{Key: types.FiWithdrawalAddress, Value: addr.String()},
+// 			{Key: types.FiWithdrawalFinTrx, Value: bson.D{{Key: "$type", Value: 10}}},
+// 		})
+// 	}
 
-	// specific delegation withdrawal
-	return p.db.WithdrawalsSumValue(&bson.D{
-		{Key: types.FiWithdrawalAddress, Value: addr.String()},
-		{Key: types.FiWithdrawalToValidator, Value: stakerID.String()},
-		{Key: types.FiWithdrawalFinTrx, Value: bson.D{{Key: "$type", Value: 10}}},
-	})
-}
+// 	// specific delegation withdrawal
+// 	return p.db.WithdrawalsSumValue(&bson.D{
+// 		{Key: types.FiWithdrawalAddress, Value: addr.String()},
+// 		{Key: types.FiWithdrawalToValidator, Value: stakerID.String()},
+// 		{Key: types.FiWithdrawalFinTrx, Value: bson.D{{Key: "$type", Value: 10}}},
+// 	})
+// }
 
 // WithdrawRequestsPendingTotalPost calculates the total value of all pending withdrawal requests
 // for the given delegator and target staker ID.
-func (p *proxy) WithdrawRequestsPendingTotalPost(addr *common.Address, stakerID *hexutil.Big) (*big.Int, error) {
+func (p *proxy) WithdrawRequestsPendingTotal(addr *common.Address, stakerID *hexutil.Big) (*big.Int, error) {
 	if addr == nil {
 		return nil, fmt.Errorf("address not given")
 	}

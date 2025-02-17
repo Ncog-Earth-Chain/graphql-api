@@ -2,7 +2,6 @@
 package db
 
 import (
-	"context"
 	"database/sql"
 	"encoding/hex"
 	"errors"
@@ -15,9 +14,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 const (
@@ -50,54 +46,54 @@ const (
 	fiTransactionTimeStamp = "stamp"
 )
 
-// initTransactionsCollection initializes the transaction collection with
-// indexes and additional parameters needed by the app.
-func (db *MongoDbBridge) initTransactionsCollection(col *mongo.Collection) {
-	// prepare index models
-	ix := make([]mongo.IndexModel, 0)
+// // initTransactionsCollection initializes the transaction collection with
+// // indexes and additional parameters needed by the app.
+// func (db *MongoDbBridge) initTransactionsCollection(col *mongo.Collection) {
+// 	// prepare index models
+// 	ix := make([]mongo.IndexModel, 0)
 
-	// index ordinal key sorted from high to low since this is the way we usually list
-	unique := true
-	ix = append(ix, mongo.IndexModel{
-		Keys: bson.D{{Key: fiTransactionOrdinalIndex, Value: -1}},
-		Options: &options.IndexOptions{
-			Unique: &unique,
-		},
-	})
+// 	// index ordinal key sorted from high to low since this is the way we usually list
+// 	unique := true
+// 	ix = append(ix, mongo.IndexModel{
+// 		Keys: bson.D{{Key: fiTransactionOrdinalIndex, Value: -1}},
+// 		Options: &options.IndexOptions{
+// 			Unique: &unique,
+// 		},
+// 	})
 
-	// index sender and recipient
-	ix = append(ix, mongo.IndexModel{Keys: bson.D{{Key: fiTransactionSender, Value: 1}}})
-	ix = append(ix, mongo.IndexModel{Keys: bson.D{{Key: fiTransactionRecipient, Value: 1}}})
-	ix = append(ix, mongo.IndexModel{Keys: bson.D{{Key: fiTransactionTimeStamp, Value: 1}}})
+// 	// index sender and recipient
+// 	ix = append(ix, mongo.IndexModel{Keys: bson.D{{Key: fiTransactionSender, Value: 1}}})
+// 	ix = append(ix, mongo.IndexModel{Keys: bson.D{{Key: fiTransactionRecipient, Value: 1}}})
+// 	ix = append(ix, mongo.IndexModel{Keys: bson.D{{Key: fiTransactionTimeStamp, Value: 1}}})
 
-	// sender + ordinal index
-	fox := "from_orx"
-	ix = append(ix, mongo.IndexModel{
-		Keys: bson.D{{Key: fiTransactionSender, Value: 1}, {Key: fiTransactionOrdinalIndex, Value: -1}},
-		Options: &options.IndexOptions{
-			Name:   &fox,
-			Unique: &unique,
-		},
-	})
+// 	// sender + ordinal index
+// 	fox := "from_orx"
+// 	ix = append(ix, mongo.IndexModel{
+// 		Keys: bson.D{{Key: fiTransactionSender, Value: 1}, {Key: fiTransactionOrdinalIndex, Value: -1}},
+// 		Options: &options.IndexOptions{
+// 			Name:   &fox,
+// 			Unique: &unique,
+// 		},
+// 	})
 
-	// recipient + ordinal index
-	rox := "to_orx"
-	ix = append(ix, mongo.IndexModel{
-		Keys: bson.D{{Key: fiTransactionRecipient, Value: 1}, {Key: fiTransactionOrdinalIndex, Value: -1}},
-		Options: &options.IndexOptions{
-			Name:   &rox,
-			Unique: &unique,
-		},
-	})
+// 	// recipient + ordinal index
+// 	rox := "to_orx"
+// 	ix = append(ix, mongo.IndexModel{
+// 		Keys: bson.D{{Key: fiTransactionRecipient, Value: 1}, {Key: fiTransactionOrdinalIndex, Value: -1}},
+// 		Options: &options.IndexOptions{
+// 			Name:   &rox,
+// 			Unique: &unique,
+// 		},
+// 	})
 
-	// create indexes
-	if _, err := col.Indexes().CreateMany(context.Background(), ix); err != nil {
-		db.log.Panicf("can not create indexes for transaction collection; %s", err.Error())
-	}
+// 	// create indexes
+// 	if _, err := col.Indexes().CreateMany(context.Background(), ix); err != nil {
+// 		db.log.Panicf("can not create indexes for transaction collection; %s", err.Error())
+// 	}
 
-	// log we are done that
-	db.log.Debugf("transactions collection initialized")
-}
+// 	// log we are done that
+// 	db.log.Debugf("transactions collection initialized")
+// }
 
 // initTransactionsCollection initializes the transaction table with indexes needed by the app.
 func (db *PostgreSQLBridge) initTransactionsTable() {
@@ -139,18 +135,18 @@ func (db *PostgreSQLBridge) initTransactionsTable() {
 	db.log.Debugf("transactions table initialized with indexes")
 }
 
-// shouldAddTransaction validates if the transaction should be added to the persistent storage.
-func (db *MongoDbBridge) shouldAddTransaction(col *mongo.Collection, trx *types.Transaction) bool {
-	// check if the transaction already exists
-	exists, err := db.IsTransactionKnown(col, &trx.Hash)
-	if err != nil {
-		db.log.Critical(err)
-		return false
-	}
+// // shouldAddTransaction validates if the transaction should be added to the persistent storage.
+// func (db *MongoDbBridge) shouldAddTransaction(col *mongo.Collection, trx *types.Transaction) bool {
+// 	// check if the transaction already exists
+// 	exists, err := db.IsTransactionKnown(col, &trx.Hash)
+// 	if err != nil {
+// 		db.log.Critical(err)
+// 		return false
+// 	}
 
-	// if the transaction already exists, we don't need to do anything here
-	return !exists
-}
+// 	// if the transaction already exists, we don't need to do anything here
+// 	return !exists
+// }
 
 func (db *PostgreSQLBridge) shouldAddTransaction(tx *sql.Tx, trx *types.Transaction) (bool, error) {
 	// Check if the transaction already exists
@@ -166,38 +162,38 @@ func (db *PostgreSQLBridge) shouldAddTransaction(tx *sql.Tx, trx *types.Transact
 	return !exists, nil
 }
 
-// AddTransaction stores a transaction reference in connected persistent storage.
-func (db *MongoDbBridge) AddTransaction(block *types.Block, trx *types.Transaction) error {
-	// do we have all needed data?
-	if block == nil || trx == nil {
-		return fmt.Errorf("can not add empty transaction")
-	}
+// // AddTransaction stores a transaction reference in connected persistent storage.
+// func (db *MongoDbBridge) AddTransaction(block *types.Block, trx *types.Transaction) error {
+// 	// do we have all needed data?
+// 	if block == nil || trx == nil {
+// 		return fmt.Errorf("can not add empty transaction")
+// 	}
 
-	// get the collection for transactions
-	col := db.client.Database(db.dbName).Collection(coTransactions)
+// 	// get the collection for transactions
+// 	col := db.client.Database(db.dbName).Collection(coTransactions)
 
-	// if the transaction already exists, we don't need to add it
-	// just make sure the transaction accounts were processed
-	if !db.shouldAddTransaction(col, trx) {
-		return db.UpdateTransaction(col, trx)
-	}
+// 	// if the transaction already exists, we don't need to add it
+// 	// just make sure the transaction accounts were processed
+// 	if !db.shouldAddTransaction(col, trx) {
+// 		return db.UpdateTransaction(col, trx)
+// 	}
 
-	// try to do the insert
-	if _, err := col.InsertOne(context.Background(), trx); err != nil {
-		db.log.Critical(err)
-		return err
-	}
+// 	// try to do the insert
+// 	if _, err := col.InsertOne(context.Background(), trx); err != nil {
+// 		db.log.Critical(err)
+// 		return err
+// 	}
 
-	// add transaction to the db
-	db.log.Debugf("transaction %s added to database", trx.Hash.String())
+// 	// add transaction to the db
+// 	db.log.Debugf("transaction %s added to database", trx.Hash.String())
 
-	// make sure transactions collection is initialized
-	if db.initTransactions != nil {
-		db.initTransactions.Do(func() { db.initTransactionsCollection(col); db.initTransactions = nil })
-	}
+// 	// make sure transactions collection is initialized
+// 	if db.initTransactions != nil {
+// 		db.initTransactions.Do(func() { db.initTransactionsCollection(col); db.initTransactions = nil })
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
 // func BlockByNumber(blockNumber string) (*types.Block, error) {
 // 	// Check if the input is already in hexadecimal format
@@ -366,32 +362,32 @@ func (db *PostgreSQLBridge) AddTransaction(block *types.Block, trx *types.Transa
 	return nil
 }
 
-// UpdateTransaction updates transaction data in the database collection.
-func (db *MongoDbBridge) UpdateTransaction(col *mongo.Collection, trx *types.Transaction) error {
-	// notify
-	db.log.Debugf("updating transaction %s", trx.Hash.String())
+// // UpdateTransaction updates transaction data in the database collection.
+// func (db *MongoDbBridge) UpdateTransaction(col *mongo.Collection, trx *types.Transaction) error {
+// 	// notify
+// 	db.log.Debugf("updating transaction %s", trx.Hash.String())
 
-	// try to update a delegation by replacing it in the database
-	// we use address and validator ID to identify unique delegation
-	er, err := col.UpdateOne(context.Background(), bson.D{
-		{Key: fiTransactionPk, Value: trx.Hash.String()},
-	}, bson.D{{Key: "$set", Value: bson.D{
-		{Key: fiTransactionOrdinalIndex, Value: trx.Uid()},
-		{Key: fiTransactionSender, Value: trx.From.String()},
-		{Key: fiTransactionValue, Value: trx.Value.String()},
-		{Key: fiTransactionTimeStamp, Value: trx.TimeStamp},
-	}}}, new(options.UpdateOptions).SetUpsert(false))
-	if err != nil {
-		db.log.Critical(err)
-		return err
-	}
+// 	// try to update a delegation by replacing it in the database
+// 	// we use address and validator ID to identify unique delegation
+// 	er, err := col.UpdateOne(context.Background(), bson.D{
+// 		{Key: fiTransactionPk, Value: trx.Hash.String()},
+// 	}, bson.D{{Key: "$set", Value: bson.D{
+// 		{Key: fiTransactionOrdinalIndex, Value: trx.Uid()},
+// 		{Key: fiTransactionSender, Value: trx.From.String()},
+// 		{Key: fiTransactionValue, Value: trx.Value.String()},
+// 		{Key: fiTransactionTimeStamp, Value: trx.TimeStamp},
+// 	}}}, new(options.UpdateOptions).SetUpsert(false))
+// 	if err != nil {
+// 		db.log.Critical(err)
+// 		return err
+// 	}
 
-	// do we actually have the document
-	if 0 == er.MatchedCount {
-		return fmt.Errorf("can not update, the transaction not found in database")
-	}
-	return nil
-}
+// 	// do we actually have the document
+// 	if 0 == er.MatchedCount {
+// 		return fmt.Errorf("can not update, the transaction not found in database")
+// 	}
+// 	return nil
+// }
 
 // UpdateTransaction updates an existing transaction in the persistent storage.
 func (db *PostgreSQLBridge) UpdateTransaction(tx *sql.Tx, trx *types.Transaction) error {
@@ -443,68 +439,68 @@ func (db *PostgreSQLBridge) IsTransactionKnown(hash *common.Hash) (bool, error) 
 	return exists, nil
 }
 
-// IsTransactionKnown checks if a transaction document already exists in the database.
-func (db *MongoDbBridge) IsTransactionKnown(col *mongo.Collection, hash *common.Hash) (bool, error) {
-	// try to find the transaction in the database (it may already exist)
-	sr := col.FindOne(context.Background(), bson.D{
-		{Key: fiTransactionPk, Value: hash.String()},
-	}, options.FindOne().SetProjection(bson.D{
-		{Key: fiTransactionPk, Value: true},
-	}))
+// // IsTransactionKnown checks if a transaction document already exists in the database.
+// func (db *MongoDbBridge) IsTransactionKnown(col *mongo.Collection, hash *common.Hash) (bool, error) {
+// 	// try to find the transaction in the database (it may already exist)
+// 	sr := col.FindOne(context.Background(), bson.D{
+// 		{Key: fiTransactionPk, Value: hash.String()},
+// 	}, options.FindOne().SetProjection(bson.D{
+// 		{Key: fiTransactionPk, Value: true},
+// 	}))
 
-	// error on lookup?
-	if sr.Err() != nil {
-		// may be ErrNoDocuments, which we seek
-		if sr.Err() == mongo.ErrNoDocuments {
-			// add transaction to the db
-			db.log.Debugf("transaction %s not found in database", hash.String())
-			return false, nil
-		}
+// 	// error on lookup?
+// 	if sr.Err() != nil {
+// 		// may be ErrNoDocuments, which we seek
+// 		if sr.Err() == mongo.ErrNoDocuments {
+// 			// add transaction to the db
+// 			db.log.Debugf("transaction %s not found in database", hash.String())
+// 			return false, nil
+// 		}
 
-		// log the error of the lookup
-		db.log.Error("can not get existing transaction pk")
-		return false, sr.Err()
-	}
+// 		// log the error of the lookup
+// 		db.log.Error("can not get existing transaction pk")
+// 		return false, sr.Err()
+// 	}
 
-	// add transaction to the db
-	return true, nil
-}
+// 	// add transaction to the db
+// 	return true, nil
+// }
 
-// initTrxList initializes list of transactions based on provided cursor and count.
-func (db *MongoDbBridge) initTrxList(col *mongo.Collection, cursor *string, count int32, filter *bson.D) (*types.TransactionList, error) {
-	// make sure some filter is used
-	if nil == filter {
-		filter = &bson.D{}
-	}
+// // initTrxList initializes list of transactions based on provided cursor and count.
+// func (db *MongoDbBridge) initTrxList(col *mongo.Collection, cursor *string, count int32, filter *bson.D) (*types.TransactionList, error) {
+// 	// make sure some filter is used
+// 	if nil == filter {
+// 		filter = &bson.D{}
+// 	}
 
-	// find how many transactions do we have in the database
-	total, err := db.listDocumentsCount(col, filter)
-	if err != nil {
-		db.log.Errorf("can not count transactions")
-		return nil, err
-	}
+// 	// find how many transactions do we have in the database
+// 	total, err := db.listDocumentsCount(col, filter)
+// 	if err != nil {
+// 		db.log.Errorf("can not count transactions")
+// 		return nil, err
+// 	}
 
-	// make the list and notify the size of it
-	db.log.Debugf("found %d filtered transactions", total)
-	list := types.TransactionList{
-		Collection: make([]*types.Transaction, 0),
-		Total:      uint64(total),
-		First:      0,
-		Last:       0,
-		IsStart:    total == 0,
-		IsEnd:      total == 0,
-		//Filter:     *filter,
-	}
+// 	// make the list and notify the size of it
+// 	db.log.Debugf("found %d filtered transactions", total)
+// 	list := types.TransactionList{
+// 		Collection: make([]*types.Transaction, 0),
+// 		Total:      uint64(total),
+// 		First:      0,
+// 		Last:       0,
+// 		IsStart:    total == 0,
+// 		IsEnd:      total == 0,
+// 		//Filter:     *filter,
+// 	}
 
-	// is the list non-empty? return the list with properly calculated range marks
-	if 0 < total {
-		return db.trxListWithRangeMarks(col, &list, cursor, count, filter)
-	}
+// 	// is the list non-empty? return the list with properly calculated range marks
+// 	if 0 < total {
+// 		return db.trxListWithRangeMarks(col, &list, cursor, count, filter)
+// 	}
 
-	// this is an empty list
-	db.log.Debug("empty transaction list created")
-	return &list, nil
-}
+// 	// this is an empty list
+// 	db.log.Debug("empty transaction list created")
+// 	return &list, nil
+// }
 
 // initTrxList initializes a list of transactions based on the provided cursor and count.
 // initTrxList initializes a filtered transaction list.
@@ -556,48 +552,48 @@ func (db *PostgreSQLBridge) initTrxList(cursor *string, count int32, filter stri
 	return list, nil
 }
 
-// trxListWithRangeMarks returns the transaction list with proper First/Last marks of the transaction range.
-func (db *MongoDbBridge) trxListWithRangeMarks(
-	col *mongo.Collection,
-	list *types.TransactionList,
-	cursor *string,
-	count int32,
-	filter *bson.D,
-) (*types.TransactionList, error) {
-	var err error
+// // trxListWithRangeMarks returns the transaction list with proper First/Last marks of the transaction range.
+// func (db *MongoDbBridge) trxListWithRangeMarks(
+// 	col *mongo.Collection,
+// 	list *types.TransactionList,
+// 	cursor *string,
+// 	count int32,
+// 	filter *bson.D,
+// ) (*types.TransactionList, error) {
+// 	var err error
 
-	// find out the cursor ordinal index
-	if cursor == nil && count > 0 {
-		// get the highest available ordinal index (top transaction)
-		list.First, err = db.findBorderOrdinalIndex(col,
-			*filter,
-			options.FindOne().SetSort(bson.D{{Key: fiTransactionOrdinalIndex, Value: -1}}))
-		list.IsStart = true
+// 	// find out the cursor ordinal index
+// 	if cursor == nil && count > 0 {
+// 		// get the highest available ordinal index (top transaction)
+// 		list.First, err = db.findBorderOrdinalIndex(col,
+// 			*filter,
+// 			options.FindOne().SetSort(bson.D{{Key: fiTransactionOrdinalIndex, Value: -1}}))
+// 		list.IsStart = true
 
-	} else if cursor == nil && count < 0 {
-		// get the lowest available ordinal index (top transaction)
-		list.First, err = db.findBorderOrdinalIndex(col,
-			*filter,
-			options.FindOne().SetSort(bson.D{{Key: fiTransactionOrdinalIndex, Value: 1}}))
-		list.IsEnd = true
+// 	} else if cursor == nil && count < 0 {
+// 		// get the lowest available ordinal index (top transaction)
+// 		list.First, err = db.findBorderOrdinalIndex(col,
+// 			*filter,
+// 			options.FindOne().SetSort(bson.D{{Key: fiTransactionOrdinalIndex, Value: 1}}))
+// 		list.IsEnd = true
 
-	} else if cursor != nil {
-		// get the highest available ordinal index (top transaction)
-		list.First, err = db.findBorderOrdinalIndex(col,
-			bson.D{{Key: fiTransactionPk, Value: *cursor}},
-			options.FindOne())
-	}
+// 	} else if cursor != nil {
+// 		// get the highest available ordinal index (top transaction)
+// 		list.First, err = db.findBorderOrdinalIndex(col,
+// 			bson.D{{Key: fiTransactionPk, Value: *cursor}},
+// 			options.FindOne())
+// 	}
 
-	// check the error
-	if err != nil {
-		db.log.Errorf("can not find the initial transactions")
-		return nil, err
-	}
+// 	// check the error
+// 	if err != nil {
+// 		db.log.Errorf("can not find the initial transactions")
+// 		return nil, err
+// 	}
 
-	// inform what we are about to do
-	db.log.Debugf("transaction list initialized with ordinal index %d", list.First)
-	return list, nil
-}
+// 	// inform what we are about to do
+// 	db.log.Debugf("transaction list initialized with ordinal index %d", list.First)
+// 	return list, nil
+// }
 
 func toHexBigInt(s sql.NullString) *hexutil.Big {
 	if s.Valid {
@@ -745,26 +741,26 @@ func (db *PostgreSQLBridge) trxListWithRangeMarks(list *types.PostTransactionLis
 	return list, nil
 }
 
-// findBorderOrdinalIndex finds the highest, or lowest ordinal index in the collection.
-// For negative sort it will return highest and for positive sort it will return lowest available value.
-func (db *MongoDbBridge) findBorderOrdinalIndex(col *mongo.Collection, filter bson.D, opt *options.FindOneOptions) (uint64, error) {
-	// prep container
-	var row struct {
-		Value uint64 `bson:"orx"`
-	}
+// // findBorderOrdinalIndex finds the highest, or lowest ordinal index in the collection.
+// // For negative sort it will return highest and for positive sort it will return lowest available value.
+// func (db *MongoDbBridge) findBorderOrdinalIndex(col *mongo.Collection, filter bson.D, opt *options.FindOneOptions) (uint64, error) {
+// 	// prep container
+// 	var row struct {
+// 		Value uint64 `bson:"orx"`
+// 	}
 
-	// make sure we pull only what we need
-	opt.SetProjection(bson.D{{Key: "orx", Value: true}})
-	sr := col.FindOne(context.Background(), filter, opt)
+// 	// make sure we pull only what we need
+// 	opt.SetProjection(bson.D{{Key: "orx", Value: true}})
+// 	sr := col.FindOne(context.Background(), filter, opt)
 
-	// try to decode
-	err := sr.Decode(&row)
-	if err != nil {
-		return 0, err
-	}
+// 	// try to decode
+// 	err := sr.Decode(&row)
+// 	if err != nil {
+// 		return 0, err
+// 	}
 
-	return row.Value, nil
-}
+// 	return row.Value, nil
+// }
 
 // findBorderOrdinalIndex finds the highest or lowest ordinal index in the transactions table.
 // For descending sort, it returns the highest value; for ascending sort, it returns the lowest.
@@ -851,31 +847,31 @@ func (db *PostgreSQLBridge) txListFilter(cursor *string, count int32, list *type
 	return filter, args
 }
 
-// txListOptions creates a filter options set for transactions list search.
-func (db *MongoDbBridge) txListOptions(count int32) *options.FindOptions {
-	// prep options
-	opt := options.Find()
+// // txListOptions creates a filter options set for transactions list search.
+// func (db *MongoDbBridge) txListOptions(count int32) *options.FindOptions {
+// 	// prep options
+// 	opt := options.Find()
 
-	// how to sort results in the collection
-	if count > 0 {
-		// from high (new) to low (old)
-		opt.SetSort(bson.D{{Key: fiTransactionOrdinalIndex, Value: -1}})
-	} else {
-		// from low (old) to high (new)
-		opt.SetSort(bson.D{{Key: fiTransactionOrdinalIndex, Value: 1}})
-	}
+// 	// how to sort results in the collection
+// 	if count > 0 {
+// 		// from high (new) to low (old)
+// 		opt.SetSort(bson.D{{Key: fiTransactionOrdinalIndex, Value: -1}})
+// 	} else {
+// 		// from low (old) to high (new)
+// 		opt.SetSort(bson.D{{Key: fiTransactionOrdinalIndex, Value: 1}})
+// 	}
 
-	// prep the loading limit
-	var limit = int64(count)
-	if limit < 0 {
-		limit = -limit
-	}
+// 	// prep the loading limit
+// 	var limit = int64(count)
+// 	if limit < 0 {
+// 		limit = -limit
+// 	}
 
-	// apply the limit, try to get one more transaction
-	// so we can detect list end
-	opt.SetLimit(limit + 1)
-	return opt
-}
+// 	// apply the limit, try to get one more transaction
+// 	// so we can detect list end
+// 	opt.SetLimit(limit + 1)
+// 	return opt
+// }
 
 // txListOptions creates a sorting and limit clause for transactions list search in PostgreSQL.
 func (db *PostgreSQLBridge) txListOptions(count int32) (string, int64) {
@@ -1101,10 +1097,10 @@ func (db *PostgreSQLBridge) txListLoad(cursor *string, count int32, list *types.
 	return nil
 }
 
-// TransactionsCount returns the number of transactions stored in the database.
-func (db *MongoDbBridge) TransactionsCount() (uint64, error) {
-	return db.EstimateCount(db.client.Database(db.dbName).Collection(coTransactions))
-}
+// // TransactionsCount returns the number of transactions stored in the database.
+// func (db *MongoDbBridge) TransactionsCount() (uint64, error) {
+// 	return db.EstimateCount(db.client.Database(db.dbName).Collection(coTransactions))
+// }
 
 func (db *PostgreSQLBridge) TransactionsCount() (uint64, error) {
 	var count uint64
@@ -1156,7 +1152,6 @@ func (db *PostgreSQLBridge) TransactionsCount() (uint64, error) {
 // 	return list, nil
 // }
 
-// Transactions pulls a list of transactions starting at the specified cursor.
 // Transactions pulls a list of transactions starting at the specified cursor.
 func (db *PostgreSQLBridge) Transactions(cursor *string, count int32, filter string, args ...interface{}) (*types.PostTransactionList, error) {
 	if db == nil {

@@ -118,12 +118,12 @@ func (p *proxy) Erc20TotalSupply(token *common.Address) (hexutil.Big, error) {
 }
 
 // Erc20TokensList returns a list of known ERC20 tokens ordered by their activity.
-func (p *proxy) Erc20TokensList(count int32) ([]common.Address, error) {
-	return p.db.Erc20TokensList(count)
-}
+// func (p *proxy) Erc20TokensList(count int32) ([]common.Address, error) {
+// 	return p.pdDB.Erc20TokensList(count)
+// }
 
 // Erc20TokensList returns a list of known ERC20 tokens ordered by their activity.
-func (p *proxy) Erc20TokensListPost(count int32) ([]common.Address, error) {
+func (p *proxy) Erc20TokensList(count int32) ([]common.Address, error) {
 	return p.pdDB.Erc20TokensList(count)
 }
 
