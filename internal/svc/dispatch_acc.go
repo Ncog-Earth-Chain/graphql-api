@@ -175,21 +175,21 @@ func (acd *accDispatcher) detectContract(addr *common.Address, block *types.Bloc
 	isErc1155, err := repo.Erc165SupportsInterface(addr, erc1155InterfaceId)
 	if err == nil && isErc1155 {
 		log.Noticef("ERC1155 multi-token detected at %s", addr.String())
-		contract := types.NewErcTokenContract(addr, "", block, trx, types.AccountTypeERC1155Contract, contracts.ERC1155MetaData.ABI)
+		contract := types.NewErcTokenContract(addr, "", block, trx, types.AccountTypeERC1155Contract, contracts.ERC1155MetaData)
 		return contract, types.AccountTypeERC1155Contract, nil
 	}
 
 	isErc721, name := acd.detectErc721Token(addr)
 	if err == nil && isErc721 {
 		log.Noticef("ERC721 NFT token detected at %s", addr.String())
-		contract := types.NewErcTokenContract(addr, name, block, trx, types.AccountTypeERC721Contract, contracts.ERC721MetaData.ABI)
+		contract := types.NewErcTokenContract(addr, name, block, trx, types.AccountTypeERC721Contract, contracts.ERC721MetaData)
 		return contract, types.AccountTypeERC721Contract, nil
 	}
 
 	isErc20, name := acd.detectErc20Token(addr)
 	if isErc20 {
 		log.Noticef("ERC20 token %s detected at %s", name, addr.String())
-		contract := types.NewErcTokenContract(addr, name, block, trx, types.AccountTypeERC20Token, contracts.ERCTwentyMetaData.ABI)
+		contract := types.NewErcTokenContract(addr, name, block, trx, types.AccountTypeERC20Token, contracts.ERCTwentyMetaData)
 		return contract, types.AccountTypeERC20Token, nil
 	}
 

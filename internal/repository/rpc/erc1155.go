@@ -101,7 +101,7 @@ var erc1155contractAbi *abi.ABI // parsed ABI singleton
 
 func Erc1155ParseTransferBatchData(data []byte) (ids []*big.Int, values []*big.Int, err error) {
 	if erc1155contractAbi == nil {
-		contractAbi, err := abi.JSON(strings.NewReader(contracts.ERC1155MetaData.ABI))
+		contractAbi, err := abi.JSON(strings.NewReader(contracts.ERC1155MetaData))
 		if err != nil {
 			return nil, nil, err
 		}

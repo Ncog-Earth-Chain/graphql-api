@@ -29,13 +29,11 @@ var (
 )
 
 // PriceOracleProxyInterfaceMetaData contains all meta data concerning the PriceOracleProxyInterface contract.
-var PriceOracleProxyInterfaceMetaData = &bind.MetaData{
-	ABI: "[{\"constant\":true,\"inputs\":[{\"internalType\":\"address\",\"name\":\"_token\",\"type\":\"address\"}],\"name\":\"getPrice\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"}]",
-}
+var PriceOracleProxyInterfaceMetaData = "[{\"constant\":true,\"inputs\":[{\"internalType\":\"address\",\"name\":\"_token\",\"type\":\"address\"}],\"name\":\"getPrice\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"}]"
 
 // PriceOracleProxyInterfaceABI is the input ABI used to generate the binding from.
-// Deprecated: Use PriceOracleProxyInterfaceMetaData.ABI instead.
-var PriceOracleProxyInterfaceABI = PriceOracleProxyInterfaceMetaData.ABI
+// Deprecated: Use PriceOracleProxyInterfaceMetaData instead.
+var PriceOracleProxyInterfaceABI = PriceOracleProxyInterfaceMetaData
 
 // PriceOracleProxyInterface is an auto generated Go binding around an Ethereum contract.
 type PriceOracleProxyInterface struct {
