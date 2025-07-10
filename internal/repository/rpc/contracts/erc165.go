@@ -29,13 +29,11 @@ var (
 )
 
 // ERC165MetaData contains all meta data concerning the ERC165 contract.
-var ERC165MetaData = &bind.MetaData{
-	ABI: "[{\"constant\":true,\"inputs\":[{\"name\":\"interfaceID\",\"type\":\"bytes4\"}],\"name\":\"supportsInterface\",\"outputs\":[{\"name\":\"\",\"type\":\"bool\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"}]",
-}
+var ERC165MetaData = "[{\"constant\":true,\"inputs\":[{\"name\":\"interfaceID\",\"type\":\"bytes4\"}],\"name\":\"supportsInterface\",\"outputs\":[{\"name\":\"\",\"type\":\"bool\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"}]"
 
 // ERC165ABI is the input ABI used to generate the binding from.
-// Deprecated: Use ERC165MetaData.ABI instead.
-var ERC165ABI = ERC165MetaData.ABI
+// Deprecated: Use ERC165MetaData instead.
+var ERC165ABI = ERC165MetaData
 
 // ERC165 is an auto generated Go binding around an Ethereum contract.
 type ERC165 struct {

@@ -174,7 +174,7 @@ func (db *MongoDbBridge) CheckDatabaseInitState() {
 	db.collectionNeedInit("withdrawals", db.WithdrawalsCount, &db.initWithdrawals)
 	db.collectionNeedInit("rewards", db.RewardsCount, &db.initRewards)
 	db.collectionNeedInit("erc20 transactions", db.ErcTransactionCount, &db.initErc20Trx)
-	db.collectionNeedInit("fmint transactions", db.FMintTransactionCount, &db.initFMintTrx)
+	//db.collectionNeedInit("fmint transactions", db.FMintTransactionCount, &db.initFMintTrx)
 	db.collectionNeedInit("epochs", db.EpochsCount, &db.initEpochs)
 	db.collectionNeedInit("gas price periods", db.GasPricePeriodCount, &db.initGasPrice)
 	db.collectionNeedInit("burned fees", db.BurnCount, &db.initBurns)

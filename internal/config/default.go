@@ -43,7 +43,7 @@ const (
 	defLoggingFormat = "%{color}%{level:-8s} %{shortpkg}/%{shortfunc}%{color:reset}: %{message}"
 
 	// defForestUrl holds default Forest connection string
-	defForestUrl = "~/.ncogearthchain/data/ncogearthchain.ipc"
+	defForestUrl = "~/.ncogearthchain/ncogearthchain.ipc"
 
 	// defMongoUrl holds default MongoDB connection string
 	defMongoUrl = "mongodb://localhost:27017"
@@ -67,16 +67,16 @@ const (
 	defSfcContract = "0xFC00FACE00000000000000000000000000000000"
 
 	// defStiContract holds deployment address of the Staker Info smart contract.
-	defStiContract = "0x92ffad75b8a942d149621a39502cdd8ad1dd57b4"
+	defStiContract = EmptyAddress
 
 	// defDefiFMintAddressProvider represents the address of the fMintAddressProvider
-	defDefiFMintAddressProvider = "0x730e27f6c52d07b1a6ab39b639b617dc566c91af"
+	//defDefiFMintAddressProvider = EmptyAddress
 
 	// defDefiFMintAddressProvider represents the address of the fMintAddressProvider
-	defDefiUniswapCore = EmptyAddress
+	//defDefiUniswapCore = EmptyAddress
 
 	// defDefiFMintAddressProvider represents the address of the fMintAddressProvider
-	defDefiUniswapRouter = EmptyAddress
+	//defDefiUniswapRouter = EmptyAddress
 
 	// defTokenLogoFilePath represents the default path to the tokens map file
 	defTokenLogoFilePath = "tokens.json"
@@ -138,11 +138,11 @@ func applyDefaults(cfg *viper.Viper) {
 	// staking configuration defaults
 	cfg.SetDefault(keyStakingSfcContract, defSfcContract)
 	cfg.SetDefault(keyStakingStiContract, defStiContract)
-	cfg.SetDefault(keyStakingTokenizerContract, EmptyAddress)
-	cfg.SetDefault(keyStakingERC20Token, EmptyAddress)
+	//cfg.SetDefault(keyStakingTokenizerContract, EmptyAddress)
+	//cfg.SetDefault(keyStakingERC20Token, EmptyAddress)
 
 	// DeFi configuration
-	cfg.SetDefault(keyDefiFMintAddressProvider, defDefiFMintAddressProvider)
-	cfg.SetDefault(keyDefiUniswapCore, defDefiUniswapCore)
-	cfg.SetDefault(keyDefiUniswapRouter, defDefiUniswapRouter)
+	//cfg.SetDefault(keyDefiFMintAddressProvider, defDefiFMintAddressProvider)
+	//cfg.SetDefault(keyDefiUniswapCore, defDefiUniswapCore)
+	//cfg.SetDefault(keyDefiUniswapRouter, defDefiUniswapRouter)
 }

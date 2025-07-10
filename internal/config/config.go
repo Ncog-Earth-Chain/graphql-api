@@ -2,9 +2,9 @@
 package config
 
 import (
-	"crypto/ecdsa"
 	"time"
 
+	"github.com/cloudflare/circl/sign/mldsa/mldsa87"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -82,8 +82,8 @@ type Server struct {
 // ServerSignature represents the signature used by this server
 // on sending requests to the blockchain, especially signed requests.
 type ServerSignature struct {
-	Address    common.Address   `mapstructure:"address"`
-	PrivateKey ecdsa.PrivateKey `mapstructure:"pkey"`
+	Address    common.Address     `mapstructure:"address"`
+	PrivateKey mldsa87.PrivateKey `mapstructure:"pkey"`
 }
 
 // Log represents the logger configuration

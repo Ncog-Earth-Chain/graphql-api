@@ -1,7 +1,6 @@
 package config
 
 import (
-	"crypto/ecdsa"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -10,8 +9,9 @@ import (
 	"os"
 	"reflect"
 
+	"github.com/cloudflare/circl/sign/mldsa/mldsa87"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/cryptod"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
 )
@@ -129,7 +129,7 @@ func setupConfigUnmarshaler(cfg *mapstructure.DecoderConfig) {
 }
 
 // StringToPrivateKeyHookFunc returns a DecodeHookFunc that converts
-// strings to ecdsa.PrivateKey type on config loading.
+// strings to mldsa87.PrivateKey type on config loading.
 func StringToPrivateKeyHookFunc() mapstructure.DecodeHookFuncType {
 	// return the decoder function
 	return func(f reflect.Type, t reflect.Type, data interface{}) (interface{}, error) {
@@ -138,8 +138,8 @@ func StringToPrivateKeyHookFunc() mapstructure.DecodeHookFuncType {
 			return data, nil
 		}
 
-		// make sure the output is expected to be ecdsa.PrivateKey
-		if t != reflect.TypeOf(ecdsa.PrivateKey{}) {
+		// make sure the output is expected to be mldsa87.PrivateKey
+		if t != reflect.TypeOf(mldsa87.PrivateKey{}) {
 			return data, nil
 		}
 
@@ -150,7 +150,7 @@ func StringToPrivateKeyHookFunc() mapstructure.DecodeHookFuncType {
 		}
 
 		// try to decode the key
-		key, err := crypto.ToECDSA(common.FromHex(raw))
+		key, err := cryptod.ToMLDsa87(common.FromHex(raw))
 		if err != nil {
 			return nil, err
 		}
@@ -204,23 +204,24 @@ func stringToAddress(str string) (interface{}, error) {
 // reader provides instance of the config reader.
 // It accepts an explicit path to a config file if it was requested by `cfg` flag.
 func reader() *viper.Viper {
-	// make new Viper
 	cfg := viper.New()
 
-	// what is the expected name of the config file
+	// Set the default config file name (no extension)
 	cfg.SetConfigName(configFileName)
 
-	// where to look for common files
+	// Add config search paths
 	cfg.AddConfigPath(defaultConfigDir())
 	cfg.AddConfigPath(".")
 
-	// Try to get an explicit configuration file path if present
+	// Define flag for config file path
 	var cfgPath string
 	flag.StringVar(&cfgPath, keyConfigFilePath, "", "Path to a configuration file")
 	flag.Parse()
 
-	// Any path found?
-	cfg.SetConfigFile(cfgPath)
+	// Use explicit config file if provided
+	if cfgPath != "" {
+		cfg.SetConfigFile(cfgPath)
+	}
 
 	return cfg
 }

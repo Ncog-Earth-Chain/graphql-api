@@ -55,13 +55,13 @@ const (
 	keyErc20Logos            = "erc20_logos"
 
 	// PoS staking configuration
-	keyStakingSfcContract       = "staking.sfc"
-	keyStakingStiContract       = "staking.sti"
-	keyStakingTokenizerContract = "staking.tokenizer"
-	keyStakingERC20Token        = "staking.token"
+	keyStakingSfcContract = "staking.sfc"
+	keyStakingStiContract = "staking.sti"
+	//keyStakingTokenizerContract = "staking.tokenizer"
+	//keyStakingERC20Token        = "staking.token"
 
 	// defi related configs
-	keyDefiFMintAddressProvider = "defi.fmint.address_provider"
-	keyDefiUniswapCore          = "defi.uniswap.core"
-	keyDefiUniswapRouter        = "defi.uniswap.router"
+	//keyDefiFMintAddressProvider = "defi.fmint.address_provider"
+	//keyDefiUniswapCore          = "defi.uniswap.core"
+	//keyDefiUniswapRouter        = "defi.uniswap.router"
 )
