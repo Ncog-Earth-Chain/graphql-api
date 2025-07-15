@@ -27,9 +27,19 @@ func Api(cfg *config.Config, log logger.Logger, rs resolvers.ApiResolver) http.H
 	schema := graphql.MustParseSchema(gqlSchema.Schema(), rs, opts...)
 
 	// return the constructed API handler chain
+	// Mux to handle separate endpoints cleanly
+	mux := http.NewServeMux()
+
+	// HTTP for queries/mutations
+	mux.Handle("/graphql", corsHandler.Handler(&relay.Handler{Schema: schema}))
+
+	// WS for subscriptions
+	mux.Handle("/graphql-ws", corsHandler.Handler(graphqlws.NewHandlerFunc(schema, &relay.Handler{Schema: schema})))
+
+	// Return wrapped handler with logging
 	return &LoggingHandler{
 		logger:  log,
-		handler: corsHandler.Handler(graphqlws.NewHandlerFunc(schema, &relay.Handler{Schema: schema})),
+		handler: mux,
 	}
 }
 
