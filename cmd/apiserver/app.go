@@ -85,8 +85,7 @@ func (app *apiServer) run() {
 
 // makeHttpServer creates and configures the HTTP server to be used to serve incoming requests
 func (app *apiServer) makeHttpServer() {
-	// create request MUXer
-	srvMux := new(http.ServeMux)
+	mux := http.NewServeMux()
 
 	// create HTTP server to handle our requests
 	app.srv = &http.Server{
@@ -95,11 +94,11 @@ func (app *apiServer) makeHttpServer() {
 		WriteTimeout:      time.Second * time.Duration(app.cfg.Server.WriteTimeout),
 		IdleTimeout:       time.Second * time.Duration(app.cfg.Server.IdleTimeout),
 		ReadHeaderTimeout: time.Second * time.Duration(app.cfg.Server.HeaderTimeout),
-		Handler:           srvMux,
+		Handler:           mux,
 	}
 
 	// setup handlers
-	app.setupHandlers(srvMux)
+	app.setupHandlers(mux)
 }
 
 // setupHandlers initializes an array of handlers for our HTTP API end-points.
@@ -107,14 +106,21 @@ func (app *apiServer) setupHandlers(mux *http.ServeMux) {
 	// create root resolver
 	app.api = resolvers.New()
 
-	// setup GraphQL API handler
-	h := http.TimeoutHandler(
-		handlers.Api(app.cfg, app.log, app.api),
+	// Unified GraphQL API handler (both HTTP and WebSocket)
+	graphqlApiHandler := handlers.Api(app.cfg, app.log, app.api)
+
+	// HTTP POST GraphQL queries/mutations
+	httpHandler := http.TimeoutHandler(
+		graphqlApiHandler,
 		time.Second*time.Duration(app.cfg.Server.ResolverTimeout),
 		"Service timeout.",
 	)
-	mux.Handle("/api", h)
-	mux.Handle("/graphql", h)
+
+	mux.Handle("/api", httpHandler)
+	mux.Handle("/graphql", httpHandler)
+
+	// WebSocket Subscriptions
+	mux.Handle("/graphql-ws", graphqlApiHandler)
 
 	// setup gas price estimator REST API resolver
 	mux.Handle("/json/gas", handlers.GasPrice(app.log))
