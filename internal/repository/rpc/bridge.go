@@ -18,6 +18,7 @@ import (
 	"ncogearthchain-api-graphql/internal/config"
 	"ncogearthchain-api-graphql/internal/logger"
 	"ncogearthchain-api-graphql/internal/repository/rpc/contracts"
+	"ncogearthchain-api-graphql/internal/types"
 	"strings"
 	"sync"
 
@@ -203,64 +204,29 @@ func (nec *NecBridge) ObservedBlockProxy() chan *etc.Header {
 }
 
 // TraceBlock implements the debug_traceBlock RPC method.
-func (br *NecBridge) TraceBlock(hash common.Hash) (interface{}, error) {
-	var result interface{}
+func (br *NecBridge) TraceBlock(hash common.Hash) (*types.TraceBlockResponse, error) {
+	var result *types.TraceBlockResponse
 	err := br.rpc.CallContext(context.Background(), &result, "debug_traceBlock", hash)
 	return result, err
 }
 
-// TraceBlockFromFile implements the debug_traceBlockFromFile RPC method.
-func (br *NecBridge) TraceBlockFromFile(fileName string) (interface{}, error) {
-	var result interface{}
-	err := br.rpc.CallContext(context.Background(), &result, "debug_traceBlockFromFile", fileName)
-	return result, err
-}
-
-// TraceBadBlock implements the debug_traceBadBlock RPC method.
-func (br *NecBridge) TraceBadBlock(hash common.Hash) (interface{}, error) {
-	var result interface{}
-	err := br.rpc.CallContext(context.Background(), &result, "debug_traceBadBlock", hash)
-	return result, err
-}
-
-// StandardTraceBadBlockToFile implements the debug_standardTraceBadBlockToFile RPC method.
-func (br *NecBridge) StandardTraceBadBlockToFile(hash common.Hash, fileName string) (interface{}, error) {
-	var result interface{}
-	err := br.rpc.CallContext(context.Background(), &result, "debug_standardTraceBadBlockToFile", hash, fileName)
-	return result, err
-}
-
-// StandardTraceBlockToFile implements the debug_standardTraceBlockToFile RPC method.
-func (br *NecBridge) StandardTraceBlockToFile(hash common.Hash, fileName string) (interface{}, error) {
-	var result interface{}
-	err := br.rpc.CallContext(context.Background(), &result, "debug_standardTraceBlockToFile", hash, fileName)
-	return result, err
-}
-
 // TraceBlockByNumber implements the debug_traceBlockByNumber RPC method.
-func (br *NecBridge) TraceBlockByNumber(number hexutil.Uint64) (interface{}, error) {
-	var result interface{}
+func (br *NecBridge) TraceBlockByNumber(number hexutil.Uint64) (*types.TraceBlockResponse, error) {
+	var result *types.TraceBlockResponse
 	err := br.rpc.CallContext(context.Background(), &result, "debug_traceBlockByNumber", number)
 	return result, err
 }
 
 // TraceBlockByHash implements the debug_traceBlockByHash RPC method.
-func (br *NecBridge) TraceBlockByHash(hash common.Hash) (interface{}, error) {
-	var result interface{}
+func (br *NecBridge) TraceBlockByHash(hash common.Hash) (*types.TraceBlockResponse, error) {
+	var result *types.TraceBlockResponse
 	err := br.rpc.CallContext(context.Background(), &result, "debug_traceBlockByHash", hash)
 	return result, err
 }
 
 // TraceTransaction implements the debug_traceTransaction RPC method.
-func (br *NecBridge) TraceTransaction(hash common.Hash) (interface{}, error) {
-	var result interface{}
+func (br *NecBridge) TraceTransaction(hash common.Hash) (*types.TraceBlockResponse, error) {
+	var result *types.TraceBlockResponse
 	err := br.rpc.CallContext(context.Background(), &result, "debug_traceTransaction", hash)
-	return result, err
-}
-
-// TraceCall implements the debug_traceCall RPC method.
-func (br *NecBridge) TraceCall(args map[string]interface{}, block hexutil.Uint64) (interface{}, error) {
-	var result interface{}
-	err := br.rpc.CallContext(context.Background(), &result, "debug_traceCall", args, block)
 	return result, err
 }

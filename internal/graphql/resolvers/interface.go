@@ -245,40 +245,16 @@ type ApiResolver interface {
 	}) (float64, error)
 
 	// TraceBlock resolves the debug_traceBlock GraphQL query.
-	TraceBlock(args struct{ Hash common.Hash }) (interface{}, error)
-
-	// TraceBlockFromFile resolves the debug_traceBlockFromFile GraphQL query.
-	TraceBlockFromFile(args struct{ FileName string }) (interface{}, error)
-
-	// TraceBadBlock resolves the debug_traceBadBlock GraphQL query.
-	TraceBadBlock(args struct{ Hash common.Hash }) (interface{}, error)
-
-	// StandardTraceBadBlockToFile resolves the debug_standardTraceBadBlockToFile GraphQL query.
-	StandardTraceBadBlockToFile(args struct {
-		Hash     common.Hash
-		FileName string
-	}) (interface{}, error)
-
-	// StandardTraceBlockToFile resolves the debug_standardTraceBlockToFile GraphQL query.
-	StandardTraceBlockToFile(args struct {
-		Hash     common.Hash
-		FileName string
-	}) (interface{}, error)
+	TraceBlock(args struct{ Hash common.Hash }) (*types.TraceBlockResponse, error)
 
 	// TraceBlockByNumber resolves the debug_traceBlockByNumber GraphQL query.
-	TraceBlockByNumber(args struct{ Number hexutil.Uint64 }) (interface{}, error)
+	TraceBlockByNumber(args struct{ Number hexutil.Uint64 }) (*types.TraceBlockResponse, error)
 
 	// TraceBlockByHash resolves the debug_traceBlockByHash GraphQL query.
-	TraceBlockByHash(args struct{ Hash common.Hash }) (interface{}, error)
+	TraceBlockByHash(args struct{ Hash common.Hash }) (*types.TraceBlockResponse, error)
 
 	// TraceTransaction resolves the debug_traceTransaction GraphQL query.
-	TraceTransaction(args struct{ Hash common.Hash }) (interface{}, error)
-
-	// TraceCall resolves the debug_traceCall GraphQL query.
-	TraceCall(args struct {
-		Call  map[string]interface{}
-		Block hexutil.Uint64
-	}) (interface{}, error)
+	TraceTransaction(args struct{ Hash common.Hash }) (*types.TraceBlockResponse, error)
 
 	// Close terminates resolver broadcast management.
 	Close()

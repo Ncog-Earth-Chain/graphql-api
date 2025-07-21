@@ -31,7 +31,7 @@ func (rs *rootResolver) TraceBlock(args struct{ Hash common.Hash }) (*types.Trac
 	if err != nil {
 		return nil, err
 	}
-	return &types.TraceBlockResponse{Result: traceResult}, nil
+	return &types.TraceBlockResponse{Result: &traceResult}, nil
 }
 
 // TraceBlockByNumber resolves the debug_traceBlockByNumber GraphQL query.
@@ -49,7 +49,7 @@ func (rs *rootResolver) TraceBlockByNumber(args struct{ Number hexutil.Uint64 })
 	if err != nil {
 		return nil, err
 	}
-	return &types.TraceBlockResponse{Result: traceResult}, nil
+	return &types.TraceBlockResponse{Result: &traceResult}, nil
 }
 
 // TraceBlockByHash resolves the debug_traceBlockByHash GraphQL query.
@@ -67,7 +67,7 @@ func (rs *rootResolver) TraceBlockByHash(args struct{ Hash common.Hash }) (*type
 	if err != nil {
 		return nil, err
 	}
-	return &types.TraceBlockResponse{Result: traceResult}, nil
+	return &types.TraceBlockResponse{Result: &traceResult}, nil
 }
 
 // TraceTransaction resolves the debug_traceTransaction GraphQL query.
@@ -85,5 +85,5 @@ func (rs *rootResolver) TraceTransaction(args struct{ Hash common.Hash }) (*type
 	if err != nil {
 		return nil, err
 	}
-	return &types.TraceBlockResponse{Result: traceResult}, nil
+	return &types.TraceBlockResponse{Result: &traceResult}, nil
 }
