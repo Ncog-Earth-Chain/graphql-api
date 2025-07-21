@@ -5,6 +5,27 @@ schema {
     subscription: Subscription
 }
 
+# Add these types before the Query type:
+type TraceStructLog {
+    pc: Int
+    op: String
+    gas: Int
+    gasCost: Int
+    depth: Int
+}
+
+type TraceBlockResult {
+    gas: Int
+    failed: Boolean
+    returnValue: String
+    structLogs: [TraceStructLog!]
+    Message: String
+}
+
+type TraceBlockResponse {
+    result: TraceBlockResult
+}
+
 # Entry points for querying the API
 type Query {
     # version represents the API server version responding to your requests.
@@ -292,31 +313,16 @@ type Query {
     necLatestBlockBurnList(count: Int = 25): [NecBlockBurn!]!
 	
     # Trace a block and return the raw trace.
-    traceBlock(hash: Bytes32!): JSON
-
-    # Trace a block from a file.
-    traceBlockFromFile(fileName: String!): JSON
-
-    # Trace a bad block.
-    traceBadBlock(hash: Bytes32!): JSON
-
-    # Trace a bad block and writes the output to a file.
-    standardTraceBadBlockToFile(hash: Bytes32!, fileName: String!): JSON
-
-    # Trace a block and writes the output to a file.
-    standardTraceBlockToFile(hash: Bytes32!, fileName: String!): JSON
+    traceBlock(hash: Bytes32!): TraceBlockResponse
 
     # Trace a block by its number.
-    traceBlockByNumber(number: Long!): JSON
+    traceBlockByNumber(number: Long!): TraceBlockResponse
 
     # Trace a block by its hash.
-    traceBlockByHash(hash: Bytes32!): JSON
+    traceBlockByHash(hash: Bytes32!): TraceBlockResponse
 
     # Trace a transaction.
-    traceTransaction(hash: Bytes32!): JSON
-
-    # Trace a call.
-    traceCall(call: JSON!, block: Long!): JSON
+    traceTransaction(hash: Bytes32!): TraceBlockResponse
 }
 
 # Mutation endpoints for modifying the data

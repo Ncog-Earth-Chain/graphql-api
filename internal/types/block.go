@@ -55,3 +55,26 @@ func UnmarshalBlock(data []byte) (*Block, error) {
 func (b *Block) Marshal() ([]byte, error) {
 	return json.Marshal(b)
 }
+
+// TraceStructLog represents a single log entry in a trace result.
+type TraceStructLog struct {
+	PC      int    `json:"pc"`
+	Op      string `json:"op"`
+	Gas     int    `json:"gas"`
+	GasCost int    `json:"gasCost"`
+	Depth   int    `json:"depth"`
+}
+
+// TraceBlockResult represents the result of a trace block operation.
+type TraceBlockResult struct {
+	Gas         int              `json:"gas"`
+	Failed      bool             `json:"failed"`
+	ReturnValue string           `json:"returnValue"`
+	StructLogs  []TraceStructLog `json:"structLogs"`
+	Message     string           `json:"Message"`
+}
+
+// TraceBlockResponse wraps the trace block result for GraphQL.
+type TraceBlockResponse struct {
+	Result TraceBlockResult `json:"result"`
+}

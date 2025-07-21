@@ -2301,6 +2301,18 @@ type Query {
 
     # necLatestBlockBurnList provides a list of latest burned native NEC tokens per-block.
     necLatestBlockBurnList(count: Int = 25): [NecBlockBurn!]!
+
+    # Trace a block and return the raw trace.
+    traceBlock(hash: Bytes32!): TraceBlockResponse
+
+    # Trace a block by its number.
+    traceBlockByNumber(number: Long!): TraceBlockResponse
+
+    # Trace a block by its hash.
+    traceBlockByHash(hash: Bytes32!): TraceBlockResponse
+
+    # Trace a transaction.
+    traceTransaction(hash: Bytes32!): TraceBlockResponse
 }
 
 # Mutation endpoints for modifying the data
@@ -2324,6 +2336,29 @@ type Subscription {
 
     # Subscribe to receive information about new transactions in the blockchain.
     onTransaction: Transaction!
+}
+
+# TraceStructLog represents a single log entry in a trace result.
+type TraceStructLog {
+    pc: Int
+    op: String
+    gas: Int
+    gasCost: Int
+    depth: Int
+}
+
+# TraceBlockResult represents the result of a trace block or transaction operation.
+type TraceBlockResult {
+    gas: Int
+    failed: Boolean
+    returnValue: String
+    structLogs: [TraceStructLog!]
+    Message: String
+}
+
+# TraceBlockResponse wraps the trace block result for GraphQL.
+type TraceBlockResponse {
+    result: TraceBlockResult
 }
 
 `
