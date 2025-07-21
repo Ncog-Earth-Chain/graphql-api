@@ -6,6 +6,7 @@ toolchain go1.22.10
 
 require (
 	github.com/allegro/bigcache v1.2.1
+	github.com/cloudflare/circl v1.5.0
 	github.com/ethereum/go-ethereum v1.10.17
 	github.com/graph-gophers/graphql-go v1.4.0
 	github.com/graph-gophers/graphql-transport-ws v0.0.2
@@ -25,7 +26,6 @@ require (
 	github.com/btcsuite/btcd v0.22.0-beta // indirect
 	github.com/cakturk/go-netstat v0.0.0-20200220111822-e5b49efee7a5 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
-	github.com/cloudflare/circl v1.5.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/deckarep/golang-set v1.8.0 // indirect
 	github.com/edsrzf/mmap-go v1.0.0 // indirect
@@ -84,6 +84,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )
 
-replace github.com/ethereum/go-ethereum => github.com/Ncog-Earth-Chain/ncog-evm v1.0.0
+replace github.com/ethereum/go-ethereum => github.com/Ncog-Earth-Chain/ncog-evm v1.1.1
 
 //replace github.com/ethereum/go-ethereum => /home/vboxuser/ncog-evm

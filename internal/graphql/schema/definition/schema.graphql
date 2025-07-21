@@ -290,6 +290,33 @@ type Query {
 
     # necLatestBlockBurnList provides a list of latest burned native NEC tokens per-block.
     necLatestBlockBurnList(count: Int = 25): [NecBlockBurn!]!
+	
+    # Trace a block and return the raw trace.
+    traceBlock(hash: Bytes32!): JSON
+
+    # Trace a block from a file.
+    traceBlockFromFile(fileName: String!): JSON
+
+    # Trace a bad block.
+    traceBadBlock(hash: Bytes32!): JSON
+
+    # Trace a bad block and writes the output to a file.
+    standardTraceBadBlockToFile(hash: Bytes32!, fileName: String!): JSON
+
+    # Trace a block and writes the output to a file.
+    standardTraceBlockToFile(hash: Bytes32!, fileName: String!): JSON
+
+    # Trace a block by its number.
+    traceBlockByNumber(number: Long!): JSON
+
+    # Trace a block by its hash.
+    traceBlockByHash(hash: Bytes32!): JSON
+
+    # Trace a transaction.
+    traceTransaction(hash: Bytes32!): JSON
+
+    # Trace a call.
+    traceCall(call: JSON!, block: Long!): JSON
 }
 
 # Mutation endpoints for modifying the data
