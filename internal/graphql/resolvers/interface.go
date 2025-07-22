@@ -247,26 +247,26 @@ type ApiResolver interface {
 	// TraceBlock resolves the debug_traceBlock GraphQL query.
 	TraceBlock(args struct {
 		Hash   common.Hash
-		Params map[string]interface{}
-	}) (interface{}, error)
+		Params *JSONAny
+	}) (JSONAny, error)
 
 	// TraceBlockByNumber resolves the debug_traceBlockByNumber GraphQL query.
 	TraceBlockByNumber(args struct {
 		Number hexutil.Uint64
-		Params map[string]interface{}
-	}) (interface{}, error)
+		Params *JSONAny
+	}) (JSONAny, error)
 
 	// TraceBlockByHash resolves the debug_traceBlockByHash GraphQL query.
 	TraceBlockByHash(args struct {
 		Hash   common.Hash
-		Params map[string]interface{}
-	}) (interface{}, error)
+		Params *JSONAny
+	}) (JSONAny, error)
 
 	// TraceTransaction resolves the debug_traceTransaction GraphQL query.
 	TraceTransaction(args struct {
 		Hash   common.Hash
-		Params map[string]interface{}
-	}) (interface{}, error)
+		Params *JSONAny
+	}) (JSONAny, error)
 
 	// Close terminates resolver broadcast management.
 	Close()

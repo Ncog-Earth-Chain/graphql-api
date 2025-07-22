@@ -861,6 +861,8 @@ scalar Time
 
 scalar JSON
 
+scalar JSONAny
+
 # CurrentState represents the current active state
 # of the chain information condensed on one place.
 type CurrentState {
@@ -2305,16 +2307,16 @@ type Query {
     necLatestBlockBurnList(count: Int = 25): [NecBlockBurn!]!
 
     # Trace a block and return the raw trace.
-    traceBlock(hash: Bytes32!, params: JSON): JSON
+    traceBlock(hash: Bytes32!, params: JSONAny): JSONAny!
 
     # Trace a block by its number.
-    traceBlockByNumber(number: Long!, params: JSON): JSON
+    traceBlockByNumber(number: Long!, params: JSONAny): JSONAny!
 
     # Trace a block by its hash.
-    traceBlockByHash(hash: Bytes32!, params: JSON): JSON
+    traceBlockByHash(hash: Bytes32!, params: JSONAny): JSONAny!
 
     # Trace a transaction.
-    traceTransaction(hash: Bytes32!, params: JSON): JSON
+    traceTransaction(hash: Bytes32!, params: JSONAny): JSONAny!
 }
 
 # Mutation endpoints for modifying the data
@@ -2374,5 +2376,4 @@ type TraceBlockResult {
 type TraceBlockResponse {
     result: [TraceBlockResult]
 }
-
 `

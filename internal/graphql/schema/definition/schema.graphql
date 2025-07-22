@@ -42,6 +42,8 @@ type TraceBlockResponse {
     result: [TraceBlockResult]
 }
 
+scalar JSONAny
+
 # Entry points for querying the API
 type Query {
     # version represents the API server version responding to your requests.
@@ -329,16 +331,16 @@ type Query {
     necLatestBlockBurnList(count: Int = 25): [NecBlockBurn!]!
 	
     # Trace a block and return the raw trace.
-    traceBlock(hash: Bytes32!, params: JSON): JSON
+    traceBlock(hash: Bytes32!, params: JSONAny): JSONAny!
 
     # Trace a block by its number.
-    traceBlockByNumber(number: Long!, params: JSON): JSON
+    traceBlockByNumber(number: Long!, params: JSONAny): JSONAny!
 
     # Trace a block by its hash.
-    traceBlockByHash(hash: Bytes32!, params: JSON): JSON
+    traceBlockByHash(hash: Bytes32!, params: JSONAny): JSONAny!
 
     # Trace a transaction.
-    traceTransaction(hash: Bytes32!, params: JSON): JSON
+    traceTransaction(hash: Bytes32!, params: JSONAny): JSONAny!
 }
 
 # Mutation endpoints for modifying the data
