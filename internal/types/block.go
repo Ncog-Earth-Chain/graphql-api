@@ -73,7 +73,7 @@ type TraceBlockResult struct {
 	Message     *string            `json:"Message"`
 }
 
-// TraceBlockResponse wraps a list of trace entries for GraphQL.
+// TraceBlockResponse wraps a single trace entry for GraphQL.
 type TraceBlockResponse struct {
 	Result *[]*TraceBlockResult `json:"result"`
 }
@@ -85,5 +85,5 @@ type RPCTraceBlock struct {
 
 // TraceTransactionResponse wraps a single transaction trace result.
 type TraceTransactionResponse struct {
-	Result *TraceBlockResult `json:"result"`
+	Result *[]*TraceBlockResult `json:"result"`
 }

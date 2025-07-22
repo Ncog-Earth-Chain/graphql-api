@@ -203,21 +203,21 @@ func (nec *NecBridge) ObservedBlockProxy() chan *etc.Header {
 	return nec.headers
 }
 
-// TraceBlock fetches a full execution-trace for the given block hash.
 func (br *NecBridge) TraceBlock(hash common.Hash) (*types.TraceBlockResponse, error) {
 	var raw []types.RPCTraceBlock
 	if err := br.rpc.CallContext(context.Background(), &raw, "debug_traceBlock", hash); err != nil {
 		return nil, err
 	}
 
+	// build a slice of *TraceBlockResult
 	out := make([]*types.TraceBlockResult, len(raw))
 	for i, elt := range raw {
 		out[i] = elt.Inner
 	}
+	// pass &out so Result is *[]*TraceBlockResult
 	return &types.TraceBlockResponse{Result: &out}, nil
 }
 
-// TraceBlockByNumber fetches the execution-trace for the given block number.
 func (br *NecBridge) TraceBlockByNumber(number hexutil.Uint64) (*types.TraceBlockResponse, error) {
 	var raw []types.RPCTraceBlock
 	if err := br.rpc.CallContext(context.Background(), &raw, "debug_traceBlockByNumber", number); err != nil {
@@ -231,7 +231,6 @@ func (br *NecBridge) TraceBlockByNumber(number hexutil.Uint64) (*types.TraceBloc
 	return &types.TraceBlockResponse{Result: &out}, nil
 }
 
-// TraceBlockByHash fetches the execution-trace for the given block hash.
 func (br *NecBridge) TraceBlockByHash(hash common.Hash) (*types.TraceBlockResponse, error) {
 	var raw []types.RPCTraceBlock
 	if err := br.rpc.CallContext(context.Background(), &raw, "debug_traceBlockByHash", hash); err != nil {
@@ -245,13 +244,15 @@ func (br *NecBridge) TraceBlockByHash(hash common.Hash) (*types.TraceBlockRespon
 	return &types.TraceBlockResponse{Result: &out}, nil
 }
 
-func (br *NecBridge) TraceTransaction(hash common.Hash) (*types.TraceTransactionResponse, error) {
-	var inner types.TraceBlockResult
-	err := br.rpc.CallContext(context.Background(), &inner, "debug_traceTransaction", hash)
-	if err != nil {
+// TraceTransaction fetches the execution-trace for the given transaction hash.
+func (br *NecBridge) TraceTransaction(txHash common.Hash) (*types.TraceTransactionResponse, error) {
+	// debug_traceTransaction returns a single object, not an array
+	var raw types.TraceBlockResult
+	if err := br.rpc.CallContext(context.Background(), &raw, "debug_traceTransaction", txHash); err != nil {
 		return nil, err
 	}
-	return &types.TraceTransactionResponse{
-		Result: &inner,
-	}, nil
+
+	// wrap the single result in a slice
+	slice := []*types.TraceBlockResult{&raw}
+	return &types.TraceTransactionResponse{Result: &slice}, nil
 }

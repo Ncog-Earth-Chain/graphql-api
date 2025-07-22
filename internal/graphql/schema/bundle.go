@@ -2357,7 +2357,7 @@ type TraceBlockResult {
 }
 
 type TraceBlockResponse {
-    result: TraceBlockResult
+    result: [TraceBlockResult]
 }
 
 `

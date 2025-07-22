@@ -22,7 +22,7 @@ type TraceBlockResult {
 }
 
 type TraceBlockResponse {
-    result: TraceBlockResult
+    result: [TraceBlockResult]
 }
 
 # Entry points for querying the API
