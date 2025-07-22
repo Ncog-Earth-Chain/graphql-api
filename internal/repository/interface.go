@@ -570,16 +570,16 @@ type Repository interface {
 	FLendGetUserDepositHistory(*common.Address, *common.Address) ([]*types.FLendDeposit, error)
 
 	// TraceBlock traces a block and returns the raw trace.
-	TraceBlock(common.Hash) (*types.TraceBlockResponse, error)
+	TraceBlock(hash common.Hash, params map[string]interface{}) (interface{}, error)
 
 	// TraceBlockByNumber traces a block by its number.
-	TraceBlockByNumber(hexutil.Uint64) (*types.TraceBlockResponse, error)
+	TraceBlockByNumber(number hexutil.Uint64, params map[string]interface{}) (interface{}, error)
 
 	// TraceBlockByHash traces a block by its hash.
-	TraceBlockByHash(common.Hash) (*types.TraceBlockResponse, error)
+	TraceBlockByHash(hash common.Hash, params map[string]interface{}) (interface{}, error)
 
 	// TraceTransaction traces a transaction.
-	TraceTransaction(common.Hash) (*types.TraceTransactionResponse, error)
+	TraceTransaction(hash common.Hash, params map[string]interface{}) (interface{}, error)
 
 	// TrxFlowVolume resolves the list of daily trx flow aggregations.
 	TrxFlowVolume(from *time.Time, to *time.Time) ([]*types.DailyTrxVolume, error)

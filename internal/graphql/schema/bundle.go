@@ -2305,16 +2305,16 @@ type Query {
     necLatestBlockBurnList(count: Int = 25): [NecBlockBurn!]!
 
     # Trace a block and return the raw trace.
-    traceBlock(hash: Bytes32!): TraceBlockResponse
+    traceBlock(hash: Bytes32!, params: JSON): JSON
 
     # Trace a block by its number.
-    traceBlockByNumber(number: Long!): TraceBlockResponse
+    traceBlockByNumber(number: Long!, params: JSON): JSON
 
     # Trace a block by its hash.
-    traceBlockByHash(hash: Bytes32!): TraceBlockResponse
+    traceBlockByHash(hash: Bytes32!, params: JSON): JSON
 
     # Trace a transaction.
-    traceTransaction(hash: Bytes32!): TraceBlockResponse
+    traceTransaction(hash: Bytes32!, params: JSON): JSON
 }
 
 # Mutation endpoints for modifying the data

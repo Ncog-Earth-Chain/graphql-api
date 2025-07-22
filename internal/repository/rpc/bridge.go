@@ -18,8 +18,6 @@ import (
 	"ncogearthchain-api-graphql/internal/config"
 	"ncogearthchain-api-graphql/internal/logger"
 	"ncogearthchain-api-graphql/internal/repository/rpc/contracts"
-	"ncogearthchain-api-graphql/internal/types"
-	"ncogearthchain-api-graphql/internal/util"
 	"strings"
 	"sync"
 
@@ -204,80 +202,59 @@ func (nec *NecBridge) ObservedBlockProxy() chan *etc.Header {
 	return nec.headers
 }
 
-func (br *NecBridge) TraceBlock(hash common.Hash) (*types.TraceBlockResponse, error) {
-	var raw []types.RPCTraceBlock
-	if err := br.rpc.CallContext(context.Background(), &raw, "debug_traceBlock", hash); err != nil {
+func (br *NecBridge) TraceBlock(hash common.Hash, params map[string]interface{}) (interface{}, error) {
+	var result interface{}
+	var err error
+	if params != nil {
+		err = br.rpc.CallContext(context.Background(), &result, "debug_traceBlock", hash, params)
+	} else {
+		err = br.rpc.CallContext(context.Background(), &result, "debug_traceBlock", hash)
+	}
+	if err != nil {
 		return nil, err
 	}
-
-	// build a slice of *TraceBlockResult
-	out := make([]*types.TraceBlockResult, len(raw))
-	for i, elt := range raw {
-		out[i] = elt.Inner
-		if out[i] != nil && out[i].ReturnValue != nil {
-			decoded, err := util.DecodeReturnNoABI(*out[i].ReturnValue)
-			if err == nil {
-				out[i].ReturnValueDecoded = decoded
-			}
-		}
-	}
-	// pass &out so Result is *[]*TraceBlockResult
-	return &types.TraceBlockResponse{Result: &out}, nil
+	return result, nil
 }
 
-func (br *NecBridge) TraceBlockByNumber(number hexutil.Uint64) (*types.TraceBlockResponse, error) {
-	var raw []types.RPCTraceBlock
-	if err := br.rpc.CallContext(context.Background(), &raw, "debug_traceBlockByNumber", number); err != nil {
+func (br *NecBridge) TraceBlockByNumber(number hexutil.Uint64, params map[string]interface{}) (interface{}, error) {
+	var result interface{}
+	var err error
+	if params != nil {
+		err = br.rpc.CallContext(context.Background(), &result, "debug_traceBlockByNumber", number, params)
+	} else {
+		err = br.rpc.CallContext(context.Background(), &result, "debug_traceBlockByNumber", number)
+	}
+	if err != nil {
 		return nil, err
 	}
-
-	out := make([]*types.TraceBlockResult, len(raw))
-	for i, elt := range raw {
-		out[i] = elt.Inner
-		if out[i] != nil && out[i].ReturnValue != nil {
-			decoded, err := util.DecodeReturnNoABI(*out[i].ReturnValue)
-			if err == nil {
-				out[i].ReturnValueDecoded = decoded
-			}
-		}
-	}
-	return &types.TraceBlockResponse{Result: &out}, nil
+	return result, nil
 }
 
-func (br *NecBridge) TraceBlockByHash(hash common.Hash) (*types.TraceBlockResponse, error) {
-	var raw []types.RPCTraceBlock
-	if err := br.rpc.CallContext(context.Background(), &raw, "debug_traceBlockByHash", hash); err != nil {
+func (br *NecBridge) TraceBlockByHash(hash common.Hash, params map[string]interface{}) (interface{}, error) {
+	var result interface{}
+	var err error
+	if params != nil {
+		err = br.rpc.CallContext(context.Background(), &result, "debug_traceBlockByHash", hash, params)
+	} else {
+		err = br.rpc.CallContext(context.Background(), &result, "debug_traceBlockByHash", hash)
+	}
+	if err != nil {
 		return nil, err
 	}
-
-	out := make([]*types.TraceBlockResult, len(raw))
-	for i, elt := range raw {
-		out[i] = elt.Inner
-		if out[i] != nil && out[i].ReturnValue != nil {
-			decoded, err := util.DecodeReturnNoABI(*out[i].ReturnValue)
-			if err == nil {
-				out[i].ReturnValueDecoded = decoded
-			}
-		}
-	}
-	return &types.TraceBlockResponse{Result: &out}, nil
+	return result, nil
 }
 
 // TraceTransaction fetches the execution-trace for the given transaction hash.
-func (br *NecBridge) TraceTransaction(txHash common.Hash) (*types.TraceTransactionResponse, error) {
-	// debug_traceTransaction returns a single object, not an array
-	var raw types.TraceBlockResult
-	if err := br.rpc.CallContext(context.Background(), &raw, "debug_traceTransaction", txHash); err != nil {
+func (br *NecBridge) TraceTransaction(txHash common.Hash, params map[string]interface{}) (interface{}, error) {
+	var result interface{}
+	var err error
+	if params != nil {
+		err = br.rpc.CallContext(context.Background(), &result, "debug_traceTransaction", txHash, params)
+	} else {
+		err = br.rpc.CallContext(context.Background(), &result, "debug_traceTransaction", txHash)
+	}
+	if err != nil {
 		return nil, err
 	}
-
-	// wrap the single result in a slice
-	if raw.ReturnValue != nil {
-		decoded, err := util.DecodeReturnNoABI(*raw.ReturnValue)
-		if err == nil {
-			raw.ReturnValueDecoded = decoded
-		}
-	}
-	slice := []*types.TraceBlockResult{&raw}
-	return &types.TraceTransactionResponse{Result: &slice}, nil
+	return result, nil
 }
