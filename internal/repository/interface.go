@@ -579,7 +579,7 @@ type Repository interface {
 	TraceBlockByHash(common.Hash) (*types.TraceBlockResponse, error)
 
 	// TraceTransaction traces a transaction.
-	TraceTransaction(common.Hash) (*types.TraceBlockResponse, error)
+	TraceTransaction(common.Hash) (*types.TraceTransactionResponse, error)
 
 	// TrxFlowVolume resolves the list of daily trx flow aggregations.
 	TrxFlowVolume(from *time.Time, to *time.Time) ([]*types.DailyTrxVolume, error)

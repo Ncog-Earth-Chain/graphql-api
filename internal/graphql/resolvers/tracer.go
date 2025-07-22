@@ -1,7 +1,6 @@
 package resolvers
 
 import (
-	"encoding/json"
 	"ncogearthchain-api-graphql/internal/repository"
 	"ncogearthchain-api-graphql/internal/types"
 
@@ -9,81 +8,22 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
-// TraceConfig represents the configuration for tracing.
-type TraceConfig struct {
-	Tracer  *string
-	Timeout *string
-}
-
-// TraceBlock resolves the debug_traceBlock GraphQL query.
+// TraceBlock returns the tracing of a full block by hash.
 func (rs *rootResolver) TraceBlock(args struct{ Hash common.Hash }) (*types.TraceBlockResponse, error) {
-	result, err := repository.R().TraceBlock(args.Hash)
-	if err != nil {
-		return nil, err
-	}
-	// Marshal and unmarshal to our struct
-	jsonBytes, err := json.Marshal(result)
-	if err != nil {
-		return nil, err
-	}
-	var traceResult types.TraceBlockResult
-	err = json.Unmarshal(jsonBytes, &traceResult)
-	if err != nil {
-		return nil, err
-	}
-	return &types.TraceBlockResponse{Result: &traceResult}, nil
+	return repository.R().TraceBlock(args.Hash)
 }
 
-// TraceBlockByNumber resolves the debug_traceBlockByNumber GraphQL query.
+// TraceBlockByNumber returns the tracing of a block by its number.
 func (rs *rootResolver) TraceBlockByNumber(args struct{ Number hexutil.Uint64 }) (*types.TraceBlockResponse, error) {
-	result, err := repository.R().TraceBlockByNumber(args.Number)
-	if err != nil {
-		return nil, err
-	}
-	jsonBytes, err := json.Marshal(result)
-	if err != nil {
-		return nil, err
-	}
-	var traceResult types.TraceBlockResult
-	err = json.Unmarshal(jsonBytes, &traceResult)
-	if err != nil {
-		return nil, err
-	}
-	return &types.TraceBlockResponse{Result: &traceResult}, nil
+	return repository.R().TraceBlockByNumber(args.Number)
 }
 
-// TraceBlockByHash resolves the debug_traceBlockByHash GraphQL query.
+// TraceBlockByHash is identical to TraceBlock (kept for symmetry).
 func (rs *rootResolver) TraceBlockByHash(args struct{ Hash common.Hash }) (*types.TraceBlockResponse, error) {
-	result, err := repository.R().TraceBlockByHash(args.Hash)
-	if err != nil {
-		return nil, err
-	}
-	jsonBytes, err := json.Marshal(result)
-	if err != nil {
-		return nil, err
-	}
-	var traceResult types.TraceBlockResult
-	err = json.Unmarshal(jsonBytes, &traceResult)
-	if err != nil {
-		return nil, err
-	}
-	return &types.TraceBlockResponse{Result: &traceResult}, nil
+	return repository.R().TraceBlockByHash(args.Hash)
 }
 
-// TraceTransaction resolves the debug_traceTransaction GraphQL query.
-func (rs *rootResolver) TraceTransaction(args struct{ Hash common.Hash }) (*types.TraceBlockResponse, error) {
-	result, err := repository.R().TraceTransaction(args.Hash)
-	if err != nil {
-		return nil, err
-	}
-	jsonBytes, err := json.Marshal(result)
-	if err != nil {
-		return nil, err
-	}
-	var traceResult types.TraceBlockResult
-	err = json.Unmarshal(jsonBytes, &traceResult)
-	if err != nil {
-		return nil, err
-	}
-	return &types.TraceBlockResponse{Result: &traceResult}, nil
+// TraceTransaction returns the tracing of a single transaction.
+func (rs *rootResolver) TraceTransaction(args struct{ Hash common.Hash }) (*types.TraceTransactionResponse, error) {
+	return repository.R().TraceTransaction(args.Hash)
 }

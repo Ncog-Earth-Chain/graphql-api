@@ -203,30 +203,55 @@ func (nec *NecBridge) ObservedBlockProxy() chan *etc.Header {
 	return nec.headers
 }
 
-// TraceBlock implements the debug_traceBlock RPC method.
+// TraceBlock fetches a full execution-trace for the given block hash.
 func (br *NecBridge) TraceBlock(hash common.Hash) (*types.TraceBlockResponse, error) {
-	var result *types.TraceBlockResponse
-	err := br.rpc.CallContext(context.Background(), &result, "debug_traceBlock", hash)
-	return result, err
+	var raw []types.RPCTraceBlock
+	if err := br.rpc.CallContext(context.Background(), &raw, "debug_traceBlock", hash); err != nil {
+		return nil, err
+	}
+
+	out := make([]*types.TraceBlockResult, len(raw))
+	for i, elt := range raw {
+		out[i] = elt.Inner
+	}
+	return &types.TraceBlockResponse{Result: &out}, nil
 }
 
-// TraceBlockByNumber implements the debug_traceBlockByNumber RPC method.
+// TraceBlockByNumber fetches the execution-trace for the given block number.
 func (br *NecBridge) TraceBlockByNumber(number hexutil.Uint64) (*types.TraceBlockResponse, error) {
-	var result *types.TraceBlockResponse
-	err := br.rpc.CallContext(context.Background(), &result, "debug_traceBlockByNumber", number)
-	return result, err
+	var raw []types.RPCTraceBlock
+	if err := br.rpc.CallContext(context.Background(), &raw, "debug_traceBlockByNumber", number); err != nil {
+		return nil, err
+	}
+
+	out := make([]*types.TraceBlockResult, len(raw))
+	for i, elt := range raw {
+		out[i] = elt.Inner
+	}
+	return &types.TraceBlockResponse{Result: &out}, nil
 }
 
-// TraceBlockByHash implements the debug_traceBlockByHash RPC method.
+// TraceBlockByHash fetches the execution-trace for the given block hash.
 func (br *NecBridge) TraceBlockByHash(hash common.Hash) (*types.TraceBlockResponse, error) {
-	var result *types.TraceBlockResponse
-	err := br.rpc.CallContext(context.Background(), &result, "debug_traceBlockByHash", hash)
-	return result, err
+	var raw []types.RPCTraceBlock
+	if err := br.rpc.CallContext(context.Background(), &raw, "debug_traceBlockByHash", hash); err != nil {
+		return nil, err
+	}
+
+	out := make([]*types.TraceBlockResult, len(raw))
+	for i, elt := range raw {
+		out[i] = elt.Inner
+	}
+	return &types.TraceBlockResponse{Result: &out}, nil
 }
 
-// TraceTransaction implements the debug_traceTransaction RPC method.
-func (br *NecBridge) TraceTransaction(hash common.Hash) (*types.TraceBlockResponse, error) {
-	var result *types.TraceBlockResponse
-	err := br.rpc.CallContext(context.Background(), &result, "debug_traceTransaction", hash)
-	return result, err
+func (br *NecBridge) TraceTransaction(hash common.Hash) (*types.TraceTransactionResponse, error) {
+	var inner types.TraceBlockResult
+	err := br.rpc.CallContext(context.Background(), &inner, "debug_traceTransaction", hash)
+	if err != nil {
+		return nil, err
+	}
+	return &types.TraceTransactionResponse{
+		Result: &inner,
+	}, nil
 }

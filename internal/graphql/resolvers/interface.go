@@ -254,7 +254,7 @@ type ApiResolver interface {
 	TraceBlockByHash(args struct{ Hash common.Hash }) (*types.TraceBlockResponse, error)
 
 	// TraceTransaction resolves the debug_traceTransaction GraphQL query.
-	TraceTransaction(args struct{ Hash common.Hash }) (*types.TraceBlockResponse, error)
+	TraceTransaction(args struct{ Hash common.Hash }) (*types.TraceTransactionResponse, error)
 
 	// Close terminates resolver broadcast management.
 	Close()

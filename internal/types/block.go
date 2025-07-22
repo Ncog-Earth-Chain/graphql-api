@@ -1,4 +1,3 @@
-// Package types implements different core types of the API.
 package types
 
 import (
@@ -56,25 +55,35 @@ func (b *Block) Marshal() ([]byte, error) {
 	return json.Marshal(b)
 }
 
-// TraceStructLog represents a single log entry in a trace result.
+// TraceStructLog represents a single step in the EVM execution trace.
 type TraceStructLog struct {
-	PC      *int    `json:"pc"`
+	PC      *int32  `json:"pc"`
 	Op      *string `json:"op"`
-	Gas     *int    `json:"gas"`
-	GasCost *int    `json:"gasCost"`
-	Depth   *int    `json:"depth"`
+	Gas     *int32  `json:"gas"`
+	GasCost *int32  `json:"gasCost"`
+	Depth   *int32  `json:"depth"`
 }
 
-// TraceBlockResult represents the result of a trace block operation.
+// TraceBlockResult represents one trace entry in a traced block.
 type TraceBlockResult struct {
-	Gas         *int             `json:"gas"`
-	Failed      *bool            `json:"failed"`
-	ReturnValue *string          `json:"returnValue"`
-	StructLogs  []TraceStructLog `json:"structLogs"`
-	Message     *string          `json:"Message"`
+	Gas         *int32             `json:"gas"`
+	Failed      *bool              `json:"failed"`
+	ReturnValue *string            `json:"returnValue"`
+	StructLogs  *[]*TraceStructLog `json:"structLogs"`
+	Message     *string            `json:"Message"`
 }
 
-// TraceBlockResponse wraps the trace block result for GraphQL.
+// TraceBlockResponse wraps a list of trace entries for GraphQL.
 type TraceBlockResponse struct {
+	Result *[]*TraceBlockResult `json:"result"`
+}
+
+// RPCTraceBlock is an internal helper to match the JSON-RPC array element.
+type RPCTraceBlock struct {
+	Inner *TraceBlockResult `json:"result"`
+}
+
+// TraceTransactionResponse wraps a single transaction trace result.
+type TraceTransactionResponse struct {
 	Result *TraceBlockResult `json:"result"`
 }

@@ -20,6 +20,6 @@ func (p *proxy) TraceBlockByHash(hash common.Hash) (*types.TraceBlockResponse, e
 	return p.rpc.TraceBlockByHash(hash)
 }
 
-func (p *proxy) TraceTransaction(hash common.Hash) (*types.TraceBlockResponse, error) {
+func (p *proxy) TraceTransaction(hash common.Hash) (*types.TraceTransactionResponse, error) {
 	return p.rpc.TraceTransaction(hash)
 }

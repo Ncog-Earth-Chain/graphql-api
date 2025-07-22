@@ -5,21 +5,20 @@ schema {
     subscription: Subscription
 }
 
-# Add these types before the Query type:
 type TraceStructLog {
-    pc: Int
-    op: String
-    gas: Int
-    gasCost: Int
-    depth: Int
+  pc:      Int
+  op:      String
+  gas:     Int
+  gasCost: Int
+  depth:   Int
 }
 
 type TraceBlockResult {
-    gas: Int
-    failed: Boolean
-    returnValue: String
-    structLogs: [TraceStructLog!]
-    Message: String
+  gas:         Int
+  failed:      Boolean
+  returnValue: String
+  structLogs:  [TraceStructLog!]
+  message:     String
 }
 
 type TraceBlockResponse {

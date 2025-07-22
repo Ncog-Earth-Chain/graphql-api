@@ -859,6 +859,8 @@ scalar Cursor
 # Time represents date and time including time zone information in RFC3339 format.
 scalar Time
 
+scalar JSON
+
 # CurrentState represents the current active state
 # of the chain information condensed on one place.
 type CurrentState {
@@ -2338,25 +2340,22 @@ type Subscription {
     onTransaction: Transaction!
 }
 
-# TraceStructLog represents a single log entry in a trace result.
 type TraceStructLog {
-    pc: Int
-    op: String
-    gas: Int
-    gasCost: Int
-    depth: Int
+  pc:      Int
+  op:      String
+  gas:     Int
+  gasCost: Int
+  depth:   Int
 }
 
-# TraceBlockResult represents the result of a trace block or transaction operation.
 type TraceBlockResult {
-    gas: Int
-    failed: Boolean
-    returnValue: String
-    structLogs: [TraceStructLog!]
-    Message: String
+  gas:         Int
+  failed:      Boolean
+  returnValue: String
+  structLogs:  [TraceStructLog!]
+  message:     String
 }
 
-# TraceBlockResponse wraps the trace block result for GraphQL.
 type TraceBlockResponse {
     result: TraceBlockResult
 }
