@@ -19,6 +19,7 @@ import (
 	"ncogearthchain-api-graphql/internal/logger"
 	"ncogearthchain-api-graphql/internal/repository/rpc/contracts"
 	"ncogearthchain-api-graphql/internal/types"
+	"ncogearthchain-api-graphql/internal/util"
 	"strings"
 	"sync"
 
@@ -213,6 +214,12 @@ func (br *NecBridge) TraceBlock(hash common.Hash) (*types.TraceBlockResponse, er
 	out := make([]*types.TraceBlockResult, len(raw))
 	for i, elt := range raw {
 		out[i] = elt.Inner
+		if out[i] != nil && out[i].ReturnValue != nil {
+			decoded, err := util.DecodeReturnNoABI(*out[i].ReturnValue)
+			if err == nil {
+				out[i].ReturnValueDecoded = decoded
+			}
+		}
 	}
 	// pass &out so Result is *[]*TraceBlockResult
 	return &types.TraceBlockResponse{Result: &out}, nil
@@ -227,6 +234,12 @@ func (br *NecBridge) TraceBlockByNumber(number hexutil.Uint64) (*types.TraceBloc
 	out := make([]*types.TraceBlockResult, len(raw))
 	for i, elt := range raw {
 		out[i] = elt.Inner
+		if out[i] != nil && out[i].ReturnValue != nil {
+			decoded, err := util.DecodeReturnNoABI(*out[i].ReturnValue)
+			if err == nil {
+				out[i].ReturnValueDecoded = decoded
+			}
+		}
 	}
 	return &types.TraceBlockResponse{Result: &out}, nil
 }
@@ -240,6 +253,12 @@ func (br *NecBridge) TraceBlockByHash(hash common.Hash) (*types.TraceBlockRespon
 	out := make([]*types.TraceBlockResult, len(raw))
 	for i, elt := range raw {
 		out[i] = elt.Inner
+		if out[i] != nil && out[i].ReturnValue != nil {
+			decoded, err := util.DecodeReturnNoABI(*out[i].ReturnValue)
+			if err == nil {
+				out[i].ReturnValueDecoded = decoded
+			}
+		}
 	}
 	return &types.TraceBlockResponse{Result: &out}, nil
 }
@@ -253,6 +272,12 @@ func (br *NecBridge) TraceTransaction(txHash common.Hash) (*types.TraceTransacti
 	}
 
 	// wrap the single result in a slice
+	if raw.ReturnValue != nil {
+		decoded, err := util.DecodeReturnNoABI(*raw.ReturnValue)
+		if err == nil {
+			raw.ReturnValueDecoded = decoded
+		}
+	}
 	slice := []*types.TraceBlockResult{&raw}
 	return &types.TraceTransactionResponse{Result: &slice}, nil
 }

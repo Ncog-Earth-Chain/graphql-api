@@ -3,6 +3,8 @@ package types
 import (
 	"encoding/json"
 
+	"ncogearthchain-api-graphql/internal/util"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
@@ -66,11 +68,12 @@ type TraceStructLog struct {
 
 // TraceBlockResult represents one trace entry in a traced block.
 type TraceBlockResult struct {
-	Gas         *int32             `json:"gas"`
-	Failed      *bool              `json:"failed"`
-	ReturnValue *string            `json:"returnValue"`
-	StructLogs  *[]*TraceStructLog `json:"structLogs"`
-	Message     *string            `json:"Message"`
+	Gas                *int32              `json:"gas"`
+	Failed             *bool               `json:"failed"`
+	ReturnValue        *string             `json:"returnValue"`
+	ReturnValueDecoded *util.GenericReturn `json:"returnValueDecoded"`
+	StructLogs         *[]*TraceStructLog  `json:"structLogs"`
+	Message            *string             `json:"Message"`
 }
 
 // TraceBlockResponse wraps a single trace entry for GraphQL.

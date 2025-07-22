@@ -2340,6 +2340,20 @@ type Subscription {
     onTransaction: Transaction!
 }
 
+type WordDecode {
+	Index:  Int
+	Hex:    String
+	Uint:   String
+	String: String
+}
+
+type GenericReturn {
+  revertMessages: [String!]
+  panics: [String!]
+  words: [WordDecode!]
+  metadata: String
+}
+
 type TraceStructLog {
   pc:      Int
   op:      String
@@ -2352,6 +2366,7 @@ type TraceBlockResult {
   gas:         Int
   failed:      Boolean
   returnValue: String
+  returnValueDecoded: GenericReturn
   structLogs:  [TraceStructLog!]
   message:     String
 }
