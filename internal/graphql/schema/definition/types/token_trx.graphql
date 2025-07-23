@@ -47,3 +47,14 @@ type TokenTransaction {
     # time stamp of the block processing.
     timeStamp: Long!
 }
+
+
+type TokenSummary {
+    tokenAddress: Address!
+    tokenName: String!
+    tokenSymbol: String!
+    tokenType: String!
+    tokenDecimals: Int!
+    type: String!
+    amount: BigInt!
+}

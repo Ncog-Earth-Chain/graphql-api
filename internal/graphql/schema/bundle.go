@@ -1774,6 +1774,20 @@ type Account {
 
     # Details about smart contract, if the account is a smart contract.
     contract: Contract
+
+    # Token summaries for the account
+    tokenSummaries: [TokenSummary!]!
+}
+
+# TokenSummary represents a summary of token information
+type TokenSummary {
+    tokenAddress: Address!
+    tokenName: String!
+    tokenSymbol: String!
+    tokenType: String!
+    tokenDecimals: Int!
+    type: String!
+    amount: BigInt!
 }
 
 # GovernanceContract represents basic information
@@ -2325,5 +2339,4 @@ type Subscription {
     # Subscribe to receive information about new transactions in the blockchain.
     onTransaction: Transaction!
 }
-
 `

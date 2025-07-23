@@ -242,6 +242,19 @@ func (acc *Account) Contract() (*Contract, error) {
 	return NewContract(con), nil
 }
 
+// TokenSummaries resolves all tokens (ERC20, fMint, ERC721, ERC1155, etc.) for the account.
+func (acc *Account) TokenSummaries() ([]*repository.TokenSummary, error) {
+	summaries, err := repository.R().TokenSummariesByAddress(acc.Address, 1000)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*repository.TokenSummary, len(summaries))
+	for i := range summaries {
+		out[i] = &summaries[i]
+	}
+	return out, nil
+}
+
 // delegationsTotal calculates total sum of delegations of the given account including
 // pending rewards for those delegations.
 func (acc *Account) delegationsTotal() (amount *big.Int, inWithdraw *big.Int, rewards *big.Int, err error) {
