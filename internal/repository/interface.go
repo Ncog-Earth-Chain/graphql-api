@@ -595,4 +595,10 @@ type Repository interface {
 
 	// Close and cleanup the repository.
 	Close()
+
+	// TokenSummariesByAddress aggregates all token types for a wallet address.
+	TokenSummariesByAddress(addr common.Address, count int32) ([]TokenSummary, error)
+
+	// Erc721Assets returns all ERC721 contracts where the owner has a balance > 0.
+	Erc721Assets(owner common.Address, count int32) ([]common.Address, error)
 }
