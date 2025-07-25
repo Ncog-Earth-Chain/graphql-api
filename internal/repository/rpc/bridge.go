@@ -23,6 +23,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	etc "github.com/ethereum/go-ethereum/core/types"
 	eth "github.com/ethereum/go-ethereum/ethclient"
 	nec "github.com/ethereum/go-ethereum/rpc"
@@ -198,4 +200,61 @@ func (nec *NecBridge) SfcAbi() *abi.ABI {
 // by the connected blockchain node.
 func (nec *NecBridge) ObservedBlockProxy() chan *etc.Header {
 	return nec.headers
+}
+
+func (br *NecBridge) TraceBlock(hash common.Hash, params map[string]interface{}) (interface{}, error) {
+	var result interface{}
+	var err error
+	if params != nil {
+		err = br.rpc.CallContext(context.Background(), &result, "debug_traceBlock", hash, params)
+	} else {
+		err = br.rpc.CallContext(context.Background(), &result, "debug_traceBlock", hash)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (br *NecBridge) TraceBlockByNumber(number hexutil.Uint64, params map[string]interface{}) (interface{}, error) {
+	var result interface{}
+	var err error
+	if params != nil {
+		err = br.rpc.CallContext(context.Background(), &result, "debug_traceBlockByNumber", number, params)
+	} else {
+		err = br.rpc.CallContext(context.Background(), &result, "debug_traceBlockByNumber", number)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (br *NecBridge) TraceBlockByHash(hash common.Hash, params map[string]interface{}) (interface{}, error) {
+	var result interface{}
+	var err error
+	if params != nil {
+		err = br.rpc.CallContext(context.Background(), &result, "debug_traceBlockByHash", hash, params)
+	} else {
+		err = br.rpc.CallContext(context.Background(), &result, "debug_traceBlockByHash", hash)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// TraceTransaction fetches the execution-trace for the given transaction hash.
+func (br *NecBridge) TraceTransaction(txHash common.Hash, params map[string]interface{}) (interface{}, error) {
+	var result interface{}
+	var err error
+	if params != nil {
+		err = br.rpc.CallContext(context.Background(), &result, "debug_traceTransaction", txHash, params)
+	} else {
+		err = br.rpc.CallContext(context.Background(), &result, "debug_traceTransaction", txHash)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }

@@ -5,6 +5,10 @@ schema {
     subscription: Subscription
 }
 
+scalar JSON
+
+scalar JSONAny
+
 # Entry points for querying the API
 type Query {
     # version represents the API server version responding to your requests.
@@ -290,6 +294,18 @@ type Query {
 
     # necLatestBlockBurnList provides a list of latest burned native NEC tokens per-block.
     necLatestBlockBurnList(count: Int = 25): [NecBlockBurn!]!
+	
+    # Trace a block and return the raw trace.
+    traceBlock(hash: Bytes32!, params: JSONAny): JSONAny!
+
+    # Trace a block by its number.
+    traceBlockByNumber(number: Long!, params: JSONAny): JSONAny!
+
+    # Trace a block by its hash.
+    traceBlockByHash(hash: Bytes32!, params: JSONAny): JSONAny!
+
+    # Trace a transaction.
+    traceTransaction(hash: Bytes32!, params: JSONAny): JSONAny!
 }
 
 # Mutation endpoints for modifying the data

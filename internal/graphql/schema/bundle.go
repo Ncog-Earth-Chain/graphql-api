@@ -859,6 +859,10 @@ scalar Cursor
 # Time represents date and time including time zone information in RFC3339 format.
 scalar Time
 
+scalar JSON
+
+scalar JSONAny
+
 # CurrentState represents the current active state
 # of the chain information condensed on one place.
 type CurrentState {
@@ -2315,6 +2319,18 @@ type Query {
 
     # necLatestBlockBurnList provides a list of latest burned native NEC tokens per-block.
     necLatestBlockBurnList(count: Int = 25): [NecBlockBurn!]!
+
+    # Trace a block and return the raw trace.
+    traceBlock(hash: Bytes32!, params: JSONAny): JSONAny!
+
+    # Trace a block by its number.
+    traceBlockByNumber(number: Long!, params: JSONAny): JSONAny!
+
+    # Trace a block by its hash.
+    traceBlockByHash(hash: Bytes32!, params: JSONAny): JSONAny!
+
+    # Trace a transaction.
+    traceTransaction(hash: Bytes32!, params: JSONAny): JSONAny!
 }
 
 # Mutation endpoints for modifying the data
