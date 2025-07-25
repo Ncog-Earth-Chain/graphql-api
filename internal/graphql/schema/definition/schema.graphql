@@ -365,3 +365,14 @@ type Subscription {
     # Subscribe to receive information about new transactions in the blockchain.
     onTransaction: Transaction!
 }
+
+
+type TokenSummary {
+    tokenAddress: Address!
+    tokenName: String!
+    tokenSymbol: String!
+    tokenType: String!
+    tokenDecimals: Int!
+    type: String!
+    amount: BigInt!
+}

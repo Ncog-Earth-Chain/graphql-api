@@ -34,4 +34,7 @@ type Account {
 
     # Details about smart contract, if the account is a smart contract.
     contract: Contract
+
+    # List of all tokens (ERC20, DeFi/fMint, ERC721, ERC1155, etc.) associated with the account.
+    tokenSummaries: [TokenSummary!]!
 }

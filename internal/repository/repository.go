@@ -10,6 +10,7 @@ package repository
 
 import (
 	"fmt"
+	"math/big"
 	"ncogearthchain-api-graphql/internal/config"
 	"ncogearthchain-api-graphql/internal/logger"
 	"ncogearthchain-api-graphql/internal/repository/cache"
@@ -17,6 +18,8 @@ import (
 	"ncogearthchain-api-graphql/internal/repository/rpc"
 	"sync"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -161,4 +164,145 @@ func (p *proxy) Close() {
 
 	// inform about actions
 	p.log.Notice("repository done")
+}
+
+// Erc721Assets returns all ERC721 contracts where the owner has a balance > 0.
+func (p *proxy) Erc721Assets(owner common.Address, count int32) ([]common.Address, error) {
+	contracts, err := p.Erc721ContractsList(count)
+	if err != nil {
+		return nil, err
+	}
+	var result []common.Address
+	for _, contract := range contracts {
+		balance, err := p.Erc721BalanceOf(&contract, &owner)
+		if err != nil {
+			p.log.Errorf("Erc721BalanceOf error for %s: %v", contract.Hex(), err)
+			continue
+		}
+		if balance.ToInt().Cmp(big.NewInt(0)) > 0 {
+			result = append(result, contract)
+		}
+	}
+	return result, nil
+}
+
+// TokenSummary represents a summary of any token type for a wallet address.
+type TokenSummary struct {
+	TokenAddress  common.Address `json:"tokenAddress"`
+	TokenName     string         `json:"tokenName"`
+	TokenSymbol   string         `json:"tokenSymbol"`
+	TokenType     string         `json:"tokenType"`
+	TokenDecimals int32          `json:"tokenDecimals"`
+	Type          string         `json:"type"`
+	Amount        hexutil.Big    `json:"amount"`
+}
+
+// TokenSummariesByAddress aggregates all token types for a wallet address.
+func (p *proxy) TokenSummariesByAddress(addr common.Address, count int32) ([]TokenSummary, error) {
+	var summaries []TokenSummary
+
+	// ERC20 tokens
+	erc20Tokens, err := p.Erc20Assets(addr, count)
+	if err != nil {
+		p.log.Errorf("Erc20Assets error for %s: %v", addr.Hex(), err)
+		return summaries, err
+	}
+	for _, tokenAddr := range erc20Tokens {
+		token, err := p.Erc20Token(&tokenAddr)
+		if err != nil || token == nil {
+			p.log.Errorf("Erc20Token error for %s: %v", tokenAddr.Hex(), err)
+			continue
+		}
+		balance, err := p.Erc20BalanceOf(&tokenAddr, &addr)
+		if err != nil {
+			p.log.Errorf("Erc20BalanceOf error for %s: %v", tokenAddr.Hex(), err)
+			continue
+		}
+		summaries = append(summaries, TokenSummary{
+			TokenAddress:  tokenAddr,
+			TokenName:     token.Name,
+			TokenSymbol:   token.Symbol,
+			TokenType:     "ERC20",
+			TokenDecimals: token.Decimals,
+			Type:          "BALANCE",
+			Amount:        balance,
+		})
+	}
+
+	// fMint Collateral
+	fmintAcc, err := p.FMintAccount(addr)
+	if err == nil && fmintAcc != nil {
+		for _, tokenAddr := range fmintAcc.CollateralList {
+			token, err := p.Erc20Token(&tokenAddr)
+			if err != nil || token == nil {
+				p.log.Errorf("Erc20Token error for fMint collateral %s: %v", tokenAddr.Hex(), err)
+				continue
+			}
+			amount, err := p.FMintTokenBalance(&addr, &tokenAddr, "COLLATERAL")
+			if err != nil {
+				p.log.Errorf("FMintTokenBalance error for collateral %s: %v", tokenAddr.Hex(), err)
+				continue
+			}
+			summaries = append(summaries, TokenSummary{
+				TokenAddress:  tokenAddr,
+				TokenName:     token.Name,
+				TokenSymbol:   token.Symbol,
+				TokenType:     "FMINT_COLLATERAL",
+				TokenDecimals: token.Decimals,
+				Type:          "DEPOSIT",
+				Amount:        amount,
+			})
+		}
+		// fMint Debt
+		for _, tokenAddr := range fmintAcc.DebtList {
+			token, err := p.Erc20Token(&tokenAddr)
+			if err != nil || token == nil {
+				p.log.Errorf("Erc20Token error for fMint debt %s: %v", tokenAddr.Hex(), err)
+				continue
+			}
+			amount, err := p.FMintTokenBalance(&addr, &tokenAddr, "DEBT")
+			if err != nil {
+				p.log.Errorf("FMintTokenBalance error for debt %s: %v", tokenAddr.Hex(), err)
+				continue
+			}
+			summaries = append(summaries, TokenSummary{
+				TokenAddress:  tokenAddr,
+				TokenName:     token.Name,
+				TokenSymbol:   token.Symbol,
+				TokenType:     "FMINT_DEBT",
+				TokenDecimals: token.Decimals,
+				Type:          "DEBT",
+				Amount:        amount,
+			})
+		}
+	} else if err != nil {
+		p.log.Errorf("FMintAccount error for %s: %v", addr.Hex(), err)
+	}
+
+	// ERC721 tokens (NFTs)
+	erc721Tokens, err := p.Erc721Assets(addr, count)
+	if err == nil {
+		for _, tokenAddr := range erc721Tokens {
+			name, _ := p.Erc721Name(&tokenAddr)
+			symbol, _ := p.Erc721Symbol(&tokenAddr)
+			ownedCount, err := p.Erc721BalanceOf(&tokenAddr, &addr)
+			if err != nil {
+				p.log.Errorf("Erc721BalanceOf error for %s: %v", tokenAddr.Hex(), err)
+				continue
+			}
+			summaries = append(summaries, TokenSummary{
+				TokenAddress:  tokenAddr,
+				TokenName:     name,
+				TokenSymbol:   symbol,
+				TokenType:     "ERC721",
+				TokenDecimals: 0,
+				Type:          "OWNED",
+				Amount:        ownedCount,
+			})
+		}
+	} else {
+		p.log.Errorf("Erc721Assets error for %s: %v", addr.Hex(), err)
+	}
+
+	return summaries, nil
 }
