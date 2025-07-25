@@ -3,8 +3,6 @@ package types
 import (
 	"encoding/json"
 
-	"ncogearthchain-api-graphql/internal/util"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
