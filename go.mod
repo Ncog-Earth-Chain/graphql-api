@@ -8,7 +8,6 @@ require (
 	github.com/allegro/bigcache v1.2.1
 	github.com/cloudflare/circl v1.5.0
 	github.com/ethereum/go-ethereum v1.10.17
-	github.com/fxamacker/cbor v1.5.1
 	github.com/graph-gophers/graphql-go v1.4.0
 	github.com/graph-gophers/graphql-transport-ws v0.0.2
 	github.com/klauspost/compress v1.15.1
@@ -69,7 +68,6 @@ require (
 	github.com/tklauser/go-sysconf v0.3.10 // indirect
 	github.com/tklauser/numcpus v0.4.0 // indirect
 	github.com/tyler-smith/go-bip39 v1.1.0 // indirect
-	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/scram v1.1.1 // indirect
 	github.com/xdg-go/stringprep v1.0.3 // indirect
@@ -86,6 +84,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )
 
-replace github.com/ethereum/go-ethereum => github.com/Ncog-Earth-Chain/ncog-evm v1.1.1
+replace github.com/ethereum/go-ethereum => github.com/Ncog-Earth-Chain/ncog-evm v1.1.2
 
 //replace github.com/ethereum/go-ethereum => /home/vboxuser/ncog-evm
