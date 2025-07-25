@@ -56,37 +56,3 @@ func UnmarshalBlock(data []byte) (*Block, error) {
 func (b *Block) Marshal() ([]byte, error) {
 	return json.Marshal(b)
 }
-
-// TraceStructLog represents a single step in the EVM execution trace.
-type TraceStructLog struct {
-	PC      *int32  `json:"pc"`
-	Op      *string `json:"op"`
-	Gas     *int32  `json:"gas"`
-	GasCost *int32  `json:"gasCost"`
-	Depth   *int32  `json:"depth"`
-}
-
-// TraceBlockResult represents one trace entry in a traced block.
-type TraceBlockResult struct {
-	Gas                *int32              `json:"gas"`
-	Failed             *bool               `json:"failed"`
-	ReturnValue        *string             `json:"returnValue"`
-	ReturnValueDecoded *util.GenericReturn `json:"returnValueDecoded"`
-	StructLogs         *[]*TraceStructLog  `json:"structLogs"`
-	Message            *string             `json:"Message"`
-}
-
-// TraceBlockResponse wraps a single trace entry for GraphQL.
-type TraceBlockResponse struct {
-	Result *[]*TraceBlockResult `json:"result"`
-}
-
-// RPCTraceBlock is an internal helper to match the JSON-RPC array element.
-type RPCTraceBlock struct {
-	Inner *TraceBlockResult `json:"result"`
-}
-
-// TraceTransactionResponse wraps a single transaction trace result.
-type TraceTransactionResponse struct {
-	Result *[]*TraceBlockResult `json:"result"`
-}
