@@ -306,6 +306,9 @@ type Query {
 
     # Trace a transaction.
     traceTransaction(hash: Bytes32!, params: JSONAny): JSONAny!
+
+    # Get list of available Solidity compiler versions for contract validation.
+    availableCompilerVersions: [String!]!
 }
 
 # Mutation endpoints for modifying the data
@@ -320,6 +323,10 @@ type Mutation {
     # Returns updated contract information. If the contract can not be validated,
     # it raises a GraphQL error.
     validateContract(contract: ContractValidationInput!): Contract!
+
+    # Pre-download a specific Solidity compiler version for future use.
+    # This is useful to prepare compilers before contract validation.
+    preDownloadCompilerVersion(version: String!): Boolean!
 }
 
 # Subscriptions to live events broadcasting

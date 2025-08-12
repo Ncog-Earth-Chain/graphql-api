@@ -42,6 +42,10 @@ type Contract struct {
 	// Smart contract compiler identifier, if available.
 	Compiler string `json:"cv,omitempty"`
 
+	// CompilerVersion represents the specific Solidity compiler version
+	// used for validation, if available.
+	CompilerVersion string `json:"cv_ver,omitempty"`
+
 	// IsOptimized signals that the contract byte code was optimized
 	// during compilation.
 	IsOptimized bool `json:"optimized"`

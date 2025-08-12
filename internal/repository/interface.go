@@ -100,6 +100,12 @@ type Repository interface {
 	// is updated the the repository.
 	ValidateContract(*types.Contract) error
 
+	// GetAvailableCompilerVersions returns a list of available Solidity compiler versions.
+	GetAvailableCompilerVersions() []string
+
+	// PreDownloadCompilerVersion downloads and installs a specific Solidity compiler version.
+	PreDownloadCompilerVersion(version string) error
+
 	// StoreContract updates the contract in repository.
 	StoreContract(*types.Contract) error
 

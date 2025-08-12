@@ -69,6 +69,10 @@ type ContractValidationInput struct {
 	// during the contract compilation.
 	OptimizeRuns int32 `json:"optimizeRuns"`
 
+	// CompilerVersion represents the Solidity compiler version to use
+	// for validation. If empty, the default compiler will be used.
+	CompilerVersion *string `json:"compilerVersion,omitempty"`
+
 	// SourceCode represents the Solidity source code to be validated.
 	SourceCode string `json:"sourceCode"`
 }
@@ -173,6 +177,11 @@ func updateContractFromInput(con *ContractValidationInput, sc *types.Contract) {
 	// pass the intended support contact
 	if con.SupportContact != nil {
 		sc.SupportContact = *con.SupportContact
+	}
+
+	// pass the intended compiler version
+	if con.CompilerVersion != nil {
+		sc.CompilerVersion = *con.CompilerVersion
 	}
 }
 

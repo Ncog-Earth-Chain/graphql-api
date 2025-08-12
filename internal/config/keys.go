@@ -48,6 +48,7 @@ const (
 
 	// contract validation related
 	keySolCompilerPath = "compiler.sol"
+	keyCompilerTempPath = "compiler.temp"
 
 	// utility options
 	keyVotingSources         = "voting.sources"

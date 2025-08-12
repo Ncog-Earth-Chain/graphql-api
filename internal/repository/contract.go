@@ -127,10 +127,24 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 		return err
 	}
 
+	// determine which compiler to use
+	compilerPath := p.solCompiler
+	if sc.CompilerVersion != "" {
+		// try to get the specific compiler version
+		p.log.Infof("requesting Solidity compiler version %s for contract validation", sc.CompilerVersion)
+		specificPath, err := p.compilerMgr.GetCompilerPath(sc.CompilerVersion)
+		if err != nil {
+			p.log.Errorf("solidity compiler version %s not available, using default: %s", sc.CompilerVersion, err.Error())
+		} else {
+			compilerPath = specificPath
+			p.log.Infof("using solidity compiler version %s at %s", sc.CompilerVersion, compilerPath)
+		}
+	}
+
 	// try to compile the source code provided
-	contracts, err := compiler.CompileSolidityString(p.solCompiler, sc.SourceCode)
+	contracts, err := compiler.CompileSolidityString(compilerPath, sc.SourceCode)
 	if err != nil {
-		p.log.Errorf("solidity code compilation failed")
+		p.log.Errorf("solidity code compilation failed with compiler %s: %s", compilerPath, err.Error())
 		return err
 	}
 
@@ -160,7 +174,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 			}
 
 			// inform about success
-			p.log.Debugf("contract %s [%s] validated", sc.Address.String(), name)
+			p.log.Debugf("contract %s [%s] validated with compiler %s", sc.Address.String(), name, compilerPath)
 			p.cache.EvictContract(&sc.Address)
 
 			// inform the upper instance we have a winner
