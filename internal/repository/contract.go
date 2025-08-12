@@ -182,6 +182,50 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 		}
 	}
 
+	// If creation bytecode compare failed for all artifacts, try runtime bytecode compare
+	// Fetch on-chain runtime code
+	onChainCode, err := p.rpc.ContractCode(&sc.Address)
+	if err == nil && len(onChainCode) > 0 {
+		for name, detail := range contracts {
+			// detail.RuntimeCode is not exposed by geth compiler output; runtime is in detail.RuntimeCode or detail.CodeRuntime depending on version
+			// The geth compiler.Contract has fields: Code (creation) and RuntimeCode (runtime) in newer versions. Try both.
+			runtimeHex := detail.RuntimeCode
+			if len(runtimeHex) == 0 {
+				// some versions use Info.RuntimeCode or RuntimeCode
+				runtimeHex = detail.Info.RuntimeCode
+			}
+			if len(runtimeHex) == 0 {
+				// as a last resort, skip runtime check for this artifact
+				continue
+			}
+
+			compiledRuntime, err := hexutil.Decode(runtimeHex)
+			if err != nil {
+				continue
+			}
+			// strip metadata tail from compiled runtime as well
+			compiledRuntime = cutCodeMetadata(compiledRuntime)
+
+			// compare equality with on-chain code prefix-equality or exact? Use exact length match
+			if len(onChainCode) >= len(compiledRuntime) {
+				if bytes.Equal(compiledRuntime, onChainCode[:len(compiledRuntime)]) {
+					// matched by runtime
+					if 0 == len(sc.Name) {
+						sc.Name = strings.TrimPrefix(name, "<stdin>:")
+					}
+					updateContractDetails(sc, detail)
+					if err := p.db.UpdateContract(sc); err != nil {
+						p.log.Errorf("contract validation (runtime) failed due to db error; %s", err.Error())
+						return err
+					}
+					p.log.Debugf("contract %s [%s] validated by runtime bytecode with compiler %s", sc.Address.String(), name, compilerPath)
+					p.cache.EvictContract(&sc.Address)
+					return nil
+				}
+			}
+		}
+	}
+
 	// validation fails
 	return fmt.Errorf("contract source code does not match with the deployed byte code")
 }

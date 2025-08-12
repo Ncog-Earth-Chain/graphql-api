@@ -796,6 +796,13 @@ input ContractValidationInput {
     """
     optimizeRuns: Int = 200
 
+    """
+    CompilerVersion specifies the Solidity compiler version to use for validation.
+    If not specified, the default compiler will be used.
+    Format should be like 'v0.8.19' or '0.8.19'.
+    """
+    compilerVersion: String
+
     "Smart contract source code."
     sourceCode: String!
 }
