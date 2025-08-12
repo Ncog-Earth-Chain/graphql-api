@@ -10,10 +10,13 @@ package repository
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"ncogearthchain-api-graphql/internal/types"
+	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/compiler"
@@ -57,6 +60,9 @@ func (p *proxy) Contracts(validatedOnly bool, cursor *string, count int32) (*typ
 func cutCodeMetadata(bc []byte) []byte {
 	// last 2 bytes are expected to contain metadata length
 	bcLen := uint64(len(bc))
+	if bcLen < 2 {
+		return bc
+	}
 	cut := uint64(bc[bcLen-2])<<8 | uint64(bc[bcLen-1])
 
 	// are we safely within the byte code size?
@@ -73,6 +79,9 @@ func compareContractCode(tx *types.Transaction, code string) (bool, error) {
 	bc, err := hexutil.Decode(code)
 	if err != nil {
 		return false, err
+	}
+	if len(bc) == 0 {
+		return false, nil
 	}
 
 	// remove meta data hash from the byte code so we can compare raw
@@ -94,6 +103,116 @@ func compareContractCode(tx *types.Transaction, code string) (bool, error) {
 
 	// return the comparison result
 	return res == 0, nil
+}
+
+// compiledArtifact represents a minimal subset of compiler output we need
+type compiledArtifact struct {
+	Name            string
+	Code            string // creation bytecode hex (0x...)
+	RuntimeCode     string // deployed/runtime bytecode hex (0x...)
+	Abi             json.RawMessage
+	CompilerVersion string
+}
+
+// compileSolidityStandardJSON compiles a single-source Solidity input using solc --standard-json
+// and respects optimizer settings.
+func compileSolidityStandardJSON(solcPath string, source string, optimized bool, runs int32) (map[string]compiledArtifact, error) {
+	// build standard-json input
+	type sourceContent struct {
+		Content string `json:"content"`
+	}
+	type stdIn struct {
+		Language string                   `json:"language"`
+		Sources  map[string]sourceContent `json:"sources"`
+		Settings struct {
+			Optimizer struct {
+				Enabled bool  `json:"enabled"`
+				Runs    int32 `json:"runs"`
+			} `json:"optimizer"`
+			OutputSelection map[string]map[string][]string `json:"outputSelection"`
+		} `json:"settings"`
+	}
+	in := stdIn{Language: "Solidity", Sources: map[string]sourceContent{"input.sol": {Content: source}}}
+	in.Settings.Optimizer.Enabled = optimized
+	if runs < 0 {
+		runs = 0
+	}
+	in.Settings.Optimizer.Runs = runs
+	in.Settings.OutputSelection = map[string]map[string][]string{
+		"*": {
+			"*": {"abi", "evm.bytecode.object", "evm.deployedBytecode.object"},
+		},
+	}
+
+	payload, err := json.Marshal(in)
+	if err != nil {
+		return nil, err
+	}
+
+	// run solc --standard-json
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, solcPath, "--standard-json")
+	cmd.Stdin = bytes.NewReader(payload)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("solc standard-json failed: %w", err)
+	}
+
+	// parse output
+	var stdOut struct {
+		Contracts map[string]map[string]struct {
+			Abi json.RawMessage `json:"abi"`
+			Evm struct {
+				Bytecode struct {
+					Object string `json:"object"`
+				} `json:"bytecode"`
+				DeployedBytecode struct {
+					Object string `json:"object"`
+				} `json:"deployedBytecode"`
+			} `json:"evm"`
+		} `json:"contracts"`
+		Version string `json:"version"`
+		Errors  []struct {
+			Type     string `json:"type"`
+			Message  string `json:"message"`
+			Severity string `json:"severity"`
+		} `json:"errors"`
+	}
+	if err := json.Unmarshal(out, &stdOut); err != nil {
+		return nil, fmt.Errorf("failed to parse solc output: %w", err)
+	}
+	// if any error-severity entries exist, surface first
+	for _, e := range stdOut.Errors {
+		if e.Severity == "error" {
+			return nil, fmt.Errorf("solc error: %s", e.Message)
+		}
+	}
+
+	artifacts := make(map[string]compiledArtifact)
+	for _, byName := range stdOut.Contracts {
+		for name, c := range byName {
+			art := compiledArtifact{
+				Name:            name,
+				Code:            hexWithPrefix(c.Evm.Bytecode.Object),
+				RuntimeCode:     hexWithPrefix(c.Evm.DeployedBytecode.Object),
+				Abi:             c.Abi,
+				CompilerVersion: stdOut.Version,
+			}
+			artifacts[name] = art
+		}
+	}
+	return artifacts, nil
+}
+
+func hexWithPrefix(h string) string {
+	if len(h) == 0 {
+		return "0x"
+	}
+	if strings.HasPrefix(h, "0x") || strings.HasPrefix(h, "0X") {
+		return h
+	}
+	return "0x" + h
 }
 
 // updateContractDetails updates local contract details from the provided compiler
@@ -141,15 +260,21 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 		}
 	}
 
-	// try to compile the source code provided
-	contracts, err := compiler.CompileSolidityString(compilerPath, sc.SourceCode)
+	// try to compile the source code provided with explicit optimizer settings
+	compiled, err := compileSolidityStandardJSON(compilerPath, sc.SourceCode, sc.IsOptimized, sc.OptimizeRuns)
+	p.log.Debugf("compiled output: %+v", compiled)
 	if err != nil {
 		p.log.Errorf("solidity code compilation failed with compiler %s: %s", compilerPath, err.Error())
 		return err
 	}
 
-	// loop over contracts ad try to validate one of them
-	for name, detail := range contracts {
+	// loop over contracts and try to validate one of them
+	for name, detail := range compiled {
+		// if a specific contract name is provided, consider only that artifact
+		trimmedName := strings.TrimPrefix(name, "<stdin>:")
+		if len(sc.Name) > 0 && sc.Name != trimmedName {
+			continue
+		}
 		// check if the compiled byte code match with the deployed contract
 		match, err := compareContractCode(tx, detail.Code)
 		if err != nil {
@@ -165,7 +290,15 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 			}
 
 			// update the contract data
-			updateContractDetails(sc, detail)
+			// update details
+			sc.Compiler = fmt.Sprintf("Solidity %s", detail.CompilerVersion)
+			if len(detail.Abi) > 0 {
+				sc.Abi = string(detail.Abi)
+			}
+
+			// set validated time stamp (now)
+			now := hexutil.Uint64(uint64(time.Now().Unix()))
+			sc.Validated = &now
 
 			// write update to the database
 			if err := p.db.UpdateContract(sc); err != nil {
@@ -186,21 +319,30 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 	// Fetch on-chain runtime code
 	onChainCode, err := p.rpc.ContractCode(&sc.Address)
 	if err == nil && len(onChainCode) > 0 {
-		for name, detail := range contracts {
-			// detail.RuntimeCode is not exposed by geth compiler output; runtime is in detail.RuntimeCode or detail.CodeRuntime depending on version
-			// The geth compiler.Contract has fields: Code (creation) and RuntimeCode (runtime) in newer versions. Try both.
-			runtimeHex := detail.RuntimeCode
-			if len(runtimeHex) == 0 {
-				// some versions use Info.RuntimeCode or RuntimeCode
-				runtimeHex = detail.Info.RuntimeCode
+
+		fmt.Printf("on-chain code: %s\n", hexutil.Encode(onChainCode))
+		fmt.Printf("compiled output: %+v\n", compiled)
+
+		for name, detail := range compiled {
+			// restrict to requested contract name if provided
+			trimmedName := strings.TrimPrefix(name, "<stdin>:")
+			if len(sc.Name) > 0 && sc.Name != trimmedName {
+				continue
 			}
-			if len(runtimeHex) == 0 {
-				// as a last resort, skip runtime check for this artifact
+			// use runtime bytecode provided by the compiler output
+			runtimeHex := detail.RuntimeCode
+			// skip if runtime is empty or just "0x"
+			if len(runtimeHex) <= 2 {
+				// no runtime code available for this artifact
 				continue
 			}
 
 			compiledRuntime, err := hexutil.Decode(runtimeHex)
 			if err != nil {
+				continue
+			}
+			// skip artifacts with empty runtime code
+			if len(compiledRuntime) == 0 {
 				continue
 			}
 			// strip metadata tail from compiled runtime as well
@@ -211,9 +353,18 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 				if bytes.Equal(compiledRuntime, onChainCode[:len(compiledRuntime)]) {
 					// matched by runtime
 					if 0 == len(sc.Name) {
-						sc.Name = strings.TrimPrefix(name, "<stdin>:")
+						sc.Name = trimmedName
 					}
-					updateContractDetails(sc, detail)
+					// update details
+					sc.Compiler = fmt.Sprintf("Solidity %s", detail.CompilerVersion)
+					if len(detail.Abi) > 0 {
+						sc.Abi = string(detail.Abi)
+					}
+
+					// set validated time stamp (now)
+					now := hexutil.Uint64(uint64(time.Now().Unix()))
+					sc.Validated = &now
+
 					if err := p.db.UpdateContract(sc); err != nil {
 						p.log.Errorf("contract validation (runtime) failed due to db error; %s", err.Error())
 						return err

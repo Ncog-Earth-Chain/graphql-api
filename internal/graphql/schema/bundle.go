@@ -788,7 +788,7 @@ input ContractValidationInput {
     license: String
 
     "Optimized specifies if the compiler was set to optimize the byte code."
-    optimized: Boolean = true
+    optimized: Boolean = false
 
     """
     OptimizeRuns specifies number of optimization runs the compiler was set
