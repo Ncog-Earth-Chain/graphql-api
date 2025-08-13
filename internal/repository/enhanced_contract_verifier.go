@@ -210,7 +210,7 @@ func (ecv *EnhancedContractVerifier) extractContractName(source string) string {
 // GetPackageInfo returns detailed information about detected packages
 func (ecv *EnhancedContractVerifier) GetPackageInfo(source string) map[string]*registry.PackageInfo {
 	// Detect packages from source
-	packages := ecv.orchestrator.versionStrategy.DetectPackagesFromSource(source)
+    packages := ecv.orchestrator.DetectPackagesFromSource(source)
 	
 	// Get package information from registry
 	return ecv.orchestrator.GetPackageInfo(packages)
@@ -219,7 +219,7 @@ func (ecv *EnhancedContractVerifier) GetPackageInfo(source string) map[string]*r
 // GetCompatibilityMatrix returns compatibility information for packages
 func (ecv *EnhancedContractVerifier) GetCompatibilityMatrix(source string) map[string]map[string][]string {
 	// Detect packages from source
-	packages := ecv.orchestrator.versionStrategy.DetectPackagesFromSource(source)
+    packages := ecv.orchestrator.DetectPackagesFromSource(source)
 	
 	// Get compatibility matrix
 	return ecv.orchestrator.GetCompatibilityMatrix(packages)
@@ -228,7 +228,7 @@ func (ecv *EnhancedContractVerifier) GetCompatibilityMatrix(source string) map[s
 // SuggestOptimalVersions suggests optimal version combinations
 func (ecv *EnhancedContractVerifier) SuggestOptimalVersions(source string) map[string]string {
 	// Detect packages from source
-	packages := ecv.orchestrator.versionStrategy.DetectPackagesFromSource(source)
+    packages := ecv.orchestrator.DetectPackagesFromSource(source)
 	
 	// Get optimal version suggestions
 	return ecv.orchestrator.SuggestOptimalVersions(packages)

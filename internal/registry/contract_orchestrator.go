@@ -240,6 +240,11 @@ func (co *ContractOrchestrator) SuggestOptimalVersions(packages []string) map[st
 	return co.versionStrategy.SuggestOptimalVersions(packages)
 }
 
+// DetectPackagesFromSource exposes package detection from source code
+func (co *ContractOrchestrator) DetectPackagesFromSource(source string) []string {
+    return co.versionStrategy.DetectPackagesFromSource(source)
+}
+
 // RefreshPackageCache refreshes the package registry cache
 func (co *ContractOrchestrator) RefreshPackageCache() {
 	co.registry.RefreshCache()

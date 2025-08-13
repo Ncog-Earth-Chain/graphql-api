@@ -2,26 +2,18 @@
 package resolvers
 
 import (
-	"context"
-	"crypto/sha256"
-	"fmt"
-	"html"
-	"ncogearthchain-api-graphql/internal/logger"
-	"ncogearthchain-api-graphql/internal/repository"
-	"ncogearthchain-api-graphql/internal/types"
-	"regexp"
-	"strings"
+    "context"
+    "crypto/sha256"
+    "fmt"
+    "html"
+    "ncogearthchain-api-graphql/internal/repository"
+    "ncogearthchain-api-graphql/internal/types"
+    "regexp"
+    "strings"
 
-	"github.com/ethereum/go-ethereum/common"
+    "github.com/ethereum/go-ethereum/common"
 )
 
-// log represents the logger to be used by the contract resolver.
-var log logger.Logger
-
-// SetLogger sets the contract resolver logger to be used for logging.
-func SetLogger(l logger.Logger) {
-	log = l
-}
 
 const (
 	// scValidationMinSourceCodeLength is the minimum length of a validated
@@ -50,9 +42,9 @@ type Contract struct {
 	VerificationMethod    string                 `json:"verificationMethod"`
 	VerificationMetadata  map[string]interface{} `json:"verificationMetadata"`
 	PackageDependencies   []string               `json:"packageDependencies"`
-	VersionCompatibility  map[string]interface{} `json:"versionCompatibility"`
-	CDNStatus            map[string]interface{} `json:"cdnStatus"`
-	RegistryStats        map[string]interface{} `json:"registryStats"`
+    VersionCompatibility  interface{}            `json:"versionCompatibility"`
+    CDNStatus            interface{}            `json:"cdnStatus"`
+    RegistryStats        interface{}            `json:"registryStats"`
 }
 
 // ContractValidationInput represents an input structure used
@@ -302,63 +294,64 @@ func (rs *rootResolver) ContractVerificationInfo(args *struct{ Address common.Ad
 }
 
 // PackageCompatibilityMatrix provides compatibility information for detected packages.
-func (rs *rootResolver) PackageCompatibilityMatrix(args *struct{ SourceCode string }) (map[string]interface{}, error) {
+func (rs *rootResolver) PackageCompatibilityMatrix(args *struct{ SourceCode string }) (JSONAny, error) {
 	enhancedVerifier := repository.GetEnhancedContractVerifier()
 	if enhancedVerifier == nil {
-		return map[string]interface{}{
-			"error": "Enhanced verification system not available",
-			"status": "disabled",
-		}, nil
+        return JSONAny{Value: map[string]interface{}{
+            "error": "Enhanced verification system not available",
+            "status": "disabled",
+        }}, nil
 	}
 
-	return enhancedVerifier.GetCompatibilityMatrix(args.SourceCode), nil
+    // Wrap typed map into JSONAny for GraphQL JSON scalar
+    return JSONAny{Value: enhancedVerifier.GetCompatibilityMatrix(args.SourceCode)}, nil
 }
 
 // OptimalPackageVersions suggests optimal package versions for the given source code.
-func (rs *rootResolver) OptimalPackageVersions(args *struct{ SourceCode string }) (map[string]interface{}, error) {
+func (rs *rootResolver) OptimalPackageVersions(args *struct{ SourceCode string }) (JSONAny, error) {
 	enhancedVerifier := repository.GetEnhancedContractVerifier()
 	if enhancedVerifier == nil {
-		return map[string]interface{}{
-			"error": "Enhanced verification system not available",
-			"status": "disabled",
-		}, nil
+        return JSONAny{Value: map[string]interface{}{
+            "error": "Enhanced verification system not available",
+            "status": "disabled",
+        }}, nil
 	}
 
 	suggestions := enhancedVerifier.SuggestOptimalVersions(args.SourceCode)
-	return map[string]interface{}{
-		"suggestions": suggestions,
-		"status": "active",
-	}, nil
+    return JSONAny{Value: map[string]interface{}{
+        "suggestions": suggestions,
+        "status": "active",
+    }}, nil
 }
 
 // RegistryStatus provides current status of the enhanced verification registry system.
-func (rs *rootResolver) RegistryStatus() (map[string]interface{}, error) {
+func (rs *rootResolver) RegistryStatus() (JSONAny, error) {
 	enhancedVerifier := repository.GetEnhancedContractVerifier()
 	if enhancedVerifier == nil {
-		return map[string]interface{}{
-			"error": "Enhanced verification system not available",
-			"status": "disabled",
-		}, nil
+        return JSONAny{Value: map[string]interface{}{
+            "error": "Enhanced verification system not available",
+            "status": "disabled",
+        }}, nil
 	}
 
-	return enhancedVerifier.GetRegistryStats(), nil
+    return JSONAny{Value: enhancedVerifier.GetRegistryStats()}, nil
 }
 
 // CDNStatus provides current status of CDN endpoints for dependency resolution.
-func (rs *rootResolver) CDNStatus() (map[string]interface{}, error) {
+func (rs *rootResolver) CDNStatus() (JSONAny, error) {
 	enhancedVerifier := repository.GetEnhancedContractVerifier()
 	if enhancedVerifier == nil {
-		return map[string]interface{}{
-			"error": "Enhanced verification system not available",
-			"status": "disabled",
-		}, nil
+        return JSONAny{Value: map[string]interface{}{
+            "error": "Enhanced verification system not available",
+            "status": "disabled",
+        }}, nil
 	}
 
 	cdnStatus := enhancedVerifier.GetCDNStatus()
-	return map[string]interface{}{
-		"cdnStatus": cdnStatus,
-		"status": "active",
-	}, nil
+    return JSONAny{Value: map[string]interface{}{
+        "cdnStatus": cdnStatus,
+        "status": "active",
+    }}, nil
 }
 
 // RefreshPackageCache refreshes the package registry cache.
@@ -373,13 +366,13 @@ func (rs *rootResolver) RefreshPackageCache() (bool, error) {
 }
 
 // PreValidateSourceCode checks source code for potential issues before deployment.
-func (rs *rootResolver) PreValidateSourceCode(args *struct{ SourceCode string }) (map[string]interface{}, error) {
+func (rs *rootResolver) PreValidateSourceCode(args *struct{ SourceCode string }) (JSONAny, error) {
 	enhancedVerifier := repository.GetEnhancedContractVerifier()
 	if enhancedVerifier == nil {
-		return map[string]interface{}{
-			"error": "Enhanced verification system not available",
-			"status": "disabled",
-		}, nil
+        return JSONAny{Value: map[string]interface{}{
+            "error": "Enhanced verification system not available",
+            "status": "disabled",
+        }}, nil
 	}
 
 	// Validate source code
@@ -394,13 +387,13 @@ func (rs *rootResolver) PreValidateSourceCode(args *struct{ SourceCode string })
 	// Get optimal versions
 	optimalVersions := enhancedVerifier.SuggestOptimalVersions(args.SourceCode)
 
-	return map[string]interface{}{
-		"validationIssues": issues,
-		"packageInfo": packageInfo,
-		"compatibilityMatrix": compatibilityMatrix,
-		"optimalVersions": optimalVersions,
-		"status": "completed",
-	}, nil
+    return JSONAny{Value: map[string]interface{}{
+        "validationIssues": issues,
+        "packageInfo": packageInfo,
+        "compatibilityMatrix": compatibilityMatrix,
+        "optimalVersions": optimalVersions,
+        "status": "completed",
+    }}, nil
 }
 
 // Helper method to populate enhanced contract fields
