@@ -46,6 +46,12 @@ type Contract struct {
 	// used for validation, if available.
 	CompilerVersion string `json:"cv_ver,omitempty"`
 
+    // EvmVersion represents the target EVM version used for compilation, if any.
+    EvmVersion string `json:"evm,omitempty"`
+
+    // ViaIR specifies whether the compilation was performed via the Yul IR pipeline.
+    ViaIR bool `json:"viaIR,omitempty"`
+
 	// IsOptimized signals that the contract byte code was optimized
 	// during compilation.
 	IsOptimized bool `json:"optimized"`
@@ -81,6 +87,8 @@ type BsonContract struct {
 	Support   string  `bson:"sup"`
 	License   string  `bson:"lic"`
 	Compiler  string  `bson:"sol"`
+    Evm       string  `bson:"evm"`
+    ViaIR     bool    `bson:"vir"`
 	IsOpt     bool    `bson:"is_opt"`
 	OptRuns   int32   `bson:"opt"`
 	Src       string  `bson:"src"`
@@ -191,6 +199,8 @@ func (sc *Contract) MarshalBSON() ([]byte, error) {
 		Support:  sc.SupportContact,
 		License:  sc.License,
 		Compiler: sc.Compiler,
+		Evm:      sc.EvmVersion,
+		ViaIR:    sc.ViaIR,
 		IsOpt:    sc.IsOptimized,
 		OptRuns:  sc.OptimizeRuns,
 		Src:      sc.SourceCode,
@@ -232,6 +242,8 @@ func (sc *Contract) UnmarshalBSON(data []byte) (err error) {
 	sc.SupportContact = row.Support
 	sc.License = row.License
 	sc.Compiler = row.Compiler
+	sc.EvmVersion = row.Evm
+	sc.ViaIR = row.ViaIR
 	sc.IsOptimized = row.IsOpt
 	sc.OptimizeRuns = row.OptRuns
 	sc.SourceCode = row.Src

@@ -80,6 +80,16 @@ input ContractValidationInput {
     """
     compilerVersion: String
 
+    """
+    EVM version to use for compilation (e.g., byzantium, constantinople, istanbul, berlin, london, paris, shanghai, cancun). Optional.
+    """
+    evmVersion: String
+
+    """
+    Compile via IR (Yul intermediate representation). Optional; default false.
+    """
+    viaIR: Boolean = false
+
     "Smart contract source code."
     sourceCode: String!
 }

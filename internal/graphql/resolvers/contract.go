@@ -73,6 +73,12 @@ type ContractValidationInput struct {
 	// for validation. If empty, the default compiler will be used.
 	CompilerVersion *string `json:"compilerVersion,omitempty"`
 
+    // Optional EVM version used during compilation (e.g., london, paris, shanghai).
+    EvmVersion *string `json:"evmVersion,omitempty"`
+
+    // Optional flag to indicate compilation via IR pipeline.
+    ViaIR bool `json:"viaIR"`
+
 	// SourceCode represents the Solidity source code to be validated.
 	SourceCode string `json:"sourceCode"`
 }
@@ -183,6 +189,12 @@ func updateContractFromInput(con *ContractValidationInput, sc *types.Contract) {
 	if con.CompilerVersion != nil {
 		sc.CompilerVersion = *con.CompilerVersion
 	}
+
+    // pass EVM version and viaIR
+    if con.EvmVersion != nil {
+        sc.EvmVersion = *con.EvmVersion
+    }
+    sc.ViaIR = con.ViaIR
 }
 
 // ValidateContract resolves smart contract source code vs. deployed byte code and marks
