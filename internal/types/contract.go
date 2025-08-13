@@ -73,9 +73,6 @@ type Contract struct {
 	// Validated represents the unix timestamp
 	//of the contract source validation against deployed byte code.
 	Validated *hexutil.Uint64 `json:"ok,omitempty" bson:"is_ok,omitempty"`
-
-	// Metadata holds auxiliary verification metadata and diagnostics.
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // BsonContract represents the contract data structure for BSON formatting.
@@ -98,7 +95,6 @@ type BsonContract struct {
 	Abi       string  `bson:"abi"`
 	SrcHash   *string `bson:"src_h"`
 	Validated *uint64 `bson:"val"`
-	Metadata  map[string]interface{} `bson:"md,omitempty"`
 }
 
 // UnmarshalContract parses the JSON-encoded smart contract data.
@@ -214,10 +210,6 @@ func (sc *Contract) MarshalBSON() ([]byte, error) {
 	if sc.Validated != nil {
 		row.Validated = (*uint64)(sc.Validated)
 	}
-	// include metadata if present
-	if sc.Metadata != nil {
-		row.Metadata = sc.Metadata
-	}
 	// do we have source code hash?
 	if sc.SourceCodeHash != nil {
 		val := sc.SourceCodeHash.String()
@@ -263,7 +255,5 @@ func (sc *Contract) UnmarshalBSON(data []byte) (err error) {
 		val := common.HexToHash(*row.SrcHash)
 		sc.SourceCodeHash = &val
 	}
-	// restore metadata if present
-	sc.Metadata = row.Metadata
 	return nil
 }
