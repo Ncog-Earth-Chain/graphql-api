@@ -40,7 +40,7 @@ func TestNewDependencyResolver(t *testing.T) {
 	}
 }
 
-func TestDependencyResolverExtractPackageName(t *testing.T) {
+func TestExtractPackageName(t *testing.T) {
 	resolver := NewDependencyResolver(NewPackageRegistry())
 	
 	tests := []struct {
@@ -65,7 +65,7 @@ func TestDependencyResolverExtractPackageName(t *testing.T) {
 	}
 }
 
-func TestDependencyResolverExtractImports(t *testing.T) {
+func TestExtractImports(t *testing.T) {
 	resolver := NewDependencyResolver(NewPackageRegistry())
 	
 	source := `// SPDX-License-Identifier: MIT
@@ -223,7 +223,7 @@ func TestResolveImport(t *testing.T) {
 	}
 }
 
-func TestDependencyResolverGetCDNStatus(t *testing.T) {
+func TestGetCDNStatus(t *testing.T) {
 	resolver := NewDependencyResolver(NewPackageRegistry())
 	
 	status := resolver.GetCDNStatus()

@@ -59,7 +59,7 @@ contract TestContract is Ownable {
 	}
 }
 
-func TestVersionStrategyExtractImports(t *testing.T) {
+func TestExtractImports(t *testing.T) {
 	registry := NewPackageRegistry()
 	strategy := NewVersionStrategy(registry)
 	
@@ -137,7 +137,7 @@ contract TestContract {
 	}
 }
 
-func TestVersionStrategyExtractPackageName(t *testing.T) {
+func TestExtractPackageName(t *testing.T) {
 	registry := NewPackageRegistry()
 	strategy := NewVersionStrategy(registry)
 	
@@ -313,7 +313,7 @@ func TestGenerateVersionAttempts(t *testing.T) {
 	}
 }
 
-func TestVersionStrategyGetCompatibilityMatrix(t *testing.T) {
+func TestGetCompatibilityMatrix(t *testing.T) {
 	registry := NewPackageRegistry()
 	strategy := NewVersionStrategy(registry)
 	
@@ -336,7 +336,7 @@ func TestVersionStrategyGetCompatibilityMatrix(t *testing.T) {
 	}
 }
 
-func TestVersionStrategySuggestOptimalVersions(t *testing.T) {
+func TestSuggestOptimalVersions(t *testing.T) {
 	registry := NewPackageRegistry()
 	strategy := NewVersionStrategy(registry)
 	

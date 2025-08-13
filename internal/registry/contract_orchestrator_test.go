@@ -303,7 +303,7 @@ func TestGetPackageInfo(t *testing.T) {
 	}
 }
 
-func TestContractOrchestratorGetCompatibilityMatrix(t *testing.T) {
+func TestGetCompatibilityMatrix(t *testing.T) {
 	registry := NewPackageRegistry()
 	resolver := NewDependencyResolver(registry)
 	strategy := NewVersionStrategy(registry)
@@ -327,7 +327,7 @@ func TestContractOrchestratorGetCompatibilityMatrix(t *testing.T) {
 	}
 }
 
-func TestContractOrchestratorSuggestOptimalVersions(t *testing.T) {
+func TestSuggestOptimalVersions(t *testing.T) {
 	registry := NewPackageRegistry()
 	resolver := NewDependencyResolver(registry)
 	strategy := NewVersionStrategy(registry)
