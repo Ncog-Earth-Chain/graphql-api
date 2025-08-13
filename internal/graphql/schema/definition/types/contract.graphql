@@ -41,6 +41,25 @@ type Contract {
 
     "Timestamp is the unix timestamp at which this smart contract was deployed."
     timestamp: Long!
+
+    # Enhanced verification fields
+    "Verification method used (standard or enhanced_registry)."
+    verificationMethod: String
+
+    "Enhanced verification metadata including package dependencies and version info."
+    verificationMetadata: JSON
+
+    "List of detected package dependencies in the contract source code."
+    packageDependencies: [String!]
+
+    "Version compatibility matrix for detected packages."
+    versionCompatibility: JSON
+
+    "Current status of CDN endpoints used for dependency resolution."
+    cdnStatus: JSON
+
+    "Registry system statistics and health information."
+    registryStats: JSON
 }
 
 # ContractValidationInput represents a set of data sent from client

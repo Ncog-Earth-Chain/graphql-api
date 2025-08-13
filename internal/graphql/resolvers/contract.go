@@ -2,12 +2,14 @@
 package resolvers
 
 import (
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"html"
 	"ncogearthchain-api-graphql/internal/repository"
 	"ncogearthchain-api-graphql/internal/types"
 	"regexp"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -35,6 +37,13 @@ var scVersionSyntaxRegexp = regexp.MustCompile("^\\w?(\\d+\\.)+\\d+$")
 // Contract represents resolvable blockchain smart contract structure.
 type Contract struct {
 	types.Contract
+	// Enhanced verification fields
+	VerificationMethod    string                 `json:"verificationMethod"`
+	VerificationMetadata  map[string]interface{} `json:"verificationMetadata"`
+	PackageDependencies   []string               `json:"packageDependencies"`
+	VersionCompatibility  map[string]interface{} `json:"versionCompatibility"`
+	CDNStatus            map[string]interface{} `json:"cdnStatus"`
+	RegistryStats        map[string]interface{} `json:"registryStats"`
 }
 
 // ContractValidationInput represents an input structure used
@@ -198,8 +207,8 @@ func updateContractFromInput(con *ContractValidationInput, sc *types.Contract) {
 }
 
 // ValidateContract resolves smart contract source code vs. deployed byte code and marks
-// the contract as validated if the match is found. Peer API points are ringed on success
-// to notify them about the change.
+// the contract as validated if the match is found. This function now uses the enhanced
+// verification system with automatic dependency resolution and version management.
 func (rs *rootResolver) ValidateContract(args *struct{ Contract ContractValidationInput }) (*Contract, error) {
 	// validate the input
 	if err := isValidationValid(&args.Contract); err != nil {
@@ -225,10 +234,17 @@ func (rs *rootResolver) ValidateContract(args *struct{ Contract ContractValidati
 	sc.SourceCodeHash = &hash
 	updateContractFromInput(&args.Contract, sc)
 
-	// do the validation
-	if err := repository.R().ValidateContract(sc); err != nil {
-		log.Errorf("contract validation failed; %s", err.Error())
-		return nil, err
+	// Try enhanced verification first, fallback to standard if not available
+	if err := rs.validateContractEnhanced(sc); err != nil {
+		log.Warnf("enhanced validation failed, falling back to standard validation: %s", err.Error())
+		
+		// Fallback to standard validation
+		if err := repository.R().ValidateContract(sc); err != nil {
+			log.Errorf("contract validation failed; %s", err.Error())
+			return nil, err
+		}
+	} else {
+		log.Infof("contract [%s] successfully validated using enhanced verification system", sc.Address.String())
 	}
 
 	// initiate contract syncing in a separated routine
@@ -237,4 +253,204 @@ func (rs *rootResolver) ValidateContract(args *struct{ Contract ContractValidati
 
 	// return the final updated contract
 	return NewContract(sc), nil
+}
+
+// validateContractEnhanced attempts to validate the contract using the enhanced verification system.
+// If the enhanced system is not available, it returns an error to trigger fallback.
+func (rs *rootResolver) validateContractEnhanced(sc *types.Contract) error {
+	// Check if enhanced verifier is available
+	enhancedVerifier := repository.GetEnhancedContractVerifier()
+	if enhancedVerifier == nil {
+		return fmt.Errorf("enhanced verification system not available")
+	}
+
+	// Perform enhanced verification
+	ctx := context.Background()
+	if err := enhancedVerifier.VerifyContract(ctx, sc); err != nil {
+		return fmt.Errorf("enhanced verification failed: %w", err)
+	}
+
+	// Enhanced verification successful
+	return nil
+}
+
+// Enhanced verification system resolvers
+
+// ContractVerificationInfo provides detailed verification information for a contract.
+func (rs *rootResolver) ContractVerificationInfo(args *struct{ Address common.Address }) (*Contract, error) {
+	// Get contract
+	sc, err := repository.R().Contract(&args.Address)
+	if err != nil {
+		return nil, err
+	}
+
+	contract := NewContract(sc)
+	
+	// Populate enhanced verification fields if available
+	rs.populateEnhancedContractFields(contract, sc.SourceCode)
+
+	return contract, nil
+}
+
+// PackageCompatibilityMatrix provides compatibility information for detected packages.
+func (rs *rootResolver) PackageCompatibilityMatrix(args *struct{ SourceCode string }) (map[string]interface{}, error) {
+	enhancedVerifier := repository.GetEnhancedContractVerifier()
+	if enhancedVerifier == nil {
+		return map[string]interface{}{
+			"error": "Enhanced verification system not available",
+			"status": "disabled",
+		}, nil
+	}
+
+	return enhancedVerifier.GetCompatibilityMatrix(args.SourceCode), nil
+}
+
+// OptimalPackageVersions suggests optimal package versions for the given source code.
+func (rs *rootResolver) OptimalPackageVersions(args *struct{ SourceCode string }) (map[string]interface{}, error) {
+	enhancedVerifier := repository.GetEnhancedContractVerifier()
+	if enhancedVerifier == nil {
+		return map[string]interface{}{
+			"error": "Enhanced verification system not available",
+			"status": "disabled",
+		}, nil
+	}
+
+	suggestions := enhancedVerifier.SuggestOptimalVersions(args.SourceCode)
+	return map[string]interface{}{
+		"suggestions": suggestions,
+		"status": "active",
+	}, nil
+}
+
+// RegistryStatus provides current status of the enhanced verification registry system.
+func (rs *rootResolver) RegistryStatus() (map[string]interface{}, error) {
+	enhancedVerifier := repository.GetEnhancedContractVerifier()
+	if enhancedVerifier == nil {
+		return map[string]interface{}{
+			"error": "Enhanced verification system not available",
+			"status": "disabled",
+		}, nil
+	}
+
+	return enhancedVerifier.GetRegistryStats(), nil
+}
+
+// CDNStatus provides current status of CDN endpoints for dependency resolution.
+func (rs *rootResolver) CDNStatus() (map[string]interface{}, error) {
+	enhancedVerifier := repository.GetEnhancedContractVerifier()
+	if enhancedVerifier == nil {
+		return map[string]interface{}{
+			"error": "Enhanced verification system not available",
+			"status": "disabled",
+		}, nil
+	}
+
+	cdnStatus := enhancedVerifier.GetCDNStatus()
+	return map[string]interface{}{
+		"cdnStatus": cdnStatus,
+		"status": "active",
+	}, nil
+}
+
+// RefreshPackageCache refreshes the package registry cache.
+func (rs *rootResolver) RefreshPackageCache() (bool, error) {
+	enhancedVerifier := repository.GetEnhancedContractVerifier()
+	if enhancedVerifier == nil {
+		return false, fmt.Errorf("enhanced verification system not available")
+	}
+
+	enhancedVerifier.RefreshPackageCache()
+	return true, nil
+}
+
+// PreValidateSourceCode checks source code for potential issues before deployment.
+func (rs *rootResolver) PreValidateSourceCode(args *struct{ SourceCode string }) (map[string]interface{}, error) {
+	enhancedVerifier := repository.GetEnhancedContractVerifier()
+	if enhancedVerifier == nil {
+		return map[string]interface{}{
+			"error": "Enhanced verification system not available",
+			"status": "disabled",
+		}, nil
+	}
+
+	// Validate source code
+	issues := enhancedVerifier.ValidateSourceCode(args.SourceCode)
+	
+	// Get package information
+	packageInfo := enhancedVerifier.GetPackageInfo(args.SourceCode)
+	
+	// Get compatibility matrix
+	compatibilityMatrix := enhancedVerifier.GetCompatibilityMatrix(args.SourceCode)
+	
+	// Get optimal versions
+	optimalVersions := enhancedVerifier.SuggestOptimalVersions(args.SourceCode)
+
+	return map[string]interface{}{
+		"validationIssues": issues,
+		"packageInfo": packageInfo,
+		"compatibilityMatrix": compatibilityMatrix,
+		"optimalVersions": optimalVersions,
+		"status": "completed",
+	}, nil
+}
+
+// Helper method to populate enhanced contract fields
+func (rs *rootResolver) populateEnhancedContractFields(contract *Contract, sourceCode string) {
+	enhancedVerifier := repository.GetEnhancedContractVerifier()
+	if enhancedVerifier == nil {
+		// Set default values when enhanced system is not available
+		contract.VerificationMethod = "standard"
+		contract.VerificationMetadata = map[string]interface{}{
+			"verificationMethod": "standard",
+			"enhancedSystemAvailable": false,
+		}
+		return
+	}
+
+	// Enhanced system is available
+	contract.VerificationMethod = "enhanced_registry"
+	
+	// Extract package dependencies
+	contract.PackageDependencies = rs.extractPackageNames(sourceCode)
+	
+	// Get version compatibility matrix
+	contract.VersionCompatibility = enhancedVerifier.GetCompatibilityMatrix(sourceCode)
+	
+	// Get CDN status
+	contract.CDNStatus = enhancedVerifier.GetCDNStatus()
+	
+	// Get registry stats
+	contract.RegistryStats = enhancedVerifier.GetRegistryStats()
+	
+	// Build verification metadata
+	contract.VerificationMetadata = map[string]interface{}{
+		"verificationMethod": "enhanced_registry",
+		"enhancedSystemAvailable": true,
+		"totalPackages": len(contract.PackageDependencies),
+		"cdnStatus": contract.CDNStatus,
+		"registryStatus": "active",
+	}
+}
+
+// extractPackageNames extracts package names from import statements in source code.
+func (rs *rootResolver) extractPackageNames(sourceCode string) []string {
+	// Extract package names from import statements
+	// This is a simplified version - the actual implementation would use regex
+	packages := []string{}
+	
+	// Look for common package patterns
+	importPatterns := []string{
+		"@openzeppelin/contracts",
+		"@chainlink/contracts",
+		"@uniswap/",
+		"openzeppelin-solidity",
+	}
+	
+	for _, pattern := range importPatterns {
+		if strings.Contains(sourceCode, pattern) {
+			packages = append(packages, pattern)
+		}
+	}
+	
+	return packages
 }

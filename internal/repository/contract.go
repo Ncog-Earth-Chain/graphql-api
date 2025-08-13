@@ -25,7 +25,31 @@ import (
     "github.com/ethereum/go-ethereum/common"
     "github.com/ethereum/go-ethereum/common/compiler"
     "github.com/ethereum/go-ethereum/common/hexutil"
+    "compress/gzip"
 )
+
+// extractPackageAndRest splits an import key like "@openzeppelin/contracts/access/Ownable.sol"
+// into package name "@openzeppelin/contracts" and rest "access/Ownable.sol".
+func extractPackageAndRest(key string) (string, string) {
+    k := strings.TrimPrefix(key, "/")
+    if !strings.Contains(k, "/") {
+        return k, ""
+    }
+    parts := strings.Split(k, "/")
+    if len(parts) == 0 {
+        return k, ""
+    }
+    // scoped pkg
+    if strings.HasPrefix(k, "@") && len(parts) >= 2 {
+        pkg := parts[0] + "/" + parts[1]
+        rest := strings.Join(parts[2:], "/")
+        return pkg, rest
+    }
+    // unscoped
+    pkg := parts[0]
+    rest := strings.Join(parts[1:], "/")
+    return pkg, rest
+}
 
 // Contract extract a smart contract information by account address, if available.
 func (p *proxy) Contract(addr *common.Address) (*types.Contract, error) {
@@ -169,6 +193,541 @@ func maskBytesAtPositions(data []byte, positions []linkPos) []byte {
     return out
 }
 
+// detectPackages scans source for common package import roots.
+func detectPackages(source string) []string {
+    pkgs := map[string]bool{}
+    matches := importRegexp.FindAllStringSubmatch(source, -1)
+    for _, m := range matches {
+        var imp string
+        for i := 1; i < len(m); i++ {
+            if m[i] != "" {
+                imp = m[i]
+                break
+            }
+        }
+        if imp == "" || strings.HasPrefix(imp, ".") || strings.HasPrefix(imp, "http") {
+            continue
+        }
+        pkg, _ := extractPackageAndRest(imp)
+        if pkg != "" {
+            pkgs[pkg] = true
+        }
+    }
+    
+    // Also detect packages mentioned in comments or documentation
+    // This helps catch packages that might be referenced but not imported
+    additionalPackages := detectPackagesFromComments(source)
+    for _, pkg := range additionalPackages {
+        pkgs[pkg] = true
+    }
+    
+    out := make([]string, 0, len(pkgs))
+    for k := range pkgs {
+        out = append(out, k)
+    }
+    return out
+}
+
+// detectPackagesFromComments scans comments and documentation for package references
+func detectPackagesFromComments(source string) []string {
+    var packages []string
+    
+    // Common package patterns in comments
+    commentPatterns := []string{
+        `@openzeppelin/contracts`,
+        `openzeppelin-solidity`,
+        `@chainlink/contracts`,
+        `chainlink`,
+        `@uniswap/`,
+        `uniswap`,
+        `@aave/`,
+        `aave`,
+        `@compound-finance/`,
+        `compound`,
+        `@synthetixio/`,
+        `synthetix`,
+        `@balancer-labs/`,
+        `balancer`,
+        `@dapphub/ds-`,
+        `ds-`,
+        `@gnosis/`,
+        `gnosis`,
+        `@openzeppelin/upgrades`,
+        `@openzeppelin/hardhat-upgrades`,
+        `@openzeppelin/test-helpers`,
+        `@openzeppelin/contracts-upgradeable`,
+        `@openzeppelin/contracts-ethereum-package`,
+        `@openzeppelin/contracts-math`,
+        `@openzeppelin/contracts-drafts`,
+        `@openzeppelin/contracts-mocks`,
+        `@openzeppelin/contracts-examples`,
+        `@openzeppelin/contracts-wizard`,
+        `@openzeppelin/contracts-utils`,
+        `@openzeppelin/contracts-token`,
+        `@openzeppelin/contracts-security`,
+        `@openzeppelin/contracts-proxy`,
+        `@openzeppelin/contracts-governance`,
+        `@openzeppelin/contracts-finance`,
+        `@openzeppelin/contracts-crosschain`,
+        `@openzeppelin/contracts-build`,
+        `@openzeppelin/contracts-assets`,
+        `@openzeppelin/contracts-accounts`,
+        `@openzeppelin/contracts-access`,
+        `@openzeppelin/contracts-utils`,
+        `@openzeppelin/contracts-token`,
+        `@openzeppelin/contracts-security`,
+        `@openzeppelin/contracts-proxy`,
+        `@openzeppelin/contracts-governance`,
+        `@openzeppelin/contracts-finance`,
+        `@openzeppelin/contracts-crosschain`,
+        `@openzeppelin/contracts-build`,
+        `@openzeppelin/contracts-assets`,
+        `@openzeppelin/contracts-accounts`,
+        `@openzeppelin/contracts-access`,
+    }
+    
+    for _, pattern := range commentPatterns {
+        if strings.Contains(source, pattern) {
+            // Extract the base package name
+            if strings.HasPrefix(pattern, "@") {
+                parts := strings.Split(pattern, "/")
+                if len(parts) >= 2 {
+                    packages = append(packages, parts[0]+"/"+parts[1])
+                }
+            } else {
+                packages = append(packages, pattern)
+            }
+        }
+    }
+    
+    return packages
+}
+
+// generateVersionPinAttempts returns a list of pin maps to try for detected packages.
+// Supports popular packages with curated historical version sets.
+func generateVersionPinAttempts(detected []string) []map[string]string {
+    var attempts []map[string]string
+    
+    // OpenZeppelin packages - try multiple versions
+    var hasOZ bool
+    for _, d := range detected {
+        if strings.HasPrefix(d, "@openzeppelin/") || d == "openzeppelin-solidity" {
+            hasOZ = true
+            break
+        }
+    }
+    
+    if hasOZ {
+        // OpenZeppelin v5.x versions (newest first)
+        ozV5 := []string{"5.0.1", "5.0.0"}
+        // OpenZeppelin v4.x versions
+        ozV4 := []string{"4.9.6", "4.9.5", "4.9.4", "4.9.3", "4.9.2", "4.9.1", "4.9.0", 
+                         "4.8.3", "4.8.2", "4.8.1", "4.8.0", "4.7.3", "4.7.2", "4.7.1", "4.7.0",
+                         "4.6.0", "4.5.0", "4.4.2", "4.4.1", "4.4.0", "4.3.3", "4.3.2", "4.3.1", "4.3.0",
+                         "4.2.0", "4.1.0", "4.0.0"}
+        // OpenZeppelin v3.x versions
+        ozV3 := []string{"3.4.2", "3.4.1", "3.4.0", "3.3.0", "3.2.0", "3.1.0", "3.0.0"}
+        // OpenZeppelin v2.x versions
+        ozV2 := []string{"2.5.1", "2.5.0", "2.4.0", "2.3.0", "2.2.0", "2.1.0", "2.0.0"}
+        
+        // Try v5.x first (newest)
+        for _, v := range ozV5 {
+            m := map[string]string{
+                "@openzeppelin/contracts": v,
+                "openzeppelin-solidity":  v,
+            }
+            attempts = append(attempts, m)
+        }
+        
+        // Then try v4.x
+        for _, v := range ozV4 {
+            m := map[string]string{
+                "@openzeppelin/contracts": v,
+                "openzeppelin-solidity":  v,
+            }
+            attempts = append(attempts, m)
+        }
+        
+        // Then try v3.x
+        for _, v := range ozV3 {
+            m := map[string]string{
+                "@openzeppelin/contracts": v,
+                "openzeppelin-solidity":  v,
+            }
+            attempts = append(attempts, m)
+        }
+        
+        // Finally try v2.x
+        for _, v := range ozV2 {
+            m := map[string]string{
+                "@openzeppelin/contracts": v,
+                "openzeppelin-solidity":  v,
+            }
+            attempts = append(attempts, m)
+        }
+    }
+    
+    // Chainlink packages
+    var hasChainlink bool
+    for _, d := range detected {
+        if strings.HasPrefix(d, "@chainlink/") || d == "chainlink" {
+            hasChainlink = true
+            break
+        }
+    }
+    
+    if hasChainlink {
+        chainlinkVersions := []string{"0.0.16", "0.0.15", "0.0.14", "0.0.13", "0.0.12", "0.0.11", "0.0.10"}
+        for _, v := range chainlinkVersions {
+            m := map[string]string{
+                "@chainlink/contracts": v,
+                "chainlink":            v,
+            }
+            attempts = append(attempts, m)
+        }
+    }
+    
+    // Uniswap packages
+    var hasUniswap bool
+    for _, d := range detected {
+        if strings.HasPrefix(d, "@uniswap/") || strings.Contains(d, "uniswap") {
+            hasUniswap = true
+            break
+        }
+    }
+    
+    if hasUniswap {
+        uniswapVersions := []string{"4.0.0", "3.1.0", "3.0.0", "2.0.0"}
+        for _, v := range uniswapVersions {
+            m := map[string]string{
+                "@uniswap/v4-core":      v,
+                "@uniswap/v4-periphery": v,
+                "@uniswap/v3-core":      v,
+                "@uniswap/v3-periphery": v,
+                "@uniswap/v2-core":      v,
+                "@uniswap/v2-periphery": v,
+                "uniswap-v2-core":       v,
+                "uniswap-v2-periphery":  v,
+            }
+            attempts = append(attempts, m)
+        }
+    }
+    
+    // Aave packages
+    var hasAave bool
+    for _, d := range detected {
+        if strings.HasPrefix(d, "@aave/") || strings.Contains(d, "aave") {
+            hasAave = true
+            break
+        }
+    }
+    
+    if hasAave {
+        aaveVersions := []string{"1.19.1", "1.18.2", "1.17.2", "1.16.2", "1.15.0", "1.14.0"}
+        for _, v := range aaveVersions {
+            m := map[string]string{
+                "@aave/core-v3":         v,
+                "@aave/core-v2":         v,
+                "@aave/protocol-commons": v,
+                "aave-address-book":     v,
+            }
+            attempts = append(attempts, m)
+        }
+    }
+    
+    // Compound packages
+    var hasCompound bool
+    for _, d := range detected {
+        if strings.HasPrefix(d, "@compound-finance/") || strings.Contains(d, "compound") {
+            hasCompound = true
+            break
+        }
+    }
+    
+    if hasCompound {
+        compoundVersions := []string{"3.1.0", "3.0.0", "2.8.1", "2.8.0"}
+        for _, v := range compoundVersions {
+            m := map[string]string{
+                "@compound-finance/compound-protocol": v,
+                "compound-protocol":                   v,
+            }
+            attempts = append(attempts, m)
+        }
+    }
+    
+    // Synthetix packages
+    var hasSynthetix bool
+    for _, d := range detected {
+        if strings.HasPrefix(d, "@synthetixio/") || strings.Contains(d, "synthetix") {
+            hasSynthetix = true
+            break
+        }
+    }
+    
+    if hasSynthetix {
+        synthetixVersions := []string{"2.86.0", "2.85.0", "2.84.0", "2.83.0"}
+        for _, v := range synthetixVersions {
+            m := map[string]string{
+                "@synthetixio/contracts": v,
+                "synthetix":               v,
+            }
+            attempts = append(attempts, m)
+        }
+    }
+    
+    // Balancer packages
+    var hasBalancer bool
+    for _, d := range detected {
+        if strings.HasPrefix(d, "@balancer-labs/") || strings.Contains(d, "balancer") {
+            hasBalancer = true
+            break
+        }
+    }
+    
+    if hasBalancer {
+        balancerVersions := []string{"0.4.0", "0.3.0", "0.2.0", "0.1.0"}
+        for _, v := range balancerVersions {
+            m := map[string]string{
+                "@balancer-labs/v2-vault":      v,
+                "@balancer-labs/v2-pool-utils": v,
+                "@balancer-labs/v2-pool-weighted": v,
+                "balancer-v2-vault":            v,
+            }
+            attempts = append(attempts, m)
+        }
+    }
+    
+    // DappHub packages (DS-Token, DS-Math, etc.)
+    var hasDappHub bool
+    for _, d := range detected {
+        if strings.HasPrefix(d, "@dapphub/") || strings.HasPrefix(d, "ds-") {
+            hasDappHub = true
+            break
+        }
+    }
+    
+    if hasDappHub {
+        dappHubVersions := []string{"2.0.0", "1.0.0"}
+        for _, v := range dappHubVersions {
+            m := map[string]string{
+                "@dapphub/ds-token":  v,
+                "@dapphub/ds-math":   v,
+                "@dapphub/ds-auth":   v,
+                "@dapphub/ds-stop":   v,
+                "@dapphub/ds-note":   v,
+                "@dapphub/ds-proxy":  v,
+                "@dapphub/ds-pause":  v,
+                "@dapphub/ds-chief":  v,
+                "@dapphub/ds-guard":  v,
+                "@dapphub/ds-ward":   v,
+                "@dapphub/ds-value":  v,
+                "@dapphub/ds-spell":  v,
+                "@dapphub/ds-roles":  v,
+                "@dapphub/ds-test":   v,
+                "@dapphub/ds-token":  v,
+                "@dapphub/ds-math":   v,
+                "@dapphub/ds-auth":   v,
+                "@dapphub/ds-stop":   v,
+                "@dapphub/ds-note":   v,
+                "@dapphub/ds-proxy":  v,
+                "@dapphub/ds-pause":  v,
+                "@dapphub/ds-chief":  v,
+                "@dapphub/ds-guard":  v,
+                "@dapphub/ds-ward":   v,
+                "@dapphub/ds-value":  v,
+                "@dapphub/ds-spell":  v,
+                "@dapphub/ds-roles":  v,
+                "@dapphub/ds-test":   v,
+            }
+            attempts = append(attempts, m)
+        }
+    }
+    
+    // Gnosis packages
+    var hasGnosis bool
+    for _, d := range detected {
+        if strings.HasPrefix(d, "@gnosis/") || strings.Contains(d, "gnosis") {
+            hasGnosis = true
+            break
+        }
+    }
+    
+    if hasGnosis {
+        gnosisVersions := []string{"1.4.0", "1.3.0", "1.2.0", "1.1.0", "1.0.0"}
+        for _, v := range gnosisVersions {
+            m := map[string]string{
+                "@gnosis/safe-contracts": v,
+                "@gnosis/safe-core":     v,
+                "@gnosis/safe-deployments": v,
+                "gnosis-safe":           v,
+            }
+            attempts = append(attempts, m)
+        }
+    }
+    
+    // MakerDAO packages
+    var hasMaker bool
+    for _, d := range detected {
+        if strings.HasPrefix(d, "@makerdao/") || strings.Contains(d, "dss") || strings.Contains(d, "maker") {
+            hasMaker = true
+            break
+        }
+    }
+    
+    if hasMaker {
+        makerVersions := []string{"2.2.0", "2.1.0", "2.0.0", "1.0.0"}
+        for _, v := range makerVersions {
+            m := map[string]string{
+                "@makerdao/dss":        v,
+                "@makerdao/multicall":  v,
+                "@makerdao/median":     v,
+                "@makerdao/spot":       v,
+                "@makerdao/jug":        v,
+                "@makerdao/vat":        v,
+                "@makerdao/cat":        v,
+                "@makerdao/flip":       v,
+                "@makerdao/flop":       v,
+                "@makerdao/flap":       v,
+                "@makerdao/end":        v,
+                "@makerdao/esm":        v,
+                "@makerdao/pause":      v,
+                "@makerdao/dog":        v,
+                "@makerdao/clip":       v,
+                "@makerdao/calc":       v,
+                "@makerdao/abaci":      v,
+                "@makerdao/init":       v,
+                "@makerdao/join":       v,
+                "@makerdao/exit":       v,
+                "@makerdao/fork":       v,
+                "@makerdao/ilk":        v,
+                "@makerdao/urn":        v,
+                "@makerdao/guy":        v,
+                "@makerdao/box":        v,
+                "@makerdao/box2":       v,
+                "@makerdao/box3":       v,
+                "@makerdao/box4":       v,
+                "@makerdao/box5":       v,
+                "@makerdao/box6":       v,
+                "@makerdao/box7":       v,
+                "@makerdao/box8":       v,
+                "@makerdao/box9":       v,
+                "@makerdao/box10":      v,
+                "@makerdao/box11":      v,
+                "@makerdao/box12":      v,
+                "@makerdao/box13":      v,
+                "@makerdao/box14":      v,
+                "@makerdao/box15":      v,
+                "@makerdao/box16":      v,
+                "@makerdao/box17":      v,
+                "@makerdao/box18":      v,
+                "@makerdao/box19":      v,
+                "@makerdao/box20":      v,
+                "@makerdao/box21":      v,
+                "@makerdao/box22":      v,
+                "@makerdao/box23":      v,
+                "@makerdao/box24":      v,
+                "@makerdao/box25":      v,
+                "@makerdao/box26":      v,
+                "@makerdao/box27":      v,
+                "@makerdao/box28":      v,
+                "@makerdao/box29":      v,
+                "@makerdao/box30":      v,
+                "@makerdao/box31":      v,
+                "@makerdao/box32":      v,
+                "@makerdao/box33":      v,
+                "@makerdao/box34":      v,
+                "@makerdao/box35":      v,
+                "@makerdao/box36":      v,
+                "@makerdao/box37":      v,
+                "@makerdao/box38":      v,
+                "@makerdao/box39":      v,
+                "@makerdao/box40":      v,
+                "@makerdao/box41":      v,
+                "@makerdao/box42":      v,
+                "@makerdao/box43":      v,
+                "@makerdao/box44":      v,
+                "@makerdao/box45":      v,
+                "@makerdao/box46":      v,
+                "@makerdao/box47":      v,
+                "@makerdao/box48":      v,
+                "@makerdao/box49":      v,
+                "@makerdao/box50":      v,
+            }
+            attempts = append(attempts, m)
+        }
+    }
+    
+    // SushiSwap packages
+    var hasSushi bool
+    for _, d := range detected {
+        if strings.HasPrefix(d, "@sushiswap/") || strings.Contains(d, "sushi") {
+            hasSushi = true
+            break
+        }
+    }
+    
+    if hasSushi {
+        sushiVersions := []string{"1.0.0", "0.9.0", "0.8.0"}
+        for _, v := range sushiVersions {
+            m := map[string]string{
+                "@sushiswap/core":      v,
+                "@sushiswap/periphery": v,
+                "@sushiswap/trident":   v,
+                "@sushiswap/bentobox":  v,
+                "sushiswap":            v,
+            }
+            attempts = append(attempts, m)
+        }
+    }
+    
+    // Curve packages
+    var hasCurve bool
+    for _, d := range detected {
+        if strings.HasPrefix(d, "@curvefi/") || strings.Contains(d, "curve") {
+            hasCurve = true
+            break
+        }
+    }
+    
+    if hasCurve {
+        curveVersions := []string{"2.0.0", "1.0.0"}
+        for _, v := range curveVersions {
+            m := map[string]string{
+                "@curvefi/contracts": v,
+                "@curvefi/vyper":     v,
+                "curve-contracts":    v,
+            }
+            attempts = append(attempts, m)
+        }
+    }
+    
+    // Yearn packages
+    var hasYearn bool
+    for _, d := range detected {
+        if strings.HasPrefix(d, "@yearn/") || strings.Contains(d, "yearn") {
+            hasYearn = true
+            break
+        }
+    }
+    
+    if hasYearn {
+        yearnVersions := []string{"0.4.0", "0.3.0", "0.2.0", "0.1.0"}
+        for _, v := range yearnVersions {
+            m := map[string]string{
+                "@yearn/contracts": v,
+                "@yearn/vaults":    v,
+                "@yearn/strategies": v,
+                "yearn-vaults":     v,
+            }
+            attempts = append(attempts, m)
+        }
+    }
+    
+    // Always include an empty attempt last just in case
+    attempts = append(attempts, nil)
+    return attempts
+}
+
 // compareCreationWithMask compares compiled creation bytecode with the transaction input,
 // masking library link reference positions and trimming metadata.
 func compareCreationWithMask(tx *types.Transaction, code string, linkRefs []linkPos) (bool, error) {
@@ -194,7 +753,8 @@ func compareCreationWithMask(tx *types.Transaction, code string, linkRefs []link
 
 // collectSources resolves and fetches all imported sources reachable from the primary source.
 // Keys of the returned map are virtual paths used by solc (must be stable and support relative resolution).
-func collectSources(primaryName string, primaryContent string) (map[string]string, error) {
+// versionPins maps package name => version to pin, e.g. "@openzeppelin/contracts" => "4.8.3".
+func collectSources(primaryName string, primaryContent string, versionPins map[string]string) (map[string]string, error) {
     // sources holds virtual path -> content
     sources := map[string]string{primaryName: primaryContent}
 
@@ -244,7 +804,7 @@ func collectSources(primaryName string, primaryContent string) (map[string]strin
             }
 
             // fetch content for resolved path
-            data, err := fetchImport(resolved)
+            data, err := fetchImport(resolved, versionPins)
             if err != nil {
                 return fmt.Errorf("failed to resolve import %s (from %s): %w", imp, curName, err)
             }
@@ -268,19 +828,69 @@ func collectSources(primaryName string, primaryContent string) (map[string]strin
 
 // fetchImport retrieves Solidity source code by virtual key.
 // Supported keys:
-// - Absolute package paths (e.g., "@openzeppelin/contracts/.../ERC20.sol"): fetched via unpkg.
+// - Absolute package paths (e.g., "@openzeppelin/contracts/.../ERC20.sol"): fetched via multiple CDNs.
 // - HTTP(S) URLs: fetched directly.
 // Other forms are currently unsupported and will return an error.
-func fetchImport(key string) (string, error) {
+func fetchImport(key string, versionPins map[string]string) (string, error) {
     // direct URL import
     if strings.HasPrefix(key, "http://") || strings.HasPrefix(key, "https://") {
         return httpGetText(key)
     }
 
-    // NPM-style package import, route via unpkg CDN
+    // NPM-style package import, route via multiple CDNs with fallback
     if strings.HasPrefix(key, "@") || strings.Contains(key, "/") {
-        url := "https://unpkg.com/" + strings.TrimPrefix(key, "/")
-        return httpGetText(url)
+        // split package and rest
+        pkg, rest := extractPackageAndRest(key)
+        pinned := ""
+        if versionPins != nil {
+            if v, ok := versionPins[pkg]; ok && v != "" {
+                pinned = "@" + v
+            }
+        }
+        
+        // build URL: https://unpkg.com/<pkg>@<version>/<rest>
+        pathPart := pkg + pinned
+        if rest != "" {
+            pathPart += "/" + rest
+        }
+        
+        // Try multiple CDNs with fallback
+        cdnURLs := []string{
+            "https://unpkg.com/" + strings.TrimPrefix(pathPart, "/"),
+            "https://cdn.jsdelivr.net/npm/" + strings.TrimPrefix(pathPart, "/"),
+            "https://unpkg.com/" + strings.TrimPrefix(pathPart, "/") + "?meta",
+        }
+        
+        var lastErr error
+        for _, url := range cdnURLs {
+            data, err := httpGetText(url)
+            if err == nil {
+                return data, nil
+            }
+            lastErr = err
+        }
+        
+        // If all CDNs failed, try without version pinning as last resort
+        if pinned != "" {
+            fallbackPath := pkg
+            if rest != "" {
+                fallbackPath += "/" + rest
+            }
+            
+            fallbackURLs := []string{
+                "https://unpkg.com/" + strings.TrimPrefix(fallbackPath, "/"),
+                "https://cdn.jsdelivr.net/npm/" + strings.TrimPrefix(fallbackPath, "/"),
+            }
+            
+            for _, url := range fallbackURLs {
+                data, err := httpGetText(url)
+                if err == nil {
+                    return data, nil
+                }
+            }
+        }
+        
+        return "", fmt.Errorf("failed to fetch from all CDNs: %w", lastErr)
     }
 
     return "", fmt.Errorf("unsupported import path: %s", key)
@@ -288,36 +898,86 @@ func fetchImport(key string) (string, error) {
 
 // httpGetText performs a simple GET request and returns the body as string if status is 200.
 func httpGetText(url string) (string, error) {
-    // use a short-lived client; resolver depth is small
+    // use a short-lived client with timeout
+    client := &http.Client{
+        Timeout: 30 * time.Second, // Increased timeout for CDN requests
+    }
+    
     req, err := http.NewRequest("GET", url, nil)
     if err != nil {
         return "", err
     }
+    
     // set basic headers to improve CDN compatibility
     req.Header.Set("User-Agent", "ncogearthchain-api-graphql/solidity-import-resolver")
-
-    // default client with timeout via context from caller is not available here; rely on transport defaults
-    resp, err := http.DefaultClient.Do(req)
-    if err != nil {
-        return "", err
-    }
-    defer resp.Body.Close()
-    if resp.StatusCode != http.StatusOK {
+    req.Header.Set("Accept", "text/plain,text/solidity,*/*")
+    req.Header.Set("Accept-Encoding", "gzip, deflate")
+    req.Header.Set("Cache-Control", "no-cache")
+    
+    // Add retry logic
+    maxRetries := 3
+    var lastErr error
+    
+    for attempt := 0; attempt < maxRetries; attempt++ {
+        if attempt > 0 {
+            // Exponential backoff
+            time.Sleep(time.Duration(attempt) * time.Second)
+        }
+        
+        resp, err := client.Do(req)
+        if err != nil {
+            lastErr = err
+            continue
+        }
+        
+        defer resp.Body.Close()
+        
+        if resp.StatusCode == http.StatusOK {
+            // Check if response is gzipped
+            var reader io.Reader = resp.Body
+            if resp.Header.Get("Content-Encoding") == "gzip" {
+                gzReader, err := gzip.NewReader(resp.Body)
+                if err != nil {
+                    lastErr = fmt.Errorf("failed to create gzip reader: %w", err)
+                    continue
+                }
+                defer gzReader.Close()
+                reader = gzReader
+            }
+            
+            data, err := io.ReadAll(io.LimitReader(reader, 1<<20)) // 1MB limit
+            if err != nil {
+                lastErr = fmt.Errorf("failed to read response body: %w", err)
+                continue
+            }
+            
+            return string(data), nil
+        }
+        
+        // If it's a 404, don't retry
+        if resp.StatusCode == http.StatusNotFound {
+            return "", fmt.Errorf("HTTP 404 from %s: file not found", url)
+        }
+        
+        // For other status codes, try to read error body
         body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
-        return "", fmt.Errorf("HTTP %d from %s: %s", resp.StatusCode, url, string(body))
+        lastErr = fmt.Errorf("HTTP %d from %s: %s", resp.StatusCode, url, string(body))
+        
+        // Don't retry on client errors (4xx)
+        if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+            break
+        }
     }
-    data, err := io.ReadAll(resp.Body)
-    if err != nil {
-        return "", err
-    }
-    return string(data), nil
+    
+    return "", fmt.Errorf("failed after %d attempts: %w", maxRetries, lastErr)
 }
 
 // compileSolidityStandardJSON compiles a single-source Solidity input using solc --standard-json
 // and respects optimizer settings. Optional evmVersion and viaIR can be provided to match build.
-func compileSolidityStandardJSON(solcPath string, source string, optimized bool, runs int32, evmVersion string, viaIR bool) (map[string]compiledArtifact, error) {
+// versionPins maps package name => version string (e.g., "@openzeppelin/contracts" => "4.8.3").
+func compileSolidityStandardJSON(solcPath string, source string, optimized bool, runs int32, evmVersion string, viaIR bool, versionPins map[string]string) (map[string]compiledArtifact, error) {
     // resolve imports and collect all source units
-    sourcesCollected, err := collectSources("input.sol", source)
+    sourcesCollected, err := collectSources("input.sol", source, versionPins)
     if err != nil {
         return nil, err
     }
@@ -497,11 +1157,29 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 	}
 
 	// try to compile the source code provided with explicit optimizer settings
-    compiled, err := compileSolidityStandardJSON(compilerPath, sc.SourceCode, sc.IsOptimized, sc.OptimizeRuns, sc.EvmVersion, sc.ViaIR)
+    // Attempt auto version pinning for popular packages if needed.
+    // First pass: try without pins.
+    compiled, err := compileSolidityStandardJSON(compilerPath, sc.SourceCode, sc.IsOptimized, sc.OptimizeRuns, sc.EvmVersion, sc.ViaIR, nil)
 	p.log.Debugf("compiled output: %+v", compiled)
 	if err != nil {
-		p.log.Errorf("solidity code compilation failed with compiler %s: %s", compilerPath, err.Error())
-		return err
+        p.log.Errorf("solidity code compilation failed with compiler %s: %s", compilerPath, err.Error())
+        // Auto-detect likely packages and try a set of historical pins (OpenZeppelin).
+        detected := detectPackages(sc.SourceCode)
+        if len(detected) > 0 {
+            pinsList := generateVersionPinAttempts(detected)
+            for _, pins := range pinsList {
+                compiled, err = compileSolidityStandardJSON(compilerPath, sc.SourceCode, sc.IsOptimized, sc.OptimizeRuns, sc.EvmVersion, sc.ViaIR, pins)
+                if err == nil {
+                    p.log.Debugf("compiled with pins: %+v", pins)
+                    break
+                }
+            }
+            if err != nil {
+                return err
+            }
+        } else {
+            return err
+        }
 	}
 
 	// loop over contracts and try to validate one of them
@@ -518,6 +1196,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 			p.log.Errorf("contract byte code comparison failed")
 			return err
 		}
+		
 
         // we have the winner
         if matchMasked {

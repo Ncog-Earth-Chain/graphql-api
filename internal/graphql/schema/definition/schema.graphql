@@ -309,6 +309,23 @@ type Query {
 
     # Get list of available Solidity compiler versions for contract validation.
     availableCompilerVersions: [String!]!
+
+    # Enhanced Contract Verification System Queries
+    
+    # Get detailed verification information for a contract including package dependencies.
+    contractVerificationInfo(address: Address!): Contract!
+
+    # Get package compatibility matrix for detected packages in source code.
+    packageCompatibilityMatrix(sourceCode: String!): JSON!
+
+    # Get optimal package version suggestions for the given source code.
+    optimalPackageVersions(sourceCode: String!): JSON!
+
+    # Get current status of the enhanced verification registry system.
+    registryStatus: JSON!
+
+    # Get CDN status for dependency resolution endpoints.
+    cdnStatus: JSON!
 }
 
 # Mutation endpoints for modifying the data
@@ -327,6 +344,14 @@ type Mutation {
     # Pre-download a specific Solidity compiler version for future use.
     # This is useful to prepare compilers before contract validation.
     preDownloadCompilerVersion(version: String!): Boolean!
+
+    # Enhanced Contract Verification System Mutations
+    
+    # Refresh the package registry cache to get latest package information.
+    refreshPackageCache: Boolean!
+
+    # Pre-validate source code to check for potential issues before deployment.
+    preValidateSourceCode(sourceCode: String!): JSON!
 }
 
 # Subscriptions to live events broadcasting
