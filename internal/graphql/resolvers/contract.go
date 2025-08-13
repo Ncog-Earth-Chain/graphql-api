@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"html"
+	"ncogearthchain-api-graphql/internal/logger"
 	"ncogearthchain-api-graphql/internal/repository"
 	"ncogearthchain-api-graphql/internal/types"
 	"regexp"
@@ -13,6 +14,14 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 )
+
+// log represents the logger to be used by the contract resolver.
+var log logger.Logger
+
+// SetLogger sets the contract resolver logger to be used for logging.
+func SetLogger(l logger.Logger) {
+	log = l
+}
 
 const (
 	// scValidationMinSourceCodeLength is the minimum length of a validated

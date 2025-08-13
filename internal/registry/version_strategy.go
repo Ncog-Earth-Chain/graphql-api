@@ -1,7 +1,6 @@
 package registry
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 )
@@ -290,7 +289,7 @@ func (vs *VersionStrategy) GetCompatibilityMatrix(packages []string) map[string]
 			majorVersions := make(map[string][]string)
 			for _, version := range info.Versions {
 				major := vs.getMajorVersion(version)
-				majorVersions[major] = append(majorVersions, version)
+				majorVersions[major] = append(majorVersions[major], version)
 			}
 			
 			// Store compatibility groups

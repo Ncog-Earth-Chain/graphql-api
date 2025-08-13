@@ -33,12 +33,32 @@ print_error() {
 }
 
 # Check if Go is installed
-if ! command -v go &> /dev/null; then
-    print_error "Go is not installed. Please install Go first."
+GO_CMD=""
+if command -v go &> /dev/null; then
+    GO_CMD="go"
+elif [ -f "/usr/local/go/bin/go" ]; then
+    GO_CMD="/usr/local/go/bin/go"
+elif [ -f "/usr/bin/go" ]; then
+    GO_CMD="/usr/bin/go"
+else
+    print_error "Go is not installed or not found in PATH."
+    print_error "Please install Go or add it to your PATH."
+    print_error "Common Go installation paths:"
+    print_error "  - /usr/local/go/bin/go"
+    print_error "  - /usr/bin/go"
+    print_error "  - ~/go/bin/go"
     exit 1
 fi
 
-print_status "Go version: $(go version)"
+print_status "Go version: $($GO_CMD version)"
+print_status "Using Go from: $(which $GO_CMD 2>/dev/null || echo $GO_CMD)"
+
+# Optionally add Go to PATH for this session if it's not there
+if ! command -v go &> /dev/null; then
+    print_warning "Go is not in PATH. Adding Go to PATH for this session..."
+    export PATH="$PATH:/usr/local/go/bin"
+    print_status "Added /usr/local/go/bin to PATH"
+fi
 
 # Check if we're in the right directory
 if [ ! -f "go.mod" ]; then
@@ -50,12 +70,12 @@ print_status "Project root directory confirmed"
 
 # Clean previous test artifacts
 print_status "Cleaning previous test artifacts..."
-go clean -testcache 2>/dev/null || true
+$GO_CMD clean -testcache 2>/dev/null || true
 
 # Update dependencies
 print_status "Updating Go dependencies..."
-go mod tidy
-go mod download
+$GO_CMD mod tidy
+$GO_CMD mod download
 
 # Run tests with verbose output and coverage
 echo ""
@@ -64,19 +84,19 @@ echo "-----------------------------------"
 
 # Test registry components
 print_status "Testing Package Registry..."
-go test -v ./internal/registry/ -run TestPackageRegistry
+$GO_CMD test -v ./internal/registry/ -run TestPackageRegistry
 
 print_status "Testing Dependency Resolver..."
-go test -v ./internal/registry/ -run TestDependencyResolver
+$GO_CMD test -v ./internal/registry/ -run TestDependencyResolver
 
 print_status "Testing Version Strategy..."
-go test -v ./internal/registry/ -run TestVersionStrategy
+$GO_CMD test -v ./internal/registry/ -run TestVersionStrategy
 
 print_status "Testing Contract Orchestrator..."
-go test -v ./internal/registry/ -run TestContractOrchestrator
+$GO_CMD test -v ./internal/registry/ -run TestContractOrchestrator
 
 print_status "Testing Mock Compiler..."
-go test -v ./internal/registry/ -run TestMockCompiler
+$GO_CMD test -v ./internal/registry/ -run TestMockCompiler
 
 echo ""
 echo "🔧 Running Enhanced Contract Verifier Tests..."
@@ -84,7 +104,7 @@ echo "--------------------------------------------"
 
 # Test enhanced contract verifier
 print_status "Testing Enhanced Contract Verifier..."
-go test -v ./internal/repository/ -run TestEnhancedContractVerifier
+$GO_CMD test -v ./internal/repository/ -run TestEnhancedContractVerifier
 
 echo ""
 echo "📊 Running All Tests with Coverage..."
@@ -92,19 +112,19 @@ echo "-----------------------------------"
 
 # Run all tests with coverage
 print_status "Running comprehensive test suite..."
-go test -v -coverprofile=coverage.out ./internal/registry/ ./internal/repository/
+$GO_CMD test -v -coverprofile=coverage.out ./internal/registry/ ./internal/repository/
 
 # Generate coverage report
 if [ -f "coverage.out" ]; then
     print_status "Generating coverage report..."
-    go tool cover -html=coverage.out -o coverage.html
+    $GO_CMD tool cover -html=coverage.out -o coverage.html
     print_success "Coverage report generated: coverage.html"
     
     # Show coverage summary
     echo ""
     echo "📈 Coverage Summary:"
     echo "-------------------"
-    go tool cover -func=coverage.out
+    $GO_CMD tool cover -func=coverage.out
 fi
 
 echo ""

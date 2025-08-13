@@ -60,6 +60,14 @@ func R() Repository {
 	return repo
 }
 
+// GetEnhancedContractVerifier provides access to the enhanced contract verifier
+// if it's available. Returns nil if the enhanced system is not available.
+func GetEnhancedContractVerifier() *EnhancedContractVerifier {
+	// For now, return nil to indicate enhanced system is not available
+	// This will be implemented when the enhanced system is fully integrated
+	return nil
+}
+
 // Proxy represents Repository interface implementation and controls access to data
 // trough several low level bridges.
 type proxy struct {
