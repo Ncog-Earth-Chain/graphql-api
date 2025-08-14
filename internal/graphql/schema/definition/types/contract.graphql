@@ -33,6 +33,15 @@ type Contract {
     "Smart contract ABI definition. Empty if not available."
     abi: String!
 
+    "Solidity compiler metadata JSON string. Empty if not available."
+    metadata: String!
+
+    "Compiler-produced creation bytecode (hex). Empty if not available."
+    creationBytecode: String!
+
+    "Compiler-produced runtime/deployed bytecode (hex). Empty if not available."
+    runtimeBytecode: String!
+
     """
     Validated is the unix timestamp at which the source code was validated
     against the deployed byte code. Null if not validated yet.
