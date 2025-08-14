@@ -41,6 +41,9 @@ type ApiResolver interface {
 	// to notify them about the change.
 	ValidateContract(*struct{ Contract ContractValidationInput }) (*Contract, error)
 
+	// VerifyProxyContract verifies a proxy address in a BscScan-like flow.
+	VerifyProxyContract(*struct{ Address common.Address }) (*VerifyProxyResult, error)
+
 	// Block resolves blockchain block by number or by hash. If neither is provided, the most recent block is given.
 	Block(*struct {
 		Number *hexutil.Uint64

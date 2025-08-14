@@ -1800,6 +1800,94 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 	return fmt.Errorf("contract source code does not match with the deployed byte code")
 }
 
+// VerifyProxyContract verifies a proxy address flow.
+// - Detect proxy (EIP-1167, EIP-1967, Beacon)
+// - If parent not verified: return parent address and instruction message
+// - If parent verified: link proxy -> implementation, copy ABI/metadata, mark proxy validated
+func (p *proxy) VerifyProxyContract(addr *common.Address) (*types.Contract, *common.Address, bool, string, error) {
+	if addr == nil {
+		return nil, nil, false, "no address provided", fmt.Errorf("no address provided")
+	}
+
+	// Load contract from DB
+	con, err := p.db.Contract(addr)
+	if err != nil {
+		return nil, nil, false, "failed to load contract", err
+	}
+	if con == nil {
+		return nil, nil, false, "contract not found", fmt.Errorf("contract not found")
+	}
+
+	// Detect proxy and implementation
+	onChainCode, _ := p.rpc.ContractCode(addr)
+	implAddr := common.Address{}
+	proxyType := ""
+	if len(onChainCode) > 0 {
+		if impl := tryExtractEIP1167Target(onChainCode); impl != (common.Address{}) {
+			implAddr = impl
+			proxyType = "EIP-1167"
+		}
+	}
+	if implAddr == (common.Address{}) {
+		implSlot := common.HexToHash("0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc")
+		if slotBytes, err := p.rpc.StorageAt(addr, implSlot); err == nil && len(slotBytes) == 32 {
+			a := common.BytesToAddress(slotBytes[12:])
+			if a != (common.Address{}) {
+				implAddr = a
+				proxyType = "EIP-1967"
+			}
+		}
+	}
+	if implAddr == (common.Address{}) {
+		beaconSlot := common.HexToHash("0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50")
+		if slotBytes, err := p.rpc.StorageAt(addr, beaconSlot); err == nil && len(slotBytes) == 32 {
+			beaconAddr := common.BytesToAddress(slotBytes[12:])
+			if beaconAddr != (common.Address{}) {
+				selector := []byte{0x5c, 0x60, 0xda, 0x1b}
+				if ret, err := p.rpc.Call(&beaconAddr, selector); err == nil && len(ret) >= 32 {
+					impl := common.BytesToAddress(ret[len(ret)-20:])
+					if impl != (common.Address{}) {
+						implAddr = impl
+						proxyType = "Beacon(EIP-1967)"
+					}
+				}
+			}
+		}
+	}
+
+	if implAddr == (common.Address{}) {
+		return con, nil, false, "not a recognized proxy contract", nil
+	}
+
+	implCon, derr := p.db.Contract(&implAddr)
+	if derr != nil {
+		return con, &implAddr, false, "failed to load implementation contract", derr
+	}
+	if implCon == nil || implCon.Validated == nil {
+		msg := fmt.Sprintf("proxy detected (%s). Please verify the parent implementation first: %s", proxyType, implAddr.Hex())
+		return con, &implAddr, false, msg, nil
+	}
+
+	// Parent is verified: link and mark proxy verified, inherit ABI/metadata if missing
+	con.IsProxy = true
+	con.ProxyType = proxyType
+	con.ImplementationAddress = implAddr
+	if con.Abi == "" {
+		con.Abi = implCon.Abi
+	}
+	if con.Metadata == "" {
+		con.Metadata = implCon.Metadata
+	}
+	now := hexutil.Uint64(uint64(time.Now().Unix()))
+	con.Validated = &now
+	if err := p.db.UpdateContract(con); err != nil {
+		return con, &implAddr, false, "failed to update proxy contract", err
+	}
+	p.cache.EvictContract(&con.Address)
+	msg := fmt.Sprintf("proxy linked to implementation %s (%s) and marked verified", implAddr.Hex(), proxyType)
+	return con, &implAddr, true, msg, nil
+}
+
 // StoreContract adds new contract into the repository.
 func (p *proxy) StoreContract(con *types.Contract) error {
 	// is the a known contract which will be updated?

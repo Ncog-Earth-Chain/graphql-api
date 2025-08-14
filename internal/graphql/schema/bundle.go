@@ -2361,6 +2361,19 @@ type Mutation {
     # Returns updated contract information. If the contract can not be validated,
     # it raises a GraphQL error.
     validateContract(contract: ContractValidationInput!): Contract!
+
+    # Verify a proxy contract address. If it's a proxy and parent is not verified,
+    # returns the parent address and instruction message. If parent is verified,
+    # links the proxy to the parent and marks it verified.
+    verifyProxyContract(address: Address!): VerifyProxyResult!
+}
+
+# Result of proxy verification/linking
+type VerifyProxyResult {
+    proxy: Contract!
+    parentAddress: Address
+    parentVerified: Boolean!
+    message: String!
 }
 
 # Subscriptions to live events broadcasting

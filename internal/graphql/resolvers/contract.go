@@ -83,6 +83,14 @@ type ContractValidationInput struct {
 	SourceCode string `json:"sourceCode"`
 }
 
+// VerifyProxyResult represents the output structure for verifyProxyContract mutation
+type VerifyProxyResult struct {
+	Proxy          *Contract       `json:"proxy"`
+	ParentAddress  *common.Address `json:"parentAddress"`
+	ParentVerified bool            `json:"parentVerified"`
+	Message        string          `json:"message"`
+}
+
 // NewContract builds new resolvable smart contract structure.
 func NewContract(con *types.Contract) *Contract {
 	return &Contract{Contract: *con}
@@ -237,4 +245,23 @@ func (rs *rootResolver) ValidateContract(args *struct{ Contract ContractValidati
 
 	// return the final updated contract
 	return NewContract(sc), nil
+}
+
+// VerifyProxyContract verifies a proxy address and either instructs to verify parent first,
+// or links the proxy to already-verified implementation and marks it verified.
+func (rs *rootResolver) VerifyProxyContract(args *struct{ Address common.Address }) (*VerifyProxyResult, error) {
+	proxyCon, parentAddr, ok, msg, err := repository.R().VerifyProxyContract(&args.Address)
+	if err != nil {
+		return nil, err
+	}
+	var proxy *Contract
+	if proxyCon != nil {
+		proxy = NewContract(proxyCon)
+	}
+	return &VerifyProxyResult{
+		Proxy:          proxy,
+		ParentAddress:  parentAddr,
+		ParentVerified: ok,
+		Message:        msg,
+	}, nil
 }

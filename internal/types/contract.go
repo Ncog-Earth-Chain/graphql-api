@@ -91,6 +91,15 @@ type Contract struct {
 
 	// RuntimeImmutableReferences holds immutable reference ranges in runtime bytecode.
 	RuntimeImmutableReferences []LinkReferenceRange `json:"runtimeImmutableReferences,omitempty"`
+
+	// IsProxy indicates whether this contract address is a proxy.
+	IsProxy bool `json:"isProxy,omitempty"`
+
+	// ProxyType describes the detected proxy mechanism (e.g., "EIP-1967", "Beacon", "EIP-1167").
+	ProxyType string `json:"proxyType,omitempty"`
+
+	// ImplementationAddress stores the resolved implementation address if this is a proxy.
+	ImplementationAddress common.Address `json:"implementationAddress,omitempty"`
 }
 
 // LinkReferenceRange represents a start/length pair within bytecode for linking/immutables.
@@ -125,6 +134,11 @@ type BsonContract struct {
 	RiRef     []LinkReferenceRange `bson:"riref"`
 	SrcHash   *string              `bson:"src_h"`
 	Validated *uint64              `bson:"val"`
+
+	// Proxy metadata
+	IsProxy   bool   `bson:"proxy"`
+	ProxyType string `bson:"ptype"`
+	Impl      string `bson:"impl"`
 }
 
 // UnmarshalContract parses the JSON-encoded smart contract data.
@@ -244,6 +258,10 @@ func (sc *Contract) MarshalBSON() ([]byte, error) {
 		ClRef:    sc.CreationLinkReferences,
 		RlRef:    sc.RuntimeLinkReferences,
 		RiRef:    sc.RuntimeImmutableReferences,
+		// proxy metadata
+		IsProxy:   sc.IsProxy,
+		ProxyType: sc.ProxyType,
+		Impl:      sc.ImplementationAddress.String(),
 	}
 	// is validated?
 	if sc.Validated != nil {
@@ -293,6 +311,12 @@ func (sc *Contract) UnmarshalBSON(data []byte) (err error) {
 	sc.CreationLinkReferences = row.ClRef
 	sc.RuntimeLinkReferences = row.RlRef
 	sc.RuntimeImmutableReferences = row.RiRef
+	// proxy metadata
+	sc.IsProxy = row.IsProxy
+	sc.ProxyType = row.ProxyType
+	if len(row.Impl) > 0 {
+		sc.ImplementationAddress = common.HexToAddress(row.Impl)
+	}
 	if row.Validated != nil {
 		sc.Validated = (*hexutil.Uint64)(row.Validated)
 	}
