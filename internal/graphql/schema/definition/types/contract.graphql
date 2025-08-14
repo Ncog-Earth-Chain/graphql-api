@@ -42,6 +42,15 @@ type Contract {
     "Compiler-produced runtime/deployed bytecode (hex). Empty if not available."
     runtimeBytecode: String!
 
+    "Indicates whether this contract address is a proxy."
+    isProxy: Boolean!
+
+    "Detected proxy mechanism, e.g., EIP-1967, Beacon(EIP-1967), EIP-1167."
+    proxyType: String!
+
+    "Resolved implementation address if this is a proxy; null otherwise."
+    implementationAddress: Address
+
     """
     Validated is the unix timestamp at which the source code was validated
     against the deployed byte code. Null if not validated yet.

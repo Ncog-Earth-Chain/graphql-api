@@ -1872,12 +1872,30 @@ func (p *proxy) VerifyProxyContract(addr *common.Address) (*types.Contract, *com
 	con.IsProxy = true
 	con.ProxyType = proxyType
 	con.ImplementationAddress = implAddr
+	con.Name = implCon.Name
+	con.Version = implCon.Version
+	con.License = implCon.License
+	con.Compiler = implCon.Compiler
+	con.CompilerVersion = implCon.CompilerVersion
+	con.IsOptimized = implCon.IsOptimized
+	con.OptimizeRuns = implCon.OptimizeRuns
+	con.EvmVersion = implCon.EvmVersion
+	con.ViaIR = implCon.ViaIR
+	// If the source code is not set, we can try to copy it from the implementation
+	if con.SourceCode == "" && implCon.SourceCode != "" {
+		con.SourceCode = implCon.SourceCode
+		if implCon.SourceCodeHash != nil {
+			con.SourceCodeHash = implCon.SourceCodeHash
+		}
+	}
+
 	if con.Abi == "" {
 		con.Abi = implCon.Abi
 	}
 	if con.Metadata == "" {
 		con.Metadata = implCon.Metadata
 	}
+
 	now := hexutil.Uint64(uint64(time.Now().Unix()))
 	con.Validated = &now
 	if err := p.db.UpdateContract(con); err != nil {

@@ -37,6 +37,20 @@ type Contract struct {
 	types.Contract
 }
 
+// isProxy resolves whether this contract is a proxy.
+func (con *Contract) IsProxy() bool { return con.Contract.IsProxy }
+
+// proxyType resolves the detected proxy type.
+func (con *Contract) ProxyType() string { return con.Contract.ProxyType }
+
+// implementationAddress resolves the implementation address if this is a proxy.
+func (con *Contract) ImplementationAddress() *common.Address {
+	if (con.Contract.ImplementationAddress == common.Address{}) {
+		return nil
+	}
+	return &con.Contract.ImplementationAddress
+}
+
 // ContractValidationInput represents an input structure used
 // to validate contract source code against deployed contract byte code.
 type ContractValidationInput struct {
