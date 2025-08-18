@@ -414,6 +414,10 @@ type Transaction {
     # erc1155Transactions provides list of ERC-1155 NFT transactions executed in the scope
     # of this blockchain transaction call.
     erc1155Transactions: [ERC1155Transaction!]!
+
+    # internalTransactions provides a list of internal transactions (calls, creates, etc.)
+    # executed as part of this transaction.
+    internalTransactions: [InternalTransaction!]!
 }
 
 # Block is an Ncogearthchain block chain block.
