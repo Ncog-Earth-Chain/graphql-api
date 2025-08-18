@@ -272,6 +272,11 @@ func (sc *Contract) MarshalBSON() ([]byte, error) {
 		val := sc.SourceCodeHash.String()
 		row.SrcHash = &val
 	}
+
+	if sc.CompilerVersion != "" {
+		row.Version = sc.CompilerVersion
+	}
+
 	return bson.Marshal(row)
 }
 

@@ -1094,6 +1094,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 				// capture bytecodes and link/immutable references for UI
 				sc.CreationBytecode = detail.Code
 				sc.RuntimeBytecode = detail.RuntimeCode
+				sc.Version = detail.CompilerVersion
 				sc.CreationLinkReferences = make([]types.LinkReferenceRange, len(detail.CreationLinkRefs))
 				for i, r := range detail.CreationLinkRefs {
 					sc.CreationLinkReferences[i] = types.LinkReferenceRange{Start: int32(r.Start), Length: int32(r.Length)}
@@ -1182,6 +1183,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 							// capture bytecodes and link/immutable references for UI
 							sc.CreationBytecode = detail.Code
 							sc.RuntimeBytecode = detail.RuntimeCode
+							sc.Version = detail.CompilerVersion
 							sc.CreationLinkReferences = make([]types.LinkReferenceRange, len(detail.CreationLinkRefs))
 							for i, r := range detail.CreationLinkRefs {
 								sc.CreationLinkReferences[i] = types.LinkReferenceRange{Start: int32(r.Start), Length: int32(r.Length)}
@@ -1245,6 +1247,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 			// capture bytecodes and link/immutable references for UI
 			sc.CreationBytecode = detail.Code
 			sc.RuntimeBytecode = detail.RuntimeCode
+			sc.Version = detail.CompilerVersion
 			sc.CreationLinkReferences = make([]types.LinkReferenceRange, len(detail.CreationLinkRefs))
 			for i, r := range detail.CreationLinkRefs {
 				sc.CreationLinkReferences[i] = types.LinkReferenceRange{Start: int32(r.Start), Length: int32(r.Length)}
@@ -1342,6 +1345,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 					// capture bytecodes and link/immutable references for UI
 					sc.CreationBytecode = detail.Code
 					sc.RuntimeBytecode = detail.RuntimeCode
+					sc.Version = detail.CompilerVersion
 					sc.CreationLinkReferences = make([]types.LinkReferenceRange, len(detail.CreationLinkRefs))
 					for i, r := range detail.CreationLinkRefs {
 						sc.CreationLinkReferences[i] = types.LinkReferenceRange{Start: int32(r.Start), Length: int32(r.Length)}
@@ -1408,6 +1412,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 							// capture bytecodes and link/immutable references for UI
 							sc.CreationBytecode = detail.Code
 							sc.RuntimeBytecode = detail.RuntimeCode
+							sc.Version = detail.CompilerVersion
 							sc.CreationLinkReferences = make([]types.LinkReferenceRange, len(detail.CreationLinkRefs))
 							for i, r := range detail.CreationLinkRefs {
 								sc.CreationLinkReferences[i] = types.LinkReferenceRange{Start: int32(r.Start), Length: int32(r.Length)}
@@ -1471,6 +1476,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 							// capture bytecodes and link/immutable references for UI
 							sc.CreationBytecode = detail.Code
 							sc.RuntimeBytecode = detail.RuntimeCode
+							sc.Version = detail.CompilerVersion
 							sc.CreationLinkReferences = make([]types.LinkReferenceRange, len(detail.CreationLinkRefs))
 							for i, r := range detail.CreationLinkRefs {
 								sc.CreationLinkReferences[i] = types.LinkReferenceRange{Start: int32(r.Start), Length: int32(r.Length)}
@@ -1545,6 +1551,8 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 								// capture bytecodes and link/immutable references for UI
 								sc.CreationBytecode = detail.Code
 								sc.RuntimeBytecode = detail.RuntimeCode
+								sc.Version = detail.CompilerVersion
+
 								sc.CreationLinkReferences = make([]types.LinkReferenceRange, len(detail.CreationLinkRefs))
 								for i, r := range detail.CreationLinkRefs {
 									sc.CreationLinkReferences[i] = types.LinkReferenceRange{Start: int32(r.Start), Length: int32(r.Length)}
@@ -1603,6 +1611,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 								// capture bytecodes and link/immutable references for UI
 								sc.CreationBytecode = detail.Code
 								sc.RuntimeBytecode = detail.RuntimeCode
+								sc.Version = detail.CompilerVersion
 								sc.CreationLinkReferences = make([]types.LinkReferenceRange, len(detail.CreationLinkRefs))
 								for i, r := range detail.CreationLinkRefs {
 									sc.CreationLinkReferences[i] = types.LinkReferenceRange{Start: int32(r.Start), Length: int32(r.Length)}
@@ -1777,6 +1786,8 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 										sc.OptimizeRuns = cfgAlt.runs
 										sc.EvmVersion = cfgAlt.evm
 										sc.ViaIR = cfgAlt.viaIR
+										sc.Version = detail2.CompilerVersion
+
 										now := hexutil.Uint64(uint64(time.Now().Unix()))
 										sc.Validated = &now
 										if err := p.db.UpdateContract(sc); err != nil {
@@ -1856,7 +1867,7 @@ func (p *proxy) VerifyProxyContract(addr *common.Address) (*types.Contract, *com
 	}
 
 	if implAddr == (common.Address{}) {
-		return con, nil, false, "not a recognized proxy contract", nil
+		return con, nil, false, "A corresponding implementation contract was unfortunately not detected for the proxy address", nil
 	}
 
 	implCon, derr := p.db.Contract(&implAddr)
@@ -1876,7 +1887,6 @@ func (p *proxy) VerifyProxyContract(addr *common.Address) (*types.Contract, *com
 	con.Version = implCon.Version
 	con.License = implCon.License
 	con.Compiler = implCon.Compiler
-	con.CompilerVersion = implCon.CompilerVersion
 	con.IsOptimized = implCon.IsOptimized
 	con.OptimizeRuns = implCon.OptimizeRuns
 	con.EvmVersion = implCon.EvmVersion
@@ -1892,8 +1902,13 @@ func (p *proxy) VerifyProxyContract(addr *common.Address) (*types.Contract, *com
 	if con.Abi == "" {
 		con.Abi = implCon.Abi
 	}
+
 	if con.Metadata == "" {
 		con.Metadata = implCon.Metadata
+	}
+
+	if con.CompilerVersion != "" {
+		con.Version = con.CompilerVersion
 	}
 
 	now := hexutil.Uint64(uint64(time.Now().Unix()))

@@ -22,7 +22,7 @@ type InternalTransaction {
     type: String!
 
     # The trace address (path in the call tree)
-    traceAddress: [Int!]!
+    traceAddress: [BigInt!]!
 
     # The error, if any
     error: String

@@ -14,6 +14,6 @@ type InternalTransaction struct {
 	GasUsed      *hexutil.Uint64 `json:"gasUsed,omitempty"`
 	Input        hexutil.Bytes   `json:"input"`
 	Type         string          `json:"type"`
-	TraceAddress []int           `json:"traceAddress"`
+	TraceAddress []hexutil.Big   `json:"traceAddress"`
 	Error        *string         `json:"error,omitempty"`
 }

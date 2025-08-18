@@ -3,6 +3,7 @@ package resolvers
 
 import (
 	"fmt"
+	"math/big"
 	"ncogearthchain-api-graphql/internal/repository"
 	"ncogearthchain-api-graphql/internal/types"
 
@@ -201,16 +202,28 @@ func NewInternalTransaction(itx *types.InternalTransaction) *InternalTransaction
 
 // InternalTransactions resolves the list of internal transactions for this transaction.
 func (trx *Transaction) InternalTransactions() ([]*InternalTransaction, error) {
-	// Use debug_traceTransaction to get internal transactions
-	result, err := repository.R().TraceTransaction(trx.Hash, nil)
+	result, err := repository.R().TraceTransaction(trx.Hash, map[string]interface{}{
+		"tracer": "callTracer",
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	// The result is expected to be a map with a "structLogs" or "result" key, or a list of traces (depending on node config)
-	// For OpenEthereum/Parity style, it's a list of traces under "result"
-	// For Geth, it's a map with "structLogs" (not suitable for internal txs)
-	// We'll expect the "result" key as a list of traces
+	// Geth callTracer output: top-level map with "calls"
+	if v, ok := result.(map[string]interface{}); ok {
+		if calls, ok := v["calls"].([]interface{}); ok {
+			var internalTxs []*InternalTransaction
+			for i, c := range calls {
+				if callMap, ok := c.(map[string]interface{}); ok {
+					idx := hexutil.Big(*big.NewInt(int64(i)))
+					internalTxs = append(internalTxs, extractInternalTxs(callMap, []hexutil.Big{idx})...)
+				}
+			}
+			return internalTxs, nil
+		}
+	}
+
+	// Fallback to OpenEthereum/Parity style (flat result)
 	var traces []map[string]interface{}
 	switch v := result.(type) {
 	case map[string]interface{}:
@@ -263,7 +276,8 @@ func (trx *Transaction) InternalTransactions() ([]*InternalTransaction, error) {
 		if traceAddr, ok := trace["traceAddress"].([]interface{}); ok {
 			for _, idx := range traceAddr {
 				if i, ok := idx.(float64); ok {
-					itx.TraceAddress = append(itx.TraceAddress, int(i))
+					bi := big.NewInt(int64(i))
+					itx.TraceAddress = append(itx.TraceAddress, hexutil.Big(*bi))
 				}
 			}
 		}
@@ -273,4 +287,63 @@ func (trx *Transaction) InternalTransactions() ([]*InternalTransaction, error) {
 		internalTxs = append(internalTxs, NewInternalTransaction(itx))
 	}
 	return internalTxs, nil
+}
+
+// extractInternalTxs recursively extracts internal transactions from a callTracer call tree.
+func extractInternalTxs(trace map[string]interface{}, parentTraceAddress []hexutil.Big) []*InternalTransaction {
+	var internalTxs []*InternalTransaction
+
+	itx := &types.InternalTransaction{}
+	if from, ok := trace["from"].(string); ok {
+		itx.From = common.HexToAddress(from)
+	}
+	if to, ok := trace["to"].(string); ok {
+		addr := common.HexToAddress(to)
+		itx.To = &addr
+	}
+	if value, ok := trace["value"].(string); ok {
+		itx.Value = (hexutil.Big)(*hexutil.MustDecodeBig(value))
+	}
+	if gas, ok := trace["gas"].(string); ok {
+		gasVal := hexutil.MustDecodeUint64(gas)
+		itx.Gas = hexutil.Uint64(gasVal)
+	}
+	if gasUsed, ok := trace["gasUsed"].(string); ok {
+		guVal := hexutil.MustDecodeUint64(gasUsed)
+		gu := hexutil.Uint64(guVal)
+		itx.GasUsed = &gu
+	}
+	if input, ok := trace["input"].(string); ok {
+		itx.Input = common.FromHex(input)
+	}
+	if typ, ok := trace["type"].(string); ok {
+		itx.Type = typ
+	}
+	// Compose trace address
+	if idx, ok := trace["traceAddress"].([]interface{}); ok {
+		for _, i := range idx {
+			if n, ok := i.(float64); ok {
+				bi := big.NewInt(int64(n))
+				itx.TraceAddress = append(itx.TraceAddress, hexutil.Big(*bi))
+			}
+		}
+	} else if len(parentTraceAddress) > 0 {
+		itx.TraceAddress = append([]hexutil.Big{}, parentTraceAddress...)
+	}
+	if errStr, ok := trace["error"].(string); ok {
+		itx.Error = &errStr
+	}
+	internalTxs = append(internalTxs, NewInternalTransaction(itx))
+
+	// Recursively process child calls
+	if calls, ok := trace["calls"].([]interface{}); ok {
+		for i, c := range calls {
+			if callMap, ok := c.(map[string]interface{}); ok {
+				idx := hexutil.Big(*big.NewInt(int64(i)))
+				childTraceAddress := append(append([]hexutil.Big{}, itx.TraceAddress...), idx)
+				internalTxs = append(internalTxs, extractInternalTxs(callMap, childTraceAddress)...)
+			}
+		}
+	}
+	return internalTxs
 }
