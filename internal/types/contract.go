@@ -42,6 +42,16 @@ type Contract struct {
 	// Smart contract compiler identifier, if available.
 	Compiler string `json:"cv,omitempty"`
 
+	// CompilerVersion represents the specific Solidity compiler version
+	// used for validation, if available.
+	CompilerVersion string `json:"cv_ver,omitempty"`
+
+	// EvmVersion represents the target EVM version used for compilation, if any.
+	EvmVersion string `json:"evm,omitempty"`
+
+	// ViaIR specifies whether the compilation was performed via the Yul IR pipeline.
+	ViaIR bool `json:"viaIR,omitempty"`
+
 	// IsOptimized signals that the contract byte code was optimized
 	// during compilation.
 	IsOptimized bool `json:"optimized"`
@@ -60,29 +70,75 @@ type Contract struct {
 	// ABI definition of the smart contract, if available.
 	Abi string `json:"abi,omitempty" bson:"abi,omitempty"`
 
+	// Metadata is the Solidity compiler metadata JSON string produced during compilation, if available.
+	Metadata string `json:"metadata,omitempty"`
+
 	// Validated represents the unix timestamp
 	//of the contract source validation against deployed byte code.
 	Validated *hexutil.Uint64 `json:"ok,omitempty" bson:"is_ok,omitempty"`
+
+	// CreationBytecode is the compiler-produced creation bytecode (hex), if available.
+	CreationBytecode string `json:"creationBytecode,omitempty"`
+
+	// RuntimeBytecode is the compiler-produced deployed/runtime bytecode (hex), if available.
+	RuntimeBytecode string `json:"runtimeBytecode,omitempty"`
+
+	// CreationLinkReferences holds link reference ranges in creation bytecode.
+	CreationLinkReferences []LinkReferenceRange `json:"creationLinkReferences,omitempty"`
+
+	// RuntimeLinkReferences holds link reference ranges in runtime bytecode.
+	RuntimeLinkReferences []LinkReferenceRange `json:"runtimeLinkReferences,omitempty"`
+
+	// RuntimeImmutableReferences holds immutable reference ranges in runtime bytecode.
+	RuntimeImmutableReferences []LinkReferenceRange `json:"runtimeImmutableReferences,omitempty"`
+
+	// IsProxy indicates whether this contract address is a proxy.
+	IsProxy bool `json:"isProxy,omitempty"`
+
+	// ProxyType describes the detected proxy mechanism (e.g., "EIP-1967", "Beacon", "EIP-1167").
+	ProxyType string `json:"proxyType,omitempty"`
+
+	// ImplementationAddress stores the resolved implementation address if this is a proxy.
+	ImplementationAddress common.Address `json:"implementationAddress,omitempty"`
+}
+
+// LinkReferenceRange represents a start/length pair within bytecode for linking/immutables.
+type LinkReferenceRange struct {
+	Start  int32 `json:"start" bson:"s"`
+	Length int32 `json:"length" bson:"l"`
 }
 
 // BsonContract represents the contract data structure for BSON formatting.
 type BsonContract struct {
-	Address   string  `bson:"_id"`
-	Type      string  `bson:"type"`
-	Name      string  `bson:"name"`
-	Ordinal   uint64  `bson:"orx"`
-	Trx       string  `bson:"trx"`
-	Created   uint64  `bson:"ts"`
-	Version   string  `bson:"ver"`
-	Support   string  `bson:"sup"`
-	License   string  `bson:"lic"`
-	Compiler  string  `bson:"sol"`
-	IsOpt     bool    `bson:"is_opt"`
-	OptRuns   int32   `bson:"opt"`
-	Src       string  `bson:"src"`
-	Abi       string  `bson:"abi"`
-	SrcHash   *string `bson:"src_h"`
-	Validated *uint64 `bson:"val"`
+	Address   string               `bson:"_id"`
+	Type      string               `bson:"type"`
+	Name      string               `bson:"name"`
+	Ordinal   uint64               `bson:"orx"`
+	Trx       string               `bson:"trx"`
+	Created   uint64               `bson:"ts"`
+	Version   string               `bson:"ver"`
+	Support   string               `bson:"sup"`
+	License   string               `bson:"lic"`
+	Compiler  string               `bson:"sol"`
+	Evm       string               `bson:"evm"`
+	ViaIR     bool                 `bson:"vir"`
+	IsOpt     bool                 `bson:"is_opt"`
+	OptRuns   int32                `bson:"opt"`
+	Src       string               `bson:"src"`
+	Abi       string               `bson:"abi"`
+	Meta      string               `bson:"meta"`
+	Cb        string               `bson:"cb"`
+	Rb        string               `bson:"rb"`
+	ClRef     []LinkReferenceRange `bson:"clref"`
+	RlRef     []LinkReferenceRange `bson:"rlref"`
+	RiRef     []LinkReferenceRange `bson:"riref"`
+	SrcHash   *string              `bson:"src_h"`
+	Validated *uint64              `bson:"val"`
+
+	// Proxy metadata
+	IsProxy   bool   `bson:"proxy"`
+	ProxyType string `bson:"ptype"`
+	Impl      string `bson:"impl"`
 }
 
 // UnmarshalContract parses the JSON-encoded smart contract data.
@@ -106,21 +162,24 @@ func (sc *Contract) Uid() uint64 {
 func NewGenericContract(addr *common.Address, block *Block, trx *Transaction) *Contract {
 	// make the contract
 	return &Contract{
-		Type:            AccountTypeContract,
-		Address:         *addr,
-		TransactionHash: trx.Hash,
-		TimeStamp:       block.TimeStamp,
-		Name:            "",
-		Version:         "",
-		SupportContact:  "",
-		License:         "",
-		Compiler:        "",
-		IsOptimized:     false,
-		OptimizeRuns:    0,
-		SourceCode:      "",
-		SourceCodeHash:  nil,
-		Abi:             "",
-		Validated:       nil,
+		Type:             AccountTypeContract,
+		Address:          *addr,
+		TransactionHash:  trx.Hash,
+		TimeStamp:        block.TimeStamp,
+		Name:             "",
+		Version:          "",
+		SupportContact:   "",
+		License:          "",
+		Compiler:         "",
+		IsOptimized:      false,
+		OptimizeRuns:     0,
+		SourceCode:       "",
+		SourceCodeHash:   nil,
+		Abi:              "",
+		Metadata:         "",
+		Validated:        nil,
+		CreationBytecode: "",
+		RuntimeBytecode:  "",
 	}
 }
 
@@ -187,10 +246,22 @@ func (sc *Contract) MarshalBSON() ([]byte, error) {
 		Support:  sc.SupportContact,
 		License:  sc.License,
 		Compiler: sc.Compiler,
+		Evm:      sc.EvmVersion,
+		ViaIR:    sc.ViaIR,
 		IsOpt:    sc.IsOptimized,
 		OptRuns:  sc.OptimizeRuns,
 		Src:      sc.SourceCode,
 		Abi:      sc.Abi,
+		Meta:     sc.Metadata,
+		Cb:       sc.CreationBytecode,
+		Rb:       sc.RuntimeBytecode,
+		ClRef:    sc.CreationLinkReferences,
+		RlRef:    sc.RuntimeLinkReferences,
+		RiRef:    sc.RuntimeImmutableReferences,
+		// proxy metadata
+		IsProxy:   sc.IsProxy,
+		ProxyType: sc.ProxyType,
+		Impl:      sc.ImplementationAddress.String(),
 	}
 	// is validated?
 	if sc.Validated != nil {
@@ -201,6 +272,11 @@ func (sc *Contract) MarshalBSON() ([]byte, error) {
 		val := sc.SourceCodeHash.String()
 		row.SrcHash = &val
 	}
+
+	if sc.CompilerVersion != "" {
+		row.Version = sc.CompilerVersion
+	}
+
 	return bson.Marshal(row)
 }
 
@@ -228,10 +304,24 @@ func (sc *Contract) UnmarshalBSON(data []byte) (err error) {
 	sc.SupportContact = row.Support
 	sc.License = row.License
 	sc.Compiler = row.Compiler
+	sc.EvmVersion = row.Evm
+	sc.ViaIR = row.ViaIR
 	sc.IsOptimized = row.IsOpt
 	sc.OptimizeRuns = row.OptRuns
 	sc.SourceCode = row.Src
 	sc.Abi = row.Abi
+	sc.Metadata = row.Meta
+	sc.CreationBytecode = row.Cb
+	sc.RuntimeBytecode = row.Rb
+	sc.CreationLinkReferences = row.ClRef
+	sc.RuntimeLinkReferences = row.RlRef
+	sc.RuntimeImmutableReferences = row.RiRef
+	// proxy metadata
+	sc.IsProxy = row.IsProxy
+	sc.ProxyType = row.ProxyType
+	if len(row.Impl) > 0 {
+		sc.ImplementationAddress = common.HexToAddress(row.Impl)
+	}
 	if row.Validated != nil {
 		sc.Validated = (*hexutil.Uint64)(row.Validated)
 	}

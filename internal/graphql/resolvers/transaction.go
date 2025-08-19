@@ -3,6 +3,7 @@ package resolvers
 
 import (
 	"fmt"
+	"math/big"
 	"ncogearthchain-api-graphql/internal/repository"
 	"ncogearthchain-api-graphql/internal/types"
 
@@ -187,4 +188,162 @@ func (trx *Transaction) Erc1155Transactions() ([]*ERC1155Transaction, error) {
 		}
 	}
 	return list, nil
+}
+
+// InternalTransaction represents a resolvable internal transaction structure.
+type InternalTransaction struct {
+	types.InternalTransaction
+}
+
+// NewInternalTransaction builds a new resolvable internal transaction structure.
+func NewInternalTransaction(itx *types.InternalTransaction) *InternalTransaction {
+	return &InternalTransaction{*itx}
+}
+
+// InternalTransactions resolves the list of internal transactions for this transaction.
+func (trx *Transaction) InternalTransactions() ([]*InternalTransaction, error) {
+	result, err := repository.R().TraceTransaction(trx.Hash, map[string]interface{}{
+		"tracer": "callTracer",
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Geth callTracer output: top-level map with "calls"
+	if v, ok := result.(map[string]interface{}); ok {
+		if calls, ok := v["calls"].([]interface{}); ok {
+			var internalTxs []*InternalTransaction
+			for i, c := range calls {
+				if callMap, ok := c.(map[string]interface{}); ok {
+					idx := hexutil.Big(*big.NewInt(int64(i)))
+					internalTxs = append(internalTxs, extractInternalTxs(callMap, []hexutil.Big{idx})...)
+				}
+			}
+			return internalTxs, nil
+		}
+	}
+
+	// Fallback to OpenEthereum/Parity style (flat result)
+	var traces []map[string]interface{}
+	switch v := result.(type) {
+	case map[string]interface{}:
+		if arr, ok := v["result"].([]interface{}); ok {
+			for _, item := range arr {
+				if trace, ok := item.(map[string]interface{}); ok {
+					traces = append(traces, trace)
+				}
+			}
+		} else if _, ok := v["structLogs"].([]interface{}); ok {
+			// Not supported for internal txs, return empty
+			return []*InternalTransaction{}, nil
+		}
+	case []interface{}:
+		for _, item := range v {
+			if trace, ok := item.(map[string]interface{}); ok {
+				traces = append(traces, trace)
+			}
+		}
+	}
+
+	var internalTxs []*InternalTransaction
+	for _, trace := range traces {
+		itx := &types.InternalTransaction{}
+		if from, ok := trace["from"].(string); ok {
+			itx.From = common.HexToAddress(from)
+		}
+		if to, ok := trace["to"].(string); ok {
+			addr := common.HexToAddress(to)
+			itx.To = &addr
+		}
+		if value, ok := trace["value"].(string); ok {
+			itx.Value = (hexutil.Big)(*hexutil.MustDecodeBig(value))
+		}
+		if gas, ok := trace["gas"].(string); ok {
+			gasVal := hexutil.MustDecodeUint64(gas)
+			itx.Gas = hexutil.Uint64(gasVal)
+		}
+		if gasUsed, ok := trace["gasUsed"].(string); ok {
+			guVal := hexutil.MustDecodeUint64(gasUsed)
+			gu := hexutil.Uint64(guVal)
+			itx.GasUsed = &gu
+		}
+		if input, ok := trace["input"].(string); ok {
+			itx.Input = common.FromHex(input)
+		}
+		if typ, ok := trace["type"].(string); ok {
+			itx.Type = typ
+		}
+		if traceAddr, ok := trace["traceAddress"].([]interface{}); ok {
+			for _, idx := range traceAddr {
+				if i, ok := idx.(float64); ok {
+					bi := big.NewInt(int64(i))
+					itx.TraceAddress = append(itx.TraceAddress, hexutil.Big(*bi))
+				}
+			}
+		}
+		if errStr, ok := trace["error"].(string); ok {
+			itx.Error = &errStr
+		}
+		internalTxs = append(internalTxs, NewInternalTransaction(itx))
+	}
+	return internalTxs, nil
+}
+
+// extractInternalTxs recursively extracts internal transactions from a callTracer call tree.
+func extractInternalTxs(trace map[string]interface{}, parentTraceAddress []hexutil.Big) []*InternalTransaction {
+	var internalTxs []*InternalTransaction
+
+	itx := &types.InternalTransaction{}
+	if from, ok := trace["from"].(string); ok {
+		itx.From = common.HexToAddress(from)
+	}
+	if to, ok := trace["to"].(string); ok {
+		addr := common.HexToAddress(to)
+		itx.To = &addr
+	}
+	if value, ok := trace["value"].(string); ok {
+		itx.Value = (hexutil.Big)(*hexutil.MustDecodeBig(value))
+	}
+	if gas, ok := trace["gas"].(string); ok {
+		gasVal := hexutil.MustDecodeUint64(gas)
+		itx.Gas = hexutil.Uint64(gasVal)
+	}
+	if gasUsed, ok := trace["gasUsed"].(string); ok {
+		guVal := hexutil.MustDecodeUint64(gasUsed)
+		gu := hexutil.Uint64(guVal)
+		itx.GasUsed = &gu
+	}
+	if input, ok := trace["input"].(string); ok {
+		itx.Input = common.FromHex(input)
+	}
+	if typ, ok := trace["type"].(string); ok {
+		itx.Type = typ
+	}
+	// Compose trace address
+	if idx, ok := trace["traceAddress"].([]interface{}); ok {
+		for _, i := range idx {
+			if n, ok := i.(float64); ok {
+				bi := big.NewInt(int64(n))
+				itx.TraceAddress = append(itx.TraceAddress, hexutil.Big(*bi))
+			}
+		}
+	} else if len(parentTraceAddress) > 0 {
+		itx.TraceAddress = append([]hexutil.Big{}, parentTraceAddress...)
+	}
+	if errStr, ok := trace["error"].(string); ok {
+		itx.Error = &errStr
+	}
+	internalTxs = append(internalTxs, NewInternalTransaction(itx))
+
+	// Recursively process child calls
+	if calls, ok := trace["calls"].([]interface{}); ok {
+		for i, c := range calls {
+			if callMap, ok := c.(map[string]interface{}); ok {
+				idx := hexutil.Big(*big.NewInt(int64(i)))
+				childTraceAddress := append(append([]hexutil.Big{}, itx.TraceAddress...), idx)
+				internalTxs = append(internalTxs, extractInternalTxs(callMap, childTraceAddress)...)
+			}
+		}
+	}
+	return internalTxs
 }

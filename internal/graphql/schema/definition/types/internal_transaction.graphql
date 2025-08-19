@@ -1,0 +1,29 @@
+# InternalTransaction represents an internal transaction (call, create, etc.)
+type InternalTransaction {
+    # The address of the sender
+    from: Address!
+
+    # The address of the recipient
+    to: Address
+
+    # The value transferred in WEI
+    value: BigInt!
+
+    # The gas provided for the internal transaction
+    gas: Long!
+
+    # The gas used by the internal transaction
+    gasUsed: Long
+
+    # The input data for the internal transaction
+    input: Bytes!
+
+    # The type of the internal transaction (call, create, etc.)
+    type: String!
+
+    # The trace address (path in the call tree)
+    traceAddress: [BigInt!]!
+
+    # The error, if any
+    error: String
+}

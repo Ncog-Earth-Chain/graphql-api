@@ -16,6 +16,8 @@ import (
 	"ncogearthchain-api-graphql/internal/repository/cache"
 	"ncogearthchain-api-graphql/internal/repository/db"
 	"ncogearthchain-api-graphql/internal/repository/rpc"
+	"ncogearthchain-api-graphql/internal/solidity"
+	"strings"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -78,6 +80,7 @@ type proxy struct {
 
 	// smart contract compilers
 	solCompiler string
+	compilerMgr *solidity.CompilerManager
 }
 
 // newRepository creates new instance of Repository implementation, namely proxy structure.
@@ -109,10 +112,34 @@ func newRepository() Repository {
 
 		// keep reference to the SOL compiler
 		solCompiler: cfg.Compiler.DefaultSolCompilerPath,
+		compilerMgr: solidity.NewCompilerManager(cfg.Compiler.CompilerTempPath, cfg.Compiler.DefaultSolCompilerPath),
 	}
 
 	// return the proxy
 	return &p
+}
+
+// GetAvailableCompilerVersions returns a list of available Solidity compiler versions.
+func (p *proxy) GetAvailableCompilerVersions() []string {
+	return p.compilerMgr.GetAvailableVersions()
+}
+
+// PreDownloadCompilerVersion downloads and installs a specific Solidity compiler version.
+func (p *proxy) PreDownloadCompilerVersion(version string) error {
+	p.log.Infof("pre-downloading Solidity compiler version %s", version)
+
+	// Normalize version format (remove 'v' prefix if present)
+	normalizedVersion := strings.TrimPrefix(version, "v")
+
+	// Try to get the compiler path (this will trigger download if not found)
+	_, err := p.compilerMgr.GetCompilerPath(normalizedVersion)
+	if err != nil {
+		p.log.Errorf("failed to pre-download Solidity compiler version %s: %s", version, err.Error())
+		return err
+	}
+
+	p.log.Infof("successfully pre-downloaded Solidity compiler version %s", version)
+	return nil
 }
 
 // governanceContractsMap creates map of governance contracts keyed

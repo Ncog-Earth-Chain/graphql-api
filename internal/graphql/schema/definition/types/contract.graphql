@@ -33,6 +33,24 @@ type Contract {
     "Smart contract ABI definition. Empty if not available."
     abi: String!
 
+    "Solidity compiler metadata JSON string. Empty if not available."
+    metadata: String!
+
+    "Compiler-produced creation bytecode (hex). Empty if not available."
+    creationBytecode: String!
+
+    "Compiler-produced runtime/deployed bytecode (hex). Empty if not available."
+    runtimeBytecode: String!
+
+    "Indicates whether this contract address is a proxy."
+    isProxy: Boolean!
+
+    "Detected proxy mechanism, e.g., EIP-1967, Beacon(EIP-1967), EIP-1167."
+    proxyType: String!
+
+    "Resolved implementation address if this is a proxy; null otherwise."
+    implementationAddress: Address
+
     """
     Validated is the unix timestamp at which the source code was validated
     against the deployed byte code. Null if not validated yet.
@@ -65,13 +83,30 @@ input ContractValidationInput {
     license: String
 
     "Optimized specifies if the compiler was set to optimize the byte code."
-    optimized: Boolean = true
+    optimized: Boolean = false
 
     """
     OptimizeRuns specifies number of optimization runs the compiler was set
     to execute during the byte code optimizing.
     """
     optimizeRuns: Int = 200
+
+    """
+    CompilerVersion specifies the Solidity compiler version to use for validation.
+    If not specified, the default compiler will be used.
+    Format should be like 'v0.8.19' or '0.8.19'.
+    """
+    compilerVersion: String
+
+    """
+    EVM version to use for compilation (e.g., byzantium, constantinople, istanbul, berlin, london, paris, shanghai, cancun). Optional.
+    """
+    evmVersion: String
+
+    """
+    Compile via IR (Yul intermediate representation). Optional; default false.
+    """
+    viaIR: Boolean = false
 
     "Smart contract source code."
     sourceCode: String!

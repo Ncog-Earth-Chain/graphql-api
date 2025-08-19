@@ -37,6 +37,20 @@ type Contract struct {
 	types.Contract
 }
 
+// isProxy resolves whether this contract is a proxy.
+func (con *Contract) IsProxy() bool { return con.Contract.IsProxy }
+
+// proxyType resolves the detected proxy type.
+func (con *Contract) ProxyType() string { return con.Contract.ProxyType }
+
+// implementationAddress resolves the implementation address if this is a proxy.
+func (con *Contract) ImplementationAddress() *common.Address {
+	if (con.Contract.ImplementationAddress == common.Address{}) {
+		return nil
+	}
+	return &con.Contract.ImplementationAddress
+}
+
 // ContractValidationInput represents an input structure used
 // to validate contract source code against deployed contract byte code.
 type ContractValidationInput struct {
@@ -69,8 +83,26 @@ type ContractValidationInput struct {
 	// during the contract compilation.
 	OptimizeRuns int32 `json:"optimizeRuns"`
 
+	// CompilerVersion represents the Solidity compiler version to use
+	// for validation. If empty, the default compiler will be used.
+	CompilerVersion *string `json:"compilerVersion,omitempty"`
+
+	// Optional EVM version used during compilation (e.g., london, paris, shanghai).
+	EvmVersion *string `json:"evmVersion,omitempty"`
+
+	// Optional flag to indicate compilation via IR pipeline.
+	ViaIR bool `json:"viaIR"`
+
 	// SourceCode represents the Solidity source code to be validated.
 	SourceCode string `json:"sourceCode"`
+}
+
+// VerifyProxyResult represents the output structure for verifyProxyContract mutation
+type VerifyProxyResult struct {
+	Proxy          *Contract       `json:"proxy"`
+	ParentAddress  *common.Address `json:"parentAddress"`
+	ParentVerified bool            `json:"parentVerified"`
+	Message        string          `json:"message"`
 }
 
 // NewContract builds new resolvable smart contract structure.
@@ -174,6 +206,17 @@ func updateContractFromInput(con *ContractValidationInput, sc *types.Contract) {
 	if con.SupportContact != nil {
 		sc.SupportContact = *con.SupportContact
 	}
+
+	// pass the intended compiler version
+	if con.CompilerVersion != nil {
+		sc.CompilerVersion = *con.CompilerVersion
+	}
+
+	// pass EVM version and viaIR
+	if con.EvmVersion != nil {
+		sc.EvmVersion = *con.EvmVersion
+	}
+	sc.ViaIR = con.ViaIR
 }
 
 // ValidateContract resolves smart contract source code vs. deployed byte code and marks
@@ -216,4 +259,23 @@ func (rs *rootResolver) ValidateContract(args *struct{ Contract ContractValidati
 
 	// return the final updated contract
 	return NewContract(sc), nil
+}
+
+// VerifyProxyContract verifies a proxy address and either instructs to verify parent first,
+// or links the proxy to already-verified implementation and marks it verified.
+func (rs *rootResolver) VerifyProxyContract(args *struct{ Address common.Address }) (*VerifyProxyResult, error) {
+	proxyCon, parentAddr, ok, msg, err := repository.R().VerifyProxyContract(&args.Address)
+	if err != nil {
+		return nil, err
+	}
+	var proxy *Contract
+	if proxyCon != nil {
+		proxy = NewContract(proxyCon)
+	}
+	return &VerifyProxyResult{
+		Proxy:          proxy,
+		ParentAddress:  parentAddr,
+		ParentVerified: ok,
+		Message:        msg,
+	}, nil
 }
