@@ -100,6 +100,19 @@ type Repository interface {
 	// is updated the the repository.
 	ValidateContract(*types.Contract) error
 
+	// VerifyProxyContract verifies a proxy address in a BscScan-like flow.
+	// If the address is a proxy and its implementation is not yet verified,
+	// returns the parent (implementation) address and a message instructing to verify it first.
+	// If the parent is already verified, links the proxy to the implementation, copies ABI/metadata,
+	// marks the proxy as validated, and returns the updated proxy contract.
+	VerifyProxyContract(*common.Address) (*types.Contract, *common.Address, bool, string, error)
+
+	// GetAvailableCompilerVersions returns a list of available Solidity compiler versions.
+	GetAvailableCompilerVersions() []string
+
+	// PreDownloadCompilerVersion downloads and installs a specific Solidity compiler version.
+	PreDownloadCompilerVersion(version string) error
+
 	// StoreContract updates the contract in repository.
 	StoreContract(*types.Contract) error
 

@@ -60,6 +60,9 @@ const (
 	// defSolCompilerPath represents the default SOL compiler path
 	defSolCompilerPath = "/usr/bin/solc"
 
+	// defCompilerTempPath represents the default compiler temp directory
+	defCompilerTempPath = "/tmp/solidity"
+
 	// defApiStateOrigin represents the default origin used for API state syncing
 	defApiStateOrigin = "https://localhost"
 
@@ -113,6 +116,7 @@ func applyDefaults(cfg *viper.Viper) {
 	cfg.SetDefault(keyMongoUrl, defMongoUrl)
 	cfg.SetDefault(keyMongoDatabase, defMongoDatabase)
 	cfg.SetDefault(keySolCompilerPath, defSolCompilerPath)
+	cfg.SetDefault(keyCompilerTempPath, defCompilerTempPath)
 	cfg.SetDefault(keyApiPeers, defApiPeers)
 	cfg.SetDefault(keyApiStateOrigin, defApiStateOrigin)
 	cfg.SetDefault(keyErc20TokenMapFilePath, defTokenLogoFilePath)

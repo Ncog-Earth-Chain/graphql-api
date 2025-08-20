@@ -414,6 +414,10 @@ type Transaction {
     # erc1155Transactions provides list of ERC-1155 NFT transactions executed in the scope
     # of this blockchain transaction call.
     erc1155Transactions: [ERC1155Transaction!]!
+
+    # internalTransactions provides a list of internal transactions (calls, creates, etc.)
+    # executed as part of this transaction.
+    internalTransactions: [InternalTransaction!]!
 }
 
 # Block is an Ncogearthchain block chain block.
@@ -756,6 +760,24 @@ type Contract {
     "Smart contract ABI definition. Empty if not available."
     abi: String!
 
+    "Solidity compiler metadata JSON string. Empty if not available."
+    metadata: String!
+
+    "Compiler-produced creation bytecode (hex). Empty if not available."
+    creationBytecode: String!
+
+    "Compiler-produced runtime/deployed bytecode (hex). Empty if not available."
+    runtimeBytecode: String!
+
+    "Indicates whether this contract address is a proxy."
+    isProxy: Boolean!
+
+    "Detected proxy mechanism, e.g., EIP-1967, Beacon(EIP-1967), EIP-1167."
+    proxyType: String!
+
+    "Resolved implementation address if this is a proxy; null otherwise."
+    implementationAddress: Address
+
     """
     Validated is the unix timestamp at which the source code was validated
     against the deployed byte code. Null if not validated yet.
@@ -788,13 +810,20 @@ input ContractValidationInput {
     license: String
 
     "Optimized specifies if the compiler was set to optimize the byte code."
-    optimized: Boolean = true
+    optimized: Boolean = false
 
     """
     OptimizeRuns specifies number of optimization runs the compiler was set
     to execute during the byte code optimizing.
     """
     optimizeRuns: Int = 200
+
+    """
+    CompilerVersion specifies the Solidity compiler version to use for validation.
+    If not specified, the default compiler will be used.
+    Format should be like 'v0.8.19' or '0.8.19'.
+    """
+    compilerVersion: String
 
     "Smart contract source code."
     sourceCode: String!
@@ -1692,6 +1721,37 @@ type ERC721Transaction {
     # of the ERC721 transaction processing.
     timeStamp: Long!
 }
+
+# InternalTransaction represents an internal transaction (call, create, etc.)
+type InternalTransaction {
+    # The address of the sender
+    from: Address!
+
+    # The address of the recipient
+    to: Address
+
+    # The value transferred in WEI
+    value: BigInt!
+
+    # The gas provided for the internal transaction
+    gas: Long!
+
+    # The gas used by the internal transaction
+    gasUsed: Long
+
+    # The input data for the internal transaction
+    input: Bytes!
+
+    # The type of the internal transaction (call, create, etc.)
+    type: String!
+
+    # The trace address (path in the call tree)
+    traceAddress: [BigInt!]!
+
+    # The error, if any
+    error: String
+}
+
 # TokenTransaction represents a generic token transaction
 # of a supported type of token.
 type TokenTransaction {
@@ -2345,6 +2405,19 @@ type Mutation {
     # Returns updated contract information. If the contract can not be validated,
     # it raises a GraphQL error.
     validateContract(contract: ContractValidationInput!): Contract!
+
+    # Verify a proxy contract address. If it's a proxy and parent is not verified,
+    # returns the parent address and instruction message. If parent is verified,
+    # links the proxy to the parent and marks it verified.
+    verifyProxyContract(address: Address!): VerifyProxyResult!
+}
+
+# Result of proxy verification/linking
+type VerifyProxyResult {
+    proxy: Contract!
+    parentAddress: Address
+    parentVerified: Boolean!
+    message: String!
 }
 
 # Subscriptions to live events broadcasting
