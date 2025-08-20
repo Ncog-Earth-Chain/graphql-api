@@ -159,9 +159,7 @@ func (trx *Transaction) MarshalBSON() ([]byte, error) {
 	}
 
 	// store the input data along with the trx
-	if !pom.LargeInput {
-		pom.Input = trx.InputData
-	}
+	pom.Input = trx.InputData
 
 	// transaction has been mined, we have all the extra info, too
 	if trx.BlockHash != nil {
