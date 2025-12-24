@@ -2,6 +2,8 @@
 package types
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -118,6 +120,9 @@ type BsonTransaction struct {
 	Stamp      time.Time `bson:"stamp"`
 	Logs       []BsonLog `bson:"logs"`
 }
+type DDBInput struct {
+	ContractAddress string `json:"contractAddress"`
+}
 
 // Uid calculates an ordinal index of the transaction referenced.
 // The ordinal index of a transaction should be unique across a consistent block chain.
@@ -135,6 +140,35 @@ func (trx *Transaction) Uid() uint64 {
 // Marshal returns the JSON encoding of transaction.
 func (trx *Transaction) Marshal() ([]byte, error) {
 	return json.Marshal(trx)
+}
+
+func parseDDBInput(data []byte) *DDBInput {
+
+	trimmed := bytes.TrimSpace(data)
+	// Case 1: Already JSON
+	if json.Valid(trimmed) {
+		var payload DDBInput
+		if err := json.Unmarshal(trimmed, &payload); err == nil {
+			return &payload
+		}
+	}
+
+	// Case 2: Base64(JSON)
+	decoded, err := base64.StdEncoding.DecodeString(string(trimmed))
+	if err != nil {
+		return nil
+	}
+
+	if !json.Valid(decoded) {
+		return nil
+	}
+
+	var payload DDBInput
+	if err := json.Unmarshal(decoded, &payload); err != nil {
+		return nil
+	}
+
+	return &payload
 }
 
 // MarshalBSON creates a BSON representation of the Transaction record.
@@ -201,6 +235,21 @@ func (trx *Transaction) MarshalBSON() ([]byte, error) {
 	if trx.ContractAddress != nil {
 		cn := trx.ContractAddress.String()
 		pom.Contract = &cn
+	}
+
+	// for DDB contract creation, we store nil as recipient
+	if trx.To != nil && trx.To.String() == "0x000000000000000000000000000000000000Dddb" {
+		pom.To = nil
+		ddbPayload := parseDDBInput(trx.InputData)
+
+		if ddbPayload != nil && ddbPayload.ContractAddress != "" {
+			contractAddr := common.HexToAddress(ddbPayload.ContractAddress)
+			cnStr := contractAddr.String()
+			pom.Contract = &cnStr
+			fmt.Printf("[DDB] Transaction %s: Extracted contract address: %s\n", trx.Hash.String(), cnStr)
+		} else {
+			fmt.Printf("[DDB] Transaction %s: Failed to parse DDB payload from input data (size: %d bytes)\n", trx.Hash.String(), len(trx.InputData))
+		}
 	}
 
 	// logs

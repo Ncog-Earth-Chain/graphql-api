@@ -2,6 +2,9 @@
 package svc
 
 import (
+	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"ncogearthchain-api-graphql/internal/repository/rpc/contracts"
 	"ncogearthchain-api-graphql/internal/types"
@@ -26,6 +29,10 @@ var erc1155InterfaceId = [4]byte{0xd9, 0xb6, 0x7a, 0x26} // ERC-1155: 0xd9b67a26
 type accDispatcher struct {
 	inAccount chan *eventAcc
 	service
+}
+
+type DDBInput struct {
+	ContractAddress string `json:"contractAddress"`
 }
 
 // name returns the name of the service used by orchestrator.
@@ -53,6 +60,7 @@ func (acd *accDispatcher) execute() {
 		close(acd.sigStop)
 		acd.mgr.finished(acd)
 	}()
+	fmt.Println("Account dispatcher started")
 
 	// wait for either stop signal, or an account request
 	for {
@@ -78,6 +86,35 @@ func (acd *accDispatcher) execute() {
 	}
 }
 
+func parseDDBInput(data []byte) *DDBInput {
+
+	trimmed := bytes.TrimSpace(data)
+	// Case 1: Already JSON
+	if json.Valid(trimmed) {
+		var payload DDBInput
+		if err := json.Unmarshal(trimmed, &payload); err == nil {
+			return &payload
+		}
+	}
+
+	// Case 2: Base64(JSON)
+	decoded, err := base64.StdEncoding.DecodeString(string(trimmed))
+	if err != nil {
+		return nil
+	}
+
+	if !json.Valid(decoded) {
+		return nil
+	}
+
+	var payload DDBInput
+	if err := json.Unmarshal(decoded, &payload); err != nil {
+		return nil
+	}
+
+	return &payload
+}
+
 // processAccount processes account into the database
 // based on the account details
 func (acd *accDispatcher) process(acc *eventAcc) error {
@@ -94,6 +131,20 @@ func (acd *accDispatcher) process(acc *eventAcc) error {
 		err := acd.processContract(acc)
 		if err != nil {
 			return err
+		}
+	}
+
+	// for DDB contract creation, we store nil as recipient
+	fmt.Printf("***********************")
+	if acc.trx.To != nil && acc.trx.To.String() == "0x000000000000000000000000000000000000Dddb" {
+		ddbPayload := parseDDBInput(acc.trx.InputData)
+		if ddbPayload != nil && ddbPayload.ContractAddress != "" {
+			addr := common.HexToAddress(ddbPayload.ContractAddress)
+			acc.trx.ContractAddress = &addr
+			err := acd.processContract(acc)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return acd.wallet(acc)
