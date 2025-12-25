@@ -100,6 +100,9 @@ type Contract struct {
 
 	// ImplementationAddress stores the resolved implementation address if this is a proxy.
 	ImplementationAddress common.Address `json:"implementationAddress,omitempty"`
+
+	// IsDDB indicates whether this contract was created via a DDB transaction.
+	IsDDB bool `json:"isDDB,omitempty"`
 }
 
 // LinkReferenceRange represents a start/length pair within bytecode for linking/immutables.
@@ -139,6 +142,9 @@ type BsonContract struct {
 	IsProxy   bool   `bson:"proxy"`
 	ProxyType string `bson:"ptype"`
 	Impl      string `bson:"impl"`
+
+	// DDB metadata
+	IsDDB bool `bson:"is_ddb"`
 }
 
 // UnmarshalContract parses the JSON-encoded smart contract data.
@@ -235,6 +241,7 @@ func NewStiContract(addr *common.Address, block *Block, trx *Transaction) *Contr
 // MarshalBSON creates a BSON representation of the Contract record.
 func (sc *Contract) MarshalBSON() ([]byte, error) {
 	// prep the row
+
 	row := BsonContract{
 		Address:  sc.Address.String(),
 		Type:     sc.Type,
@@ -262,6 +269,8 @@ func (sc *Contract) MarshalBSON() ([]byte, error) {
 		IsProxy:   sc.IsProxy,
 		ProxyType: sc.ProxyType,
 		Impl:      sc.ImplementationAddress.String(),
+		// DDB metadata
+		IsDDB: sc.IsDDB,
 	}
 	// is validated?
 	if sc.Validated != nil {
@@ -322,6 +331,8 @@ func (sc *Contract) UnmarshalBSON(data []byte) (err error) {
 	if len(row.Impl) > 0 {
 		sc.ImplementationAddress = common.HexToAddress(row.Impl)
 	}
+	// DDB metadata
+	sc.IsDDB = row.IsDDB
 	if row.Validated != nil {
 		sc.Validated = (*hexutil.Uint64)(row.Validated)
 	}

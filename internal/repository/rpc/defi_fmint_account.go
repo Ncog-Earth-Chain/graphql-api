@@ -42,8 +42,13 @@ func (nec *NecBridge) FMintAccount(owner *common.Address) (*types.FMintAccount, 
 	// load list of collateral tokens
 	tokenList, err := nec.DefiTokenList()
 	if err != nil {
-		nec.log.Errorf("collateral tokens list loader failed; %s", err.Error())
-		return nil, err
+		nec.log.Warningf("collateral tokens list loader failed (DeFi contracts may not be deployed); %s", err.Error())
+		// Return empty account instead of error - DeFi functionality is optional
+		da.CollateralList = []common.Address{}
+		da.DebtList = []common.Address{}
+		da.CollateralValue = hexutil.Big(*big.NewInt(0))
+		da.DebtValue = hexutil.Big(*big.NewInt(0))
+		return &da, nil
 	}
 
 	// debt tokens are the same

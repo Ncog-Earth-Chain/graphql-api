@@ -778,6 +778,9 @@ type Contract {
     "Resolved implementation address if this is a proxy; null otherwise."
     implementationAddress: Address
 
+    "Indicates whether this contract was created via a DDB transaction."
+    isDDB: Boolean!
+
     """
     Validated is the unix timestamp at which the source code was validated
     against the deployed byte code. Null if not validated yet.

@@ -2,14 +2,12 @@
 package svc
 
 import (
-	"bytes"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"ncogearthchain-api-graphql/internal/repository/rpc/contracts"
 	"ncogearthchain-api-graphql/internal/types"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
 const (
@@ -29,10 +27,6 @@ var erc1155InterfaceId = [4]byte{0xd9, 0xb6, 0x7a, 0x26} // ERC-1155: 0xd9b67a26
 type accDispatcher struct {
 	inAccount chan *eventAcc
 	service
-}
-
-type DDBInput struct {
-	ContractAddress string `json:"contractAddress"`
 }
 
 // name returns the name of the service used by orchestrator.
@@ -86,35 +80,6 @@ func (acd *accDispatcher) execute() {
 	}
 }
 
-func parseDDBInput(data []byte) *DDBInput {
-
-	trimmed := bytes.TrimSpace(data)
-	// Case 1: Already JSON
-	if json.Valid(trimmed) {
-		var payload DDBInput
-		if err := json.Unmarshal(trimmed, &payload); err == nil {
-			return &payload
-		}
-	}
-
-	// Case 2: Base64(JSON)
-	decoded, err := base64.StdEncoding.DecodeString(string(trimmed))
-	if err != nil {
-		return nil
-	}
-
-	if !json.Valid(decoded) {
-		return nil
-	}
-
-	var payload DDBInput
-	if err := json.Unmarshal(decoded, &payload); err != nil {
-		return nil
-	}
-
-	return &payload
-}
-
 // processAccount processes account into the database
 // based on the account details
 func (acd *accDispatcher) process(acc *eventAcc) error {
@@ -134,19 +99,6 @@ func (acd *accDispatcher) process(acc *eventAcc) error {
 		}
 	}
 
-	// for DDB contract creation, we store nil as recipient
-	fmt.Printf("***********************")
-	if acc.trx.To != nil && acc.trx.To.String() == "0x000000000000000000000000000000000000Dddb" {
-		ddbPayload := parseDDBInput(acc.trx.InputData)
-		if ddbPayload != nil && ddbPayload.ContractAddress != "" {
-			addr := common.HexToAddress(ddbPayload.ContractAddress)
-			acc.trx.ContractAddress = &addr
-			err := acd.processContract(acc)
-			if err != nil {
-				return err
-			}
-		}
-	}
 	return acd.wallet(acc)
 }
 
@@ -227,6 +179,11 @@ func (acd *accDispatcher) detectContract(addr *common.Address, block *types.Bloc
 	if err == nil && isErc1155 {
 		log.Noticef("ERC1155 multi-token detected at %s", addr.String())
 		contract := types.NewErcTokenContract(addr, "", block, trx, types.AccountTypeERC1155Contract, contracts.ERC1155MetaData)
+		// Check if this is a DDB contract
+		if trx.To != nil && trx.To.String() == "0x000000000000000000000000000000000000Dddb" {
+			contract.IsDDB = true
+			contract.CreationBytecode = hexutil.Bytes(trx.InputData).String()
+		}
 		return contract, types.AccountTypeERC1155Contract, nil
 	}
 
@@ -234,6 +191,11 @@ func (acd *accDispatcher) detectContract(addr *common.Address, block *types.Bloc
 	if err == nil && isErc721 {
 		log.Noticef("ERC721 NFT token detected at %s", addr.String())
 		contract := types.NewErcTokenContract(addr, name, block, trx, types.AccountTypeERC721Contract, contracts.ERC721MetaData)
+		// Check if this is a DDB contract
+		if trx.To != nil && trx.To.String() == "0x000000000000000000000000000000000000Dddb" {
+			contract.IsDDB = true
+			contract.CreationBytecode = hexutil.Bytes(trx.InputData).String()
+		}
 		return contract, types.AccountTypeERC721Contract, nil
 	}
 
@@ -241,6 +203,11 @@ func (acd *accDispatcher) detectContract(addr *common.Address, block *types.Bloc
 	if isErc20 {
 		log.Noticef("ERC20 token %s detected at %s", name, addr.String())
 		contract := types.NewErcTokenContract(addr, name, block, trx, types.AccountTypeERC20Token, contracts.ERCTwentyMetaData)
+		// Check if this is a DDB contract
+		if trx.To != nil && trx.To.String() == "0x000000000000000000000000000000000000Dddb" {
+			contract.IsDDB = true
+			contract.CreationBytecode = hexutil.Bytes(trx.InputData).String()
+		}
 		return contract, types.AccountTypeERC20Token, nil
 	}
 
@@ -248,7 +215,13 @@ func (acd *accDispatcher) detectContract(addr *common.Address, block *types.Bloc
 	log.Noticef("unknown contract at %s", addr.String())
 
 	// set as generic contract type if no other has been detected
-	return types.NewGenericContract(addr, block, trx), types.AccountTypeContract, nil
+	contract := types.NewGenericContract(addr, block, trx)
+	// Check if this is a DDB contract and store the input data as creation bytecode
+	if trx.To != nil && trx.To.String() == "0x000000000000000000000000000000000000Dddb" {
+		contract.IsDDB = true
+		contract.CreationBytecode = hexutil.Bytes(trx.InputData).String()
+	}
+	return contract, types.AccountTypeContract, nil
 }
 
 // detectErc20Token identifies ERC20 token contracts by trying to call specific contract methods.

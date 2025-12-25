@@ -14,12 +14,71 @@ We strongly discourage opening Forest RPC interface for unrestricted Internet ac
 package rpc
 
 import (
+	"bytes"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"ncogearthchain-api-graphql/internal/types"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	retypes "github.com/ethereum/go-ethereum/core/types"
 )
+
+// ddbInput represents the structure of DDB transaction input data
+type ddbInput struct {
+	ContractAddress string `json:"contractAddress"`
+}
+
+// parseDDBInput parses DDB transaction input data and extracts the contract address
+func parseDDBInput(data []byte) *ddbInput {
+	trimmed := bytes.TrimSpace(data)
+
+	// Case 1: Already JSON
+	if json.Valid(trimmed) {
+		var payload ddbInput
+		if err := json.Unmarshal(trimmed, &payload); err == nil {
+			return &payload
+		}
+	}
+
+	// Case 2: Base64(JSON)
+	decoded, err := base64.StdEncoding.DecodeString(string(trimmed))
+	if err != nil {
+		return nil
+	}
+
+	if !json.Valid(decoded) {
+		return nil
+	}
+
+	var payload ddbInput
+	if err := json.Unmarshal(decoded, &payload); err != nil {
+		return nil
+	}
+
+	return &payload
+}
+
+// extractDDBContractAddress extracts contract address from DDB transaction if applicable
+func extractDDBContractAddress(trx *types.Transaction) {
+	// Check if this is a DDB transaction (sent to the DDB address)
+	if trx.To == nil || trx.To.String() != "0x000000000000000000000000000000000000Dddb" {
+		return
+	}
+
+	// Parse the DDB payload
+	ddbPayload := parseDDBInput(trx.InputData)
+	if ddbPayload == nil || ddbPayload.ContractAddress == "" {
+		fmt.Printf("[DDB] Transaction %s: Failed to parse DDB payload from input data (size: %d bytes)\n", trx.Hash.String(), len(trx.InputData))
+		return
+	}
+
+	// Extract and set the contract address
+	contractAddr := common.HexToAddress(ddbPayload.ContractAddress)
+	trx.ContractAddress = &contractAddr
+	fmt.Printf("[DDB] Transaction %s: Extracted contract address: %s\n", trx.Hash.String(), contractAddr.String())
+}
 
 // Transaction returns information about a blockchain transaction by hash.
 func (nec *NecBridge) Transaction(hash *common.Hash) (*types.Transaction, error) {
@@ -60,6 +119,8 @@ func (nec *NecBridge) Transaction(hash *common.Hash) (*types.Transaction, error)
 		trx.ContractAddress = rec.ContractAddress
 		trx.Status = &rec.Status
 		trx.Logs = rec.Logs
+		// Extract DDB contract address if this is a DDB transaction
+		extractDDBContractAddress(&trx)
 	}
 
 	// keep track of the operation

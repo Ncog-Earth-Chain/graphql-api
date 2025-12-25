@@ -16,6 +16,7 @@ package rpc
 //go:generate tools/abigen.sh --abi ./contracts/abi/defi-fmint-minter.abi --pkg contracts --type DefiFMintMinter --out ./contracts/fmint_minter.go
 
 import (
+	"fmt"
 	"ncogearthchain-api-graphql/internal/repository/rpc/contracts"
 	"sync"
 
@@ -219,6 +220,13 @@ func (fmc *fMintConfig) loadAddress(name string) (*common.Address, error) {
 	addr, err := ap.GetAddress(nil, id)
 	if err != nil {
 		fmc.bridge.log.Errorf("[%s] can not get address of %s; %s", fmc.addressProvider.String(), name, err.Error())
+		return nil, err
+	}
+
+	// check if the address is the zero address (contract not deployed)
+	if addr == (common.Address{}) {
+		err := fmt.Errorf("contract %s not deployed (zero address)", name)
+		fmc.bridge.log.Warningf("[%s] %s", fmc.addressProvider.String(), err.Error())
 		return nil, err
 	}
 

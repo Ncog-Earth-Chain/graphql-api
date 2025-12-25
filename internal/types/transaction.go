@@ -2,8 +2,6 @@
 package types
 
 import (
-	"bytes"
-	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -142,35 +140,6 @@ func (trx *Transaction) Marshal() ([]byte, error) {
 	return json.Marshal(trx)
 }
 
-func parseDDBInput(data []byte) *DDBInput {
-
-	trimmed := bytes.TrimSpace(data)
-	// Case 1: Already JSON
-	if json.Valid(trimmed) {
-		var payload DDBInput
-		if err := json.Unmarshal(trimmed, &payload); err == nil {
-			return &payload
-		}
-	}
-
-	// Case 2: Base64(JSON)
-	decoded, err := base64.StdEncoding.DecodeString(string(trimmed))
-	if err != nil {
-		return nil
-	}
-
-	if !json.Valid(decoded) {
-		return nil
-	}
-
-	var payload DDBInput
-	if err := json.Unmarshal(decoded, &payload); err != nil {
-		return nil
-	}
-
-	return &payload
-}
-
 // MarshalBSON creates a BSON representation of the Transaction record.
 func (trx *Transaction) MarshalBSON() ([]byte, error) {
 	// calculate the value to 9 digits (and 18 billions remain available)
@@ -237,19 +206,9 @@ func (trx *Transaction) MarshalBSON() ([]byte, error) {
 		pom.Contract = &cn
 	}
 
-	// for DDB contract creation, we store nil as recipient
+	// for DDB transactions, set recipient to nil (special handling for DDB address)
 	if trx.To != nil && trx.To.String() == "0x000000000000000000000000000000000000Dddb" {
 		pom.To = nil
-		ddbPayload := parseDDBInput(trx.InputData)
-
-		if ddbPayload != nil && ddbPayload.ContractAddress != "" {
-			contractAddr := common.HexToAddress(ddbPayload.ContractAddress)
-			cnStr := contractAddr.String()
-			pom.Contract = &cnStr
-			fmt.Printf("[DDB] Transaction %s: Extracted contract address: %s\n", trx.Hash.String(), cnStr)
-		} else {
-			fmt.Printf("[DDB] Transaction %s: Failed to parse DDB payload from input data (size: %d bytes)\n", trx.Hash.String(), len(trx.InputData))
-		}
 	}
 
 	// logs
