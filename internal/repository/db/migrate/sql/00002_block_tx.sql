@@ -52,11 +52,39 @@ CREATE TABLE tx (
     input           BYTEA    NOT NULL DEFAULT '',
     tx_type         SMALLINT NOT NULL DEFAULT 0,
 
-    -- Post-quantum wire fields. None of these existed under MongoDB, which is why the
+    -- Post-quantum wire fields. Neither existed under MongoDB, which is why the
     -- explorer could not show which chain or signature scheme a transaction used.
     -- sig_version 2 = ML-DSA-87, 3 = ML-DSA-87 after key rotation.
     chain_id        BIGINT,
     sig_version     SMALLINT,
+
+    -- DELIBERATELY ABSENT: the raw ML-DSA-87 signature (~4627 B) and public key
+    -- (2592 B). This is a decision, not an oversight.
+    --
+    -- Storing both per transaction would be roughly 70-75% of the entire database
+    -- (~360 GB of ~500 GB at 50M transactions). The data is incompressible, so it also
+    -- dominates WAL volume -- on the order of 7.5 KB of the ~11 KB written per
+    -- transaction -- which makes the backup retention window larger than the database
+    -- it protects. The explorer is an index, and an index that is three-quarters opaque
+    -- blobs nothing queries is the wrong shape.
+    --
+    -- Nothing is lost, because the credentials remain RECOVERABLE AND SELF-VERIFYING
+    -- from the node on demand:
+    --   * The node never prunes transaction data (its pruners touch only the EVM state
+    --     trie), so history stays available.
+    --   * eth_getRawTransactionByHash returns tx.MarshalBinary(), which for a legacy
+    --     transaction is the RLP of the inner struct carrying Signature, PubKey,
+    --     ChainID, From and SigVer.
+    --   * Transaction.Hash() for a legacy transaction is the RLP hash of that SAME
+    --     inner struct. Therefore keccak256(rawBlob) == txHash exactly, and one keccak
+    --     verifies the returned signature and public key against a value this database
+    --     already holds and trusts.
+    --
+    -- So sender attribution is still provable -- which matters here because ML-DSA has
+    -- no key recovery, so the public key is the ONLY way to verify who signed -- but it
+    -- is proved by a verify-on-demand path against the node rather than by storing a
+    -- third of a terabyte of blobs. The one operational requirement that follows is
+    -- that at least one full-history node with TxIndex enabled must remain reachable.
 
     status          SMALLINT NOT NULL,        -- 0 reverted, 1 success
     created_contract address,
