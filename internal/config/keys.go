@@ -42,8 +42,19 @@ const (
 	keyLoggingLevel  = "log.level"
 	keyLoggingFormat = "log.format"
 
-	// node connection related options
-	keyForestUrl = "forest.url"
+	// Node connection.
+	//
+	// This MUST byte-match the mapstructure path of Config.Forest, which is tagged
+	// `mapstructure:"node"` -- so the path is "node.url", not "forest.url". It was
+	// "forest.url", which meant SetDefault wrote a key nothing ever read: the
+	// documented default IPC path never reached cfg.Forest.Url, and an operator who
+	// omitted node.url from their config got an empty dial string instead of the
+	// default. The deployed example config uses "node", confirming which side is wrong.
+	//
+	// A key constant that does not match its mapstructure path produces a silently
+	// inert default -- no error, no warning, just a zero value. See config_test.go,
+	// which asserts every key resolves to a real field.
+	keyForestUrl = "node.url"
 
 	// off-chain database related options
 	keyMongoUrl      = "db.url"
