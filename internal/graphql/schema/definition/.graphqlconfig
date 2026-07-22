@@ -1,0 +1,37 @@
+{
+  "name": "Ncogearthchain GraphQL API Schema",
+  "schemaPath": "./schema.graphql",
+  "documents": "./**/*.graphql",
+  "extensions": {
+    "endpoints": {
+      "Local GraphQL Endpoint": {
+        "url": "http://localhost:3000/api",
+        "introspect": false
+      },
+      "Dev GraphQL Endpoint": {
+        "url": "https://xapi.ncogchain.earth/",
+        "introspect": false
+      },
+      "XAPI1 Ncogchain.earth": {
+        "url": "https://xapi1.ncogchain.earth/graphql",
+        "introspect": false
+      },
+      "xAPI Node A": {
+        "url": "https://xapi-nodea.ncogchain.earth/",
+        "introspect": false
+      },
+      "xAPI Node B": {
+        "url": "https://xapi-nodeb.ncogchain.earth/",
+        "introspect": false
+      },
+      "xAPI Node C": {
+        "url": "https://xapi-nodec.ncogchain.earth/",
+        "introspect": false
+      },
+      "xAPI Node D": {
+        "url": "https://xapi-noded.ncogchain.earth/",
+        "introspect": false
+      }
+    }
+  }
+}

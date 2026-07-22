@@ -1,0 +1,24 @@
+# TransactionList is a list of transaction edges provided by sequential access request.
+type TransactionList {
+    # Edges contains provided edges of the sequential list.
+    edges: [TransactionListEdge!]!
+
+    # TotalCount is the maximum number of transactions available for sequential access.
+    totalCount: BigInt!
+
+    # TotalCountIsExact reports whether totalCount is an exact count.
+    # When false, totalCount is a LOWER BOUND: there are at least that many matching
+    # transactions. This happens when an exact count would exceed its time budget,
+    # and it lets a UI render "10,000+" rather than presenting a capped number as a total.
+    totalCountIsExact: Boolean!
+
+    # PageInfo is an information about the current page of transaction edges.
+    pageInfo: ListPageInfo!
+}
+
+# TransactionListEdge is a single edge in a sequential list of transactions.
+type TransactionListEdge {
+    cursor: Cursor!
+    transaction: Transaction!
+}
+
