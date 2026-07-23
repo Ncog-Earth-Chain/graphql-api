@@ -57,7 +57,9 @@ func cleanDB(t *testing.T, s *Store) {
 	t.Helper()
 	ctx := context.Background()
 	for _, q := range []string{
-		"DELETE FROM tx_log", "DELETE FROM tx_account", "DELETE FROM tx", "DELETE FROM block",
+		"DELETE FROM tx_log", "DELETE FROM tx_account", "DELETE FROM tx",
+		"DELETE FROM ddb_operation", "DELETE FROM ddb_endorsement", "DELETE FROM ddb_contract",
+		"DELETE FROM block",
 		"UPDATE meta_counter SET value = 0 WHERE key = 'contiguous_head'",
 	} {
 		if _, err := s.pool.Exec(ctx, q); err != nil {
@@ -450,6 +452,12 @@ func TestPurgeCoversEveryBlockKeyedTable(t *testing.T) {
 		// which is a schema change and a separate decision.
 		"delegation": "domain-keyed; needs event-sourced rollback (known limitation)",
 		"withdrawal": "domain-keyed; needs event-sourced rollback (known limitation)",
+
+		// Also domain-keyed, but unlike the two above this one is SAFE to leave stale:
+		// it is a materialized fold of ddb_operation, which IS purged and IS the
+		// authoritative history. A rebuild recomputes it exactly, so a reorg can leave it
+		// briefly ahead of the operations it summarises without losing anything.
+		"ddb_contract": "materialized fold of ddb_operation, which is purged and authoritative",
 	}
 
 	purged := purgedTables()

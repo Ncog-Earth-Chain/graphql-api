@@ -94,6 +94,13 @@ type Transaction struct {
 	// without this.
 	SigVersion *hexutil.Uint64 `json:"sigVersion,omitempty"`
 
+	// DDB is the decoded dual-consensus record, present only on a DDB commit transaction.
+	//
+	// Decoded at fetch time and carried here so the ingest path can persist it. It was
+	// previously decoded and DISCARDED -- only the contract address survived -- which is
+	// why the explorer had no DDB history at all.
+	DDB *DdbCommit `json:"ddb,omitempty"`
+
 	// PubKey is the raw ML-DSA-87 public key of the signer (~2592 bytes).
 	//
 	// NOT persisted -- see the schema note in 00002_block_tx.sql. It is read from the node

@@ -165,6 +165,8 @@ var purgeOrder = []string{
 	"tx_account",
 	"token_tx",
 	"reward_claim",
+	"ddb_operation",
+	"ddb_endorsement",
 	"tx",
 }
 
@@ -239,6 +241,12 @@ func (s *Store) writeTransaction(ctx context.Context, q Querier, t *types.Transa
 	}
 
 	if err := s.writeAccountEdges(ctx, q, t, blockNumber, txIndex); err != nil {
+		return err
+	}
+
+	// The DDB record, when this is a commit transaction. Inside the block's transaction,
+	// so the dual-consensus proof and the transaction that carried it commit together.
+	if err := s.writeDdbCommit(ctx, q, t, blockNumber, txIndex); err != nil {
 		return err
 	}
 	return s.writeLogs(ctx, q, t, blockNumber, txIndex)

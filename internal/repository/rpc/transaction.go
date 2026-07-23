@@ -15,6 +15,7 @@ package rpc
 
 import (
 	"context"
+	"encoding/json"
 
 	"ncogearthchain-api-graphql/internal/types"
 
@@ -35,6 +36,13 @@ func (nec *NecBridge) extractDDBContractAddress(trx *types.Transaction) {
 		nec.log.Debugf("DDB tx %s: could not decode commit payload (%d bytes): %v", trx.Hash.String(), len(trx.InputData), err)
 		return
 	}
+	// Keep the whole decoded record, not just the address.
+	//
+	// This is the change that gives the explorer DDB history. Everything below already
+	// ran; the result was used for one field and thrown away, and because the node serves
+	// no DDB history RPC, that discarded record was unrecoverable.
+	trx.DDB = ddbCommitFromInfo(info)
+
 	addrStr := ddbContractAddressFromOperation(info.Operation)
 	contractAddr := common.HexToAddress(addrStr)
 	// Leave ContractAddress nil for a zero/absent address (a schema-scoped call/grant, or the node's
@@ -131,4 +139,64 @@ func (nec *NecBridge) RawTransaction(ctx context.Context, hash *common.Hash) ([]
 		return nil, nil
 	}
 	return raw, nil
+}
+
+// ddbCommitFromInfo maps the decoded proof onto the domain type, pulling the operation's
+// own fields out of its verbatim JSON.
+//
+// Every field is optional on purpose: an operation scoped only by schema name has no
+// contract address, a call has no version, and a contract's first operation has no prior
+// state hash. Absent and zero are kept distinct throughout -- the node always serializes a
+// zero address for an unset contract, so treating zero as a real value would attribute
+// every schema-scoped operation to the zero address.
+func ddbCommitFromInfo(info *DdbCommitInfo) *types.DdbCommit {
+	c := &types.DdbCommit{
+		Operation:          info.Operation,
+		RequestID:          info.RequestID,
+		Requester:          info.Requester,
+		OperationHash:      info.OperationHash,
+		DataHash:           info.DataHash,
+		StateHash:          info.StateHash,
+		Epoch:              hexutil.Uint64(info.Epoch),
+		PriorPostStateHash: info.PriorPostStateHash,
+		PostStateHash:      info.PostStateHash,
+		ValidatorSet:       info.ValidatorSet,
+		Signatures:         int32(info.Signatures),
+	}
+
+	// The operation payload. Version is a STRING on the wire ("1", "1.2.0"), not a
+	// number, and the fields carry snake_case aliases from the older format.
+	var op struct {
+		Type         int16  `json:"type"`
+		SchemaName   string `json:"schema_name"`
+		ContractName string `json:"contract_name"`
+		Name         string `json:"name"`
+		Version      string `json:"version"`
+		Author       string `json:"author"`
+		Creator      string `json:"creator"`
+	}
+	if err := json.Unmarshal(info.Operation, &op); err == nil {
+		c.OpType = op.Type
+		c.SchemaName = op.SchemaName
+		c.ContractName = op.ContractName
+		if c.ContractName == "" {
+			c.ContractName = op.Name
+		}
+		c.Version = op.Version
+
+		author := op.Author
+		if author == "" {
+			author = op.Creator
+		}
+		if nonZeroAddr(author) {
+			a := common.HexToAddress(author)
+			c.Author = &a
+		}
+	}
+
+	if addr := ddbContractAddressFromOperation(info.Operation); nonZeroAddr(addr) {
+		a := common.HexToAddress(addr)
+		c.ContractAddress = &a
+	}
+	return c
 }

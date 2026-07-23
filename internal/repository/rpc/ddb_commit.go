@@ -72,6 +72,37 @@ type DdbCommitInfo struct {
 	BlockNumber  uint64           `json:"blockNumber"`
 	ValidatorSet []common.Address `json:"validatorSet"`
 	Signatures   int              `json:"signatures"`
+
+	// The rest of the endorsement, which was previously decoded and dropped. The node
+	// exposes NO RPC for DDB history -- ddb_getEndorsementStatus is in-memory and resets
+	// on restart -- so anything not captured from the commit transaction here cannot be
+	// recovered afterwards.
+	OperationHash common.Hash `json:"operationHash"`
+	DataHash      common.Hash `json:"dataHash"`
+	StateHash     common.Hash `json:"stateHash"`
+
+	// Epoch is the endorsing committee's epoch. Its absence from the mirrored struct is
+	// what made every DDB commit transaction fail to decode.
+	Epoch uint64 `json:"epoch"`
+
+	// The per-contract state-hash chain links.
+	//
+	// Variable-length and EMPTY for a contract's first operation and for non-contract
+	// operations -- the node guards on len()==0. They are []byte rather than a hash type
+	// for exactly that reason: a fixed 32-byte type cannot represent "no prior state".
+	PriorPostStateHash []byte `json:"priorPostStateHash,omitempty"`
+	PostStateHash      []byte `json:"postStateHash,omitempty"`
+
+	Timestamp uint64 `json:"timestamp"`
+}
+
+// DecodeDdbCommitTx is the exported decoder used by the ingest path.
+//
+// The result was previously computed and thrown away -- transaction.go kept only the
+// contract address and logged the rest at Debug -- so the entire dual-consensus record
+// was parsed and dropped on the floor on every DDB transaction.
+func DecodeDdbCommitTx(data []byte) (*DdbCommitInfo, error) {
+	return decodeDdbCommitTxData(data)
 }
 
 // decodeDdbCommitTxData dispatches on the 4-byte prefix and returns the decoded operation + a summary.
@@ -92,6 +123,14 @@ func decodeDdbCommitTxData(data []byte) (*DdbCommitInfo, error) {
 			BlockNumber:  pr.Endorsement.BlockNumber,
 			ValidatorSet: pr.Endorsement.ValidatorSet,
 			Signatures:   len(pr.Endorsement.Signatures),
+
+			OperationHash:      pr.Endorsement.OperationHash,
+			DataHash:           pr.Endorsement.DataHash,
+			StateHash:          pr.Endorsement.StateHash,
+			Epoch:              pr.Endorsement.Epoch,
+			PriorPostStateHash: pr.PriorPostStateHash,
+			PostStateHash:      pr.PostStateHash,
+			Timestamp:          pr.Timestamp,
 		}, nil
 	case ddbCommitPrefixJSON:
 		// Legacy DDBE: {endorsement:{...}, operation:{...}, ...}.
