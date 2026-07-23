@@ -137,6 +137,17 @@ func TestKeysetPredicateUsesIndexScan(t *testing.T) {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// Clear inside the transaction so this test is independent of whatever the ingest
+	// tests committed before it. The rollback undoes the delete along with the seed, so
+	// nothing observable changes either way.
+	for _, stmt := range []string{
+		"DELETE FROM tx_log", "DELETE FROM tx_account", "DELETE FROM tx", "DELETE FROM block",
+	} {
+		if _, err := tx.Exec(ctx, stmt); err != nil {
+			t.Fatalf("clear before seeding: %v", err)
+		}
+	}
+
 	// 2,000 blocks with 5 transactions each: enough that an index scan is clearly
 	// cheaper than a sort, without making the test slow.
 	if _, err := tx.Exec(ctx, `
