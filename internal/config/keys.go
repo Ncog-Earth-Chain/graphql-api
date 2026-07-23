@@ -60,6 +60,13 @@ const (
 	keyMongoUrl      = "db.url"
 	keyMongoDatabase = "db.db"
 
+	// PostgreSQL -- the explorer's storage
+	keyPgUrl              = "pg.url"
+	keyPgMaxConns         = "pg.max_conns"
+	keyPgMinConns         = "pg.min_conns"
+	keyPgStatementTimeout = "pg.statement_timeout"
+	keyPgAutoMigrate      = "pg.auto_migrate"
+
 	// cache related options
 	keyCacheEvictionTime = "cache.eviction"
 	keyCacheMaxSize      = "cache.size"

@@ -18,17 +18,17 @@ const trxFlowUpdateRange = -2 * 24 * time.Hour
 
 // TrxFlowVolume resolves the list of daily trx flow aggregations.
 func (p *proxy) TrxFlowVolume(from *time.Time, to *time.Time) ([]*types.DailyTrxVolume, error) {
-	return p.db.TrxDailyFlowList(from, to)
+	return p.pg.TrxDailyFlowList(storeCtx(), from, to)
 }
 
 // TrxFlowSpeed provides speed of transaction per second for the last <sec> seconds.
 func (p *proxy) TrxFlowSpeed(sec int32) (float64, error) {
-	return p.db.TrxRecentTrxSpeed(sec)
+	return p.pg.TrxRecentTrxSpeed(storeCtx(), sec)
 }
 
 // TrxGasSpeed provides speed of gas consumption per second by transactions.
 func (p *proxy) TrxGasSpeed(from *time.Time, to *time.Time) (float64, error) {
-	return p.db.TrxGasSpeed(from, to)
+	return p.pg.TrxGasSpeed(storeCtx(), from, to)
 }
 
 // TrxFlowUpdate executes the trx flow update in the database.
@@ -39,7 +39,7 @@ func (p *proxy) TrxFlowUpdate() {
 	from := now.Add(time.Duration(-(h*3600 + m*60 + s)) * time.Second).Add(time.Duration(-now.Nanosecond()) * time.Nanosecond).Add(trxFlowUpdateRange)
 
 	// do the update
-	err := p.db.TrxDailyFlowUpdate(from)
+	err := p.pg.TrxDailyFlowUpdate(storeCtx(), from)
 	if err != nil {
 		p.log.Criticalf("can not update trx flow; %s", err.Error())
 	}

@@ -76,6 +76,15 @@ const (
 	// defMongoDatabase holds the default name of the API persistent database
 	defMongoDatabase = "ncogearthchain"
 
+	// PostgreSQL defaults. No password in the default DSN -- an operator must supply a
+	// real connection string, and a default that happens to work against a local
+	// throwaway instance is how a deployment quietly points at the wrong database.
+	defPgUrl              = "postgres://explorer@localhost:5432/nec_explorer?sslmode=disable"
+	defPgMaxConns         = 16
+	defPgMinConns         = 2
+	defPgStatementTimeout = 30
+	defPgAutoMigrate      = true
+
 	// defCacheEvictionTime holds default time for in-memory eviction periods
 	defCacheEvictionTime = 15 * time.Minute
 
@@ -139,6 +148,13 @@ func applyDefaults(cfg *viper.Viper) {
 	cfg.SetDefault(keyForestUrl, defForestUrl)
 	cfg.SetDefault(keyMongoUrl, defMongoUrl)
 	cfg.SetDefault(keyMongoDatabase, defMongoDatabase)
+
+	// PostgreSQL
+	cfg.SetDefault(keyPgUrl, defPgUrl)
+	cfg.SetDefault(keyPgMaxConns, defPgMaxConns)
+	cfg.SetDefault(keyPgMinConns, defPgMinConns)
+	cfg.SetDefault(keyPgStatementTimeout, defPgStatementTimeout)
+	cfg.SetDefault(keyPgAutoMigrate, defPgAutoMigrate)
 	cfg.SetDefault(keySolCompilerPath, defSolCompilerPath)
 	cfg.SetDefault(keyCompilerTempPath, defCompilerTempPath)
 	cfg.SetDefault(keyApiPeers, defApiPeers)

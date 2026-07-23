@@ -20,30 +20,14 @@ import (
 
 // StoreRewardClaim stores reward claim record in the persistent repository.
 func (p *proxy) StoreRewardClaim(rc *types.RewardClaim) error {
-	return p.db.AddRewardClaim(rc)
+	return p.pg.AddRewardClaim(storeCtx(), rc)
 }
 
 // RewardClaims provides a list of reward claims for the given delegation and/or filter.
 func (p *proxy) RewardClaims(adr *common.Address, valID *big.Int, cursor *string, count int32) (*types.RewardClaimsList, error) {
-	// prep the filter
-	fi := bson.D{}
-
-	// add delegator address to the filter
-	if adr != nil {
-		fi = append(fi, bson.E{
-			Key:   types.FiRewardClaimAddress,
-			Value: adr.String(),
-		})
-	}
-
-	// add validator ID to the filter
-	if valID != nil {
-		fi = append(fi, bson.E{
-			Key:   types.FiRewardClaimToValidator,
-			Value: (*hexutil.Big)(valID).String(),
-		})
-	}
-	return p.db.RewardClaims(cursor, count, &fi)
+	// Both filters are optional and both are now typed arguments; the store renders them
+	// to bound predicates. This replaces a bson.D built here, above the storage seam.
+	return p.pg.RewardClaims(storeCtx(), adr, valID, cursor, count)
 }
 
 // RewardsClaimed returns sum of all claimed rewards for the given delegator address and validator ID.

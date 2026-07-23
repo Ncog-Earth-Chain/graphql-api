@@ -115,8 +115,8 @@ func (p *proxy) SendTransaction(tx hexutil.Bytes) (*types.Transaction, error) {
 // If the initial transaction cursor is not provided, we start on top, or bottom based on count value.
 //
 // No-number boundaries are handled as follows:
-// 	- For positive count we start from the most recent transaction and scan to older transactions.
-// 	- For negative count we start from the first transaction and scan to newer transactions.
+//   - For positive count we start from the most recent transaction and scan to older transactions.
+//   - For negative count we start from the first transaction and scan to newer transactions.
 func (p *proxy) Transactions(cursor *string, count int32) (*types.TransactionList, error) {
 	// we may be able to pull the list faster than from the db
 	if cursor == nil && count > 0 && count < cache.TransactionRingCacheSize {
@@ -138,10 +138,18 @@ func (p *proxy) Transactions(cursor *string, count int32) (*types.TransactionLis
 	}
 
 	// use slow trx list pulling
-	return p.db.Transactions(cursor, count, nil)
+	rows, err := p.pg.TransactionList(storeCtx(), derefCursor(cursor), count)
+	if err != nil {
+		return nil, err
+	}
+	total, err := p.pg.TransactionsCount(storeCtx())
+	if err != nil {
+		return nil, err
+	}
+	return buildTransactionList(rows, total, count), nil
 }
 
 // StoreGasPricePeriod stores the given gas price period data in the persistent storage
 func (p *proxy) StoreGasPricePeriod(gp *types.GasPricePeriod) error {
-	return p.db.AddGasPricePeriod(gp)
+	return p.pg.AddGasPricePeriod(storeCtx(), gp)
 }

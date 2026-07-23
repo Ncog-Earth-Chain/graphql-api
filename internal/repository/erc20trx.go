@@ -10,81 +10,40 @@ package repository
 
 import (
 	"math/big"
+	"ncogearthchain-api-graphql/internal/repository/db/pg"
 	"ncogearthchain-api-graphql/internal/types"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 // StoreTokenTransaction stores ERC20/ERC721/ERC1155 transaction into the repository.
 func (p *proxy) StoreTokenTransaction(trx *types.TokenTransaction) error {
-	return p.db.AddERC20Transaction(trx)
+	return p.pg.StoreTokenTransaction(storeCtx(), trx)
 }
 
 // TokenTransactionsByCall provides a list of token transaction made inside a specific
 // transaction call (blockchain transaction).
 func (p *proxy) TokenTransactionsByCall(trxHash *common.Hash) ([]*types.TokenTransaction, error) {
-	return p.db.TokenTransactionsByCall(trxHash)
+	return p.pg.TokenTransactionsByCall(storeCtx(), trxHash)
 }
 
 // TokenTransactions provides list of ERC20/ERC721/ERC1155 transactions based on given filters.
+//
+// The 40 lines of bson.D this replaces were the clearest instance of the storage layer
+// not being a seam: MongoDB's query language was built HERE, above it, so the storage
+// could not be swapped without rewriting its callers. The criteria are now a typed struct
+// the store renders to SQL itself.
 func (p *proxy) TokenTransactions(tokenType string, token *common.Address, tokenId *big.Int, acc *common.Address, txType []int32, cursor *string, count int32) (*types.TokenTransactionList, error) {
-	// prep the filter
-	fi := bson.D{}
-
-	// token type (ERC20/ERC721/ERC1155...)
-	fi = append(fi, bson.E{
-		Key:   types.FiTokenTransactionTokenType,
-		Value: tokenType,
-	})
-
-	// filter specific token
-	if token != nil {
-		fi = append(fi, bson.E{
-			Key:   types.FiTokenTransactionToken,
-			Value: token.String(),
-		})
-	}
-
-	// filter specific token id (for multi-token contracts)
-	if tokenId != nil {
-		fi = append(fi, bson.E{
-			Key:   types.FiTokenTransactionTokenId,
-			Value: (*hexutil.Big)(tokenId).String(),
-		})
-	}
-
-	// common address (sender or recipient)
-	if acc != nil {
-		fi = append(fi, bson.E{
-			Key: "$or",
-			Value: bson.A{bson.D{{
-				Key:   types.FiTokenTransactionSender,
-				Value: acc.String(),
-			}}, bson.D{{
-				Key:   types.FiTokenTransactionRecipient,
-				Value: acc.String(),
-			}}},
-		})
-	}
-
-	// type of the transaction
-	if txType != nil {
-		fi = append(fi, bson.E{
-			Key: types.FiTokenTransactionType,
-			Value: bson.D{{
-				Key:   "$in",
-				Value: txType,
-			}},
-		})
-	}
-
-	// do loading
-	return p.db.Erc20Transactions(cursor, count, &fi)
+	return p.pg.TokenTransactions(storeCtx(), pg.TokenTxCriteria{
+		TokenType:  tokenType,
+		Token:      token,
+		TokenId:    tokenId,
+		Account:    acc,
+		EventTypes: txType,
+	}, derefCursor(cursor), count)
 }
 
 // Erc20Assets provides a list of known assets for the given owner.
 func (p *proxy) Erc20Assets(owner common.Address, count int32) ([]common.Address, error) {
-	return p.db.Erc20Assets(owner, count)
+	return p.pg.TokenAssetsByOwner(storeCtx(), &owner, types.AccountTypeERC20Token, count)
 }

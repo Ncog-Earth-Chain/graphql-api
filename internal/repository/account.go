@@ -42,7 +42,7 @@ func (p *proxy) getAccount(addr *common.Address) (*types.Account, error) {
 	}
 
 	// try to get the account from database first
-	acc, err := p.db.Account(addr)
+	acc, err := p.pg.Account(storeCtx(), addr)
 	if err != nil {
 		p.log.Errorf("can not get the account %s; %s", addr.String(), err.Error())
 		return nil, err
@@ -57,7 +57,7 @@ func (p *proxy) getAccount(addr *common.Address) (*types.Account, error) {
 		acc = &types.Account{Address: *addr, Type: types.AccountTypeWallet}
 
 		// check if this is a smart contract account; we log the error on the call
-		acc.ContractTx, _ = p.db.ContractTransaction(addr)
+		acc.ContractTx, _ = p.pg.ContractTransaction(storeCtx(), addr)
 	}
 
 	// also keep a copy at the in-memory cache
@@ -84,13 +84,26 @@ func (p *proxy) AccountTransactions(addr *common.Address, rec *common.Address, c
 		return nil, fmt.Errorf("can not get transaction list for empty account")
 	}
 
-	// go to the database for the list of hashes of transaction searched
-	return p.db.AccountTransactions(addr, rec, cursor, count)
+	// The store returns the page; the count is a separate exact query because
+	// tx_account is keyed by address, which makes counting an account's transactions an
+	// index-only scan rather than the $or over the whole transaction collection that
+	// MongoDB needed (and that could time out and report the CHAIN's total instead).
+	list, err := p.pg.TransactionsByAccount(storeCtx(), addr, derefCursor(cursor), count)
+	if err != nil {
+		return nil, err
+	}
+
+	total, err := p.pg.AccountTransactionCount(storeCtx(), addr)
+	if err != nil {
+		return nil, err
+	}
+
+	return buildTransactionList(list, total, count), nil
 }
 
 // AccountsActive returns total number of accounts known to repository.
 func (p *proxy) AccountsActive() (hexutil.Uint64, error) {
-	val, err := p.db.AccountCount()
+	val, err := p.pg.AccountCount(storeCtx())
 	return hexutil.Uint64(val), err
 }
 
@@ -103,7 +116,7 @@ func (p *proxy) AccountIsKnown(addr *common.Address) bool {
 	}
 
 	// check if the database knows the address
-	known, err := p.db.IsAccountKnown(addr)
+	known, err := p.pg.IsAccountKnown(storeCtx(), addr)
 	if err != nil {
 		p.log.Errorf("can not check account %s existence; %s", addr.String(), err.Error())
 		return false
@@ -119,7 +132,7 @@ func (p *proxy) AccountIsKnown(addr *common.Address) bool {
 // StoreAccount adds specified account detail into the repository.
 func (p *proxy) StoreAccount(acc *types.Account) error {
 	// add this account to the database and remember it's been added
-	err := p.db.AddAccount(acc)
+	err := p.pg.AddAccount(storeCtx(), acc)
 	if err == nil {
 		p.cache.PushAccountKnown(&acc.Address)
 	}

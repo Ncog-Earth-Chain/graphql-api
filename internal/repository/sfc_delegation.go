@@ -34,7 +34,9 @@ func (p *proxy) IsDelegating(addr *common.Address) (bool, error) {
 
 // StoreDelegation stores the delegation in persistent database.
 func (p *proxy) StoreDelegation(dl *types.Delegation) error {
-	return p.db.AddDelegation(dl)
+	// The block position comes from the delegation's creation transaction, which the
+	// caller has already resolved onto the record.
+	return p.pg.AddDelegation(storeCtx(), dl, uint64(dl.CreatedTime), 0)
 }
 
 // UpdateDelegationBalance updates active balance of the given delegation.
@@ -78,7 +80,7 @@ func (p *proxy) updateDelegationBalance(addr *common.Address, valID *hexutil.Big
 
 	// update the delegation in DB and memory
 	dlg.AmountDelegated = (*hexutil.Big)(amo)
-	err = p.db.UpdateDelegationBalance(addr, valID, dlg.AmountDelegated)
+	err = p.pg.UpdateDelegationBalance(storeCtx(), addr, valID, dlg.AmountDelegated)
 	if nil == err {
 		p.cache.PushDelegation(dlg)
 	}
@@ -97,7 +99,7 @@ func (p *proxy) Delegation(adr *common.Address, valID *hexutil.Big) (*types.Dele
 	}
 
 	// pull from DB instead; do we actually have it?
-	dlg, err := p.db.Delegation(adr, valID)
+	dlg, err := p.pg.Delegation(storeCtx(), adr, valID)
 	if err != nil {
 		return nil, err
 	}
@@ -122,13 +124,13 @@ func (p *proxy) DelegationAmountStaked(addr *common.Address, valID *hexutil.Big)
 // DelegationsByAddress returns a list of all delegations of a given delegator address.
 func (p *proxy) DelegationsByAddress(addr *common.Address, cursor *string, count int32) (*types.DelegationList, error) {
 	p.log.Debugf("loading delegations of %s", addr.String())
-	return p.db.Delegations(cursor, count, &bson.D{{Key: types.FiDelegationAddress, Value: addr.String()}})
+	return p.pg.DelegationsByDelegator(storeCtx(), addr, derefCursor(cursor), count)
 }
 
 // DelegationsByAddressAll returns a list of all delegations of the given address un-paged.
 func (p *proxy) DelegationsByAddressAll(addr *common.Address) ([]*types.Delegation, error) {
 	p.log.Debugf("loading all delegations of %s", addr.String())
-	return p.db.DelegationsAll(&bson.D{{Key: types.FiDelegationAddress, Value: addr.String()}})
+	return p.pg.DelegationsByDelegatorAll(storeCtx(), addr, 0)
 }
 
 // DelegationsOfValidator extract a list of delegations for a given validator.

@@ -11,26 +11,26 @@ package repository
 import (
 	"fmt"
 	"math/big"
+	"ncogearthchain-api-graphql/internal/repository/db/pg"
 	"ncogearthchain-api-graphql/internal/types"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 // StoreWithdrawRequest stores the given withdraw request in persistent storage.
 func (p *proxy) StoreWithdrawRequest(wr *types.WithdrawRequest) error {
-	return p.db.AddWithdrawal(wr)
+	return p.pg.AddWithdrawal(storeCtx(), wr)
 }
 
 // UpdateWithdrawRequest stores the given updated withdraw request in persistent storage.
 func (p *proxy) UpdateWithdrawRequest(wr *types.WithdrawRequest) error {
-	return p.db.UpdateWithdrawal(wr)
+	return p.pg.UpdateWithdrawal(storeCtx(), wr)
 }
 
 // WithdrawRequest extracts details of a withdraw request specified by the delegator, validator and request ID.
 func (p *proxy) WithdrawRequest(addr *common.Address, valID *hexutil.Big, reqID *hexutil.Big) (*types.WithdrawRequest, error) {
-	return p.db.Withdrawal(addr, valID, reqID)
+	return p.pg.Withdrawal(storeCtx(), addr, valID, reqID)
 }
 
 // WithdrawRequests extracts a list of partial withdraw requests for the given address.
@@ -43,36 +43,39 @@ func (p *proxy) WithdrawRequests(addr *common.Address, stakerID *hexutil.Big, cu
 	if stakerID == nil {
 		// log the action and pull the list for all vals
 		p.log.Debugf("loading withdraw requests of %s to any validator", addr.String())
-		return p.db.Withdrawals(cursor, count, &bson.D{{Key: types.FiWithdrawalAddress, Value: addr.String()}})
+		f, err := pg.WithdrawalsOf(addr, nil)
+		if err != nil {
+			return nil, err
+		}
+		return p.pg.Withdrawals(storeCtx(), derefCursor(cursor), count, f)
 	}
 
 	// log the action and pull the list for specific address and val
 	p.log.Debugf("loading withdraw requests of %s to #%d", addr.String(), stakerID.ToInt().Uint64())
-	return p.db.Withdrawals(cursor, count, &bson.D{
-		{Key: types.FiWithdrawalAddress, Value: addr.String()},
-		{Key: types.FiWithdrawalToValidator, Value: stakerID.String()},
-	})
+	f, err := pg.WithdrawalsOf(addr, stakerID)
+	if err != nil {
+		return nil, err
+	}
+	return p.pg.Withdrawals(storeCtx(), derefCursor(cursor), count, f)
 }
 
 // WithdrawRequestsPendingTotal is the total value of all pending withdrawal requests
 // for the given delegator and target staker ID.
+//
+// "Pending" was written in MongoDB as {fin_trx: {$type: 10}} -- BSON type code 10,
+// meaning NULL. Reading it required knowing the BSON type table, and nothing in it said
+// "not finalized". It also failed to match documents where the field was ABSENT rather
+// than null, so requests written by the $set-only upsert path were left out of pending
+// totals entirely. PendingWithdrawalsOf spells it IS NULL, which covers both.
 func (p *proxy) WithdrawRequestsPendingTotal(addr *common.Address, stakerID *hexutil.Big) (*big.Int, error) {
 	if addr == nil {
 		return nil, fmt.Errorf("address not given")
 	}
 
-	// all withdrawals for the address regardless of the target staker
-	if stakerID == nil {
-		return p.db.WithdrawalsSumValue(&bson.D{
-			{Key: types.FiWithdrawalAddress, Value: addr.String()},
-			{Key: types.FiWithdrawalFinTrx, Value: bson.D{{Key: "$type", Value: 10}}},
-		})
+	// stakerID nil means "to any validator"
+	f, err := pg.PendingWithdrawalsOf(addr, stakerID)
+	if err != nil {
+		return nil, err
 	}
-
-	// specific delegation withdrawal
-	return p.db.WithdrawalsSumValue(&bson.D{
-		{Key: types.FiWithdrawalAddress, Value: addr.String()},
-		{Key: types.FiWithdrawalToValidator, Value: stakerID.String()},
-		{Key: types.FiWithdrawalFinTrx, Value: bson.D{{Key: "$type", Value: 10}}},
-	})
+	return p.pg.WithdrawalsSumValue(storeCtx(), f)
 }

@@ -157,15 +157,15 @@ func (p *proxy) IsSfcContract(addr *common.Address) bool {
 
 // LastKnownEpoch returns the id of the last known and scanned epoch.
 func (p *proxy) LastKnownEpoch() (uint64, error) {
-	return p.db.LastKnownEpoch()
+	return p.pg.LastKnownEpoch(storeCtx())
 }
 
 // AddEpoch stores an epoch reference in connected persistent storage.
 func (p *proxy) AddEpoch(e *types.Epoch) error {
-	return p.db.AddEpoch(e)
+	return p.pg.AddEpoch(storeCtx(), e)
 }
 
 // Epochs pulls list of epochs starting at the specified cursor.
 func (p *proxy) Epochs(cursor *string, count int32) (*types.EpochList, error) {
-	return p.db.Epochs(cursor, count)
+	return p.pg.Epochs(storeCtx(), cursor, count)
 }

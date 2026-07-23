@@ -9,16 +9,20 @@ results. BigCache for in-memory object storage to speed up loading of frequently
 package repository
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/config"
 	"ncogearthchain-api-graphql/internal/logger"
 	"ncogearthchain-api-graphql/internal/repository/cache"
 	"ncogearthchain-api-graphql/internal/repository/db"
+	"ncogearthchain-api-graphql/internal/repository/db/migrate"
+	"ncogearthchain-api-graphql/internal/repository/db/pg"
 	"ncogearthchain-api-graphql/internal/repository/rpc"
 	"ncogearthchain-api-graphql/internal/solidity"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -64,10 +68,20 @@ func R() Repository {
 // trough several low level bridges.
 type proxy struct {
 	cache *cache.MemBridge
-	db    *db.MongoDbBridge
-	rpc   *rpc.NecBridge
-	log   logger.Logger
-	cfg   *config.Config
+
+	// pg is the PostgreSQL store: the explorer's storage.
+	pg *pg.Store
+
+	// db is the legacy MongoDB bridge, retained ONLY for the inherited DeFi modules
+	// (Uniswap, fMint) that are scheduled for deletion. Every other read and write goes
+	// through pg. Keeping the two apart makes the remaining MongoDB dependency exactly
+	// coextensive with the code being removed, so deleting those modules removes the
+	// last reason this field exists rather than leaving a half-migrated layer behind.
+	db *db.MongoDbBridge
+
+	rpc *rpc.NecBridge
+	log logger.Logger
+	cfg *config.Config
 
 	// transaction estimator counter
 	txCount uint64
@@ -93,7 +107,7 @@ func newRepository() Repository {
 	}
 
 	// create connections
-	caBridge, dbBridge, rpcBridge, err := connect(cfg, log)
+	caBridge, pgStore, dbBridge, rpcBridge, err := connect(cfg, log)
 	if err != nil {
 		log.Fatal("repository init failed")
 		return nil
@@ -102,6 +116,7 @@ func newRepository() Repository {
 	// construct the proxy instance
 	p := proxy{
 		cache: caBridge,
+		pg:    pgStore,
 		db:    dbBridge,
 		rpc:   rpcBridge,
 		log:   log,
@@ -156,28 +171,58 @@ func governanceContractsMap(cfg *config.Governance) map[string]*config.Governanc
 }
 
 // connect opens connections to the external sources we need.
-func connect(cfg *config.Config, log logger.Logger) (*cache.MemBridge, *db.MongoDbBridge, *rpc.NecBridge, error) {
+func connect(cfg *config.Config, log logger.Logger) (*cache.MemBridge, *pg.Store, *db.MongoDbBridge, *rpc.NecBridge, error) {
 	// create new in-memory cache bridge
 	caBridge, err := cache.New(cfg, log)
 	if err != nil {
 		log.Criticalf("can not create in-memory cache bridge, %s", err.Error())
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
-	// create new database connection bridge
+	// Apply schema migrations BEFORE opening the pool. Serving requests against a
+	// half-migrated schema produces errors that look like data corruption -- the first
+	// symptom is a query naming a column that does not exist yet -- so a failure here is
+	// fatal to startup rather than something to carry on past.
+	ctx := context.Background()
+	if cfg.Pg.AutoMigrate {
+		if err := migrate.Up(ctx, cfg.Pg.Url, log); err != nil {
+			log.Criticalf("can not migrate the PostgreSQL schema, %s", err.Error())
+			return nil, nil, nil, nil, err
+		}
+	}
+
+	pgCfg := pg.DefaultConfig(cfg.Pg.Url)
+	if cfg.Pg.MaxConns > 0 {
+		pgCfg.MaxConns = cfg.Pg.MaxConns
+	}
+	if cfg.Pg.MinConns > 0 {
+		pgCfg.MinConns = cfg.Pg.MinConns
+	}
+	if cfg.Pg.StatementTimeout > 0 {
+		pgCfg.StatementTimeout = time.Duration(cfg.Pg.StatementTimeout) * time.Second
+	}
+
+	pgPool, err := pg.NewPool(ctx, pgCfg, log)
+	if err != nil {
+		log.Criticalf("can not connect PostgreSQL, %s", err.Error())
+		return nil, nil, nil, nil, err
+	}
+	pgStore := pg.NewStore(pgPool, log)
+
+	// The MongoDB bridge is retained only for the DeFi modules awaiting deletion.
 	dbBridge, err := db.New(cfg, log)
 	if err != nil {
 		log.Criticalf("can not connect backend persistent storage, %s", err.Error())
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	// create new Forest RPC bridge
 	rpcBridge, err := rpc.New(cfg, log)
 	if err != nil {
 		log.Criticalf("can not connect Forest RPC interface, %s", err.Error())
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
-	return caBridge, dbBridge, rpcBridge, nil
+	return caBridge, pgStore, dbBridge, rpcBridge, nil
 }
 
 // Close with close all connections and clean up the pending work for graceful termination.
@@ -186,6 +231,7 @@ func (p *proxy) Close() {
 	p.log.Notice("repository is closing")
 
 	// close connections
+	p.pg.Close()
 	p.db.Close()
 	p.rpc.Close()
 

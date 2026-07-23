@@ -27,6 +27,9 @@ type Config struct {
 	// Database configuration
 	Db Database `mapstructure:"db"`
 
+	// PostgreSQL configuration -- the explorer's storage.
+	Pg Postgres `mapstructure:"pg"`
+
 	// Cache configuration
 	Cache Cache `mapstructure:"cache"`
 
@@ -115,6 +118,38 @@ type Forest struct {
 type Database struct {
 	Url    string `mapstructure:"url"`
 	DbName string `mapstructure:"db"`
+}
+
+// Postgres represents the PostgreSQL connection configuration.
+//
+// PostgreSQL replaces MongoDB as the explorer's storage. It is deliberately a SEPARATE
+// instance from the one the chain node runs for its DDB: DDB rows are consensus state,
+// explorer rows are a rebuildable index, and pg_wal, disk, max_connections and the
+// postmaster lifetime are all cluster-scoped. An explorer re-scan filling the disk must
+// not be able to take the validator's database down with it.
+type Postgres struct {
+	// Url is the libpq connection string or postgres:// URL.
+	Url string `mapstructure:"url"`
+
+	// MaxConns bounds the pool. Sized against the server's max_connections rather than
+	// against expected concurrency: the ingest path can spawn work per transaction, and
+	// an unbounded pool turns that into connection exhaustion that locks out the
+	// operator's own session.
+	MaxConns int32 `mapstructure:"max_conns"`
+
+	// MinConns keeps warm connections so a cold pool does not show up as latency on the
+	// first requests after an idle period.
+	MinConns int32 `mapstructure:"min_conns"`
+
+	// StatementTimeout bounds any single statement server-side, in seconds. Context
+	// cancellation covers the client side; this covers a client that vanished without
+	// cancelling and left the server working.
+	StatementTimeout int64 `mapstructure:"statement_timeout"`
+
+	// AutoMigrate applies pending schema migrations at startup. Serving requests against
+	// a half-migrated schema produces errors that look like data corruption, so this is
+	// fatal on failure.
+	AutoMigrate bool `mapstructure:"auto_migrate"`
 }
 
 // Cache represents the cache sub-system configuration.

@@ -34,7 +34,7 @@ func (p *proxy) Contract(addr *common.Address) (*types.Contract, error) {
 	// we still don't know the contract? call the db for that
 	if sc == nil {
 		var err error
-		sc, err = p.db.Contract(addr)
+		sc, err = p.pg.Contract(storeCtx(), addr)
 		if err != nil {
 			return nil, err
 		}
@@ -1821,7 +1821,7 @@ func (p *proxy) VerifyProxyContract(addr *common.Address) (*types.Contract, *com
 	}
 
 	// Load contract from DB
-	con, err := p.db.Contract(addr)
+	con, err := p.pg.Contract(storeCtx(), addr)
 	if err != nil {
 		return nil, nil, false, "failed to load contract", err
 	}
@@ -1870,7 +1870,7 @@ func (p *proxy) VerifyProxyContract(addr *common.Address) (*types.Contract, *com
 		return con, nil, false, "A corresponding implementation contract was unfortunately not detected for the proxy address", nil
 	}
 
-	implCon, derr := p.db.Contract(&implAddr)
+	implCon, derr := p.pg.Contract(storeCtx(), &implAddr)
 	if derr != nil {
 		return con, &implAddr, false, "failed to load implementation contract", derr
 	}
@@ -1924,10 +1924,10 @@ func (p *proxy) VerifyProxyContract(addr *common.Address) (*types.Contract, *com
 // StoreContract adds new contract into the repository.
 func (p *proxy) StoreContract(con *types.Contract) error {
 	// is the a known contract which will be updated?
-	isUpdate := p.db.IsContractKnown(&con.Address)
+	isUpdate, _ := p.pg.IsContractKnown(storeCtx(), &con.Address)
 
 	// do the add/update op
-	if err := p.db.AddContract(con); err != nil {
+	if err := p.pg.AddContract(storeCtx(), con); err != nil {
 		p.log.Errorf("contract %s store failed; %s", con.Address.String(), err.Error())
 		return err
 	}
