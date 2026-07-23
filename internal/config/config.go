@@ -192,8 +192,3 @@ type GovernanceContract struct {
 	Name       string         `mapstructure:"name"`
 	Type       string         `mapstructure:"type"`
 }
-
-// DeFiFLend represents the fLend DeFi module configuration.
-type DeFiFLend struct {
-	LendingPool common.Address `mapstructure:"lending_pool"`
-}

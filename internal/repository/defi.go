@@ -28,26 +28,6 @@ func (p *proxy) DefiTokenPrice(token *common.Address) (hexutil.Big, error) {
 	return p.rpc.FMintTokenPrice(token)
 }
 
-// FMintAccount loads details of a DeFi/fMint account identified by the owner address.
-func (p *proxy) FMintAccount(owner common.Address) (*types.FMintAccount, error) {
-	return p.rpc.FMintAccount(&owner)
-}
-
-// FMintTokenBalance loads balance of a single DeFi token by it's address.
-func (p *proxy) FMintTokenBalance(owner *common.Address, token *common.Address, tp types.DefiTokenType) (hexutil.Big, error) {
-	return p.rpc.FMintTokenBalance(owner, token, tp)
-}
-
-// FMintTokenTotalBalance loads total balance of a single DeFi token by it's address.
-func (p *proxy) FMintTokenTotalBalance(token *common.Address, tp types.DefiTokenType) (hexutil.Big, error) {
-	return p.rpc.FMintTokenTotalBalance(token, tp)
-}
-
-// FMintTokenValue loads value of a single DeFi token by it's address in fUSD.
-func (p *proxy) FMintTokenValue(owner *common.Address, token *common.Address, tp types.DefiTokenType) (hexutil.Big, error) {
-	return p.rpc.FMintTokenValue(owner, token, tp)
-}
-
 // FMintRewardsEarned represents the total amount of rewards
 // accumulated on the account for the excessive collateral deposits.
 func (p *proxy) FMintRewardsEarned(addr *common.Address) (hexutil.Big, error) {

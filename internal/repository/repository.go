@@ -285,56 +285,6 @@ func (p *proxy) TokenSummariesByAddress(ctx context.Context, addr common.Address
 		})
 	}
 
-	// fMint Collateral
-	fmintAcc, err := p.FMintAccount(addr)
-	if err == nil && fmintAcc != nil {
-		for _, tokenAddr := range fmintAcc.CollateralList {
-			token, err := p.Erc20Token(&tokenAddr)
-			if err != nil || token == nil {
-				p.log.Errorf("Erc20Token error for fMint collateral %s: %v", tokenAddr.Hex(), err)
-				continue
-			}
-			amount, err := p.FMintTokenBalance(&addr, &tokenAddr, "COLLATERAL")
-			if err != nil {
-				p.log.Errorf("FMintTokenBalance error for collateral %s: %v", tokenAddr.Hex(), err)
-				continue
-			}
-			summaries = append(summaries, TokenSummary{
-				TokenAddress:  tokenAddr,
-				TokenName:     token.Name,
-				TokenSymbol:   token.Symbol,
-				TokenType:     "FMINT_COLLATERAL",
-				TokenDecimals: token.Decimals,
-				Type:          "DEPOSIT",
-				Amount:        amount,
-			})
-		}
-		// fMint Debt
-		for _, tokenAddr := range fmintAcc.DebtList {
-			token, err := p.Erc20Token(&tokenAddr)
-			if err != nil || token == nil {
-				p.log.Errorf("Erc20Token error for fMint debt %s: %v", tokenAddr.Hex(), err)
-				continue
-			}
-			amount, err := p.FMintTokenBalance(&addr, &tokenAddr, "DEBT")
-			if err != nil {
-				p.log.Errorf("FMintTokenBalance error for debt %s: %v", tokenAddr.Hex(), err)
-				continue
-			}
-			summaries = append(summaries, TokenSummary{
-				TokenAddress:  tokenAddr,
-				TokenName:     token.Name,
-				TokenSymbol:   token.Symbol,
-				TokenType:     "FMINT_DEBT",
-				TokenDecimals: token.Decimals,
-				Type:          "DEBT",
-				Amount:        amount,
-			})
-		}
-	} else if err != nil {
-		p.log.Errorf("FMintAccount error for %s: %v", addr.Hex(), err)
-	}
-
 	// ERC721 tokens (NFTs)
 	erc721Tokens, err := p.Erc721Assets(ctx, addr, count)
 	if err == nil {
