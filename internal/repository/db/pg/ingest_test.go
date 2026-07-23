@@ -464,3 +464,109 @@ func TestPurgeCoversEveryBlockKeyedTable(t *testing.T) {
 		}
 	}
 }
+
+// TestIncompleteBlockLeavesNoTraceAndDoesNotAdvance is the end-to-end statement of what
+// the scanner rewiring buys.
+//
+// The scenario is the one the MongoDB pipeline mishandled: block 4's content cannot be
+// fully loaded. Under the old flow the block was announced as dispatched BEFORE anything
+// was loaded (dispatch_blk.go marked it first), the unloadable transaction was silently
+// skipped, and the watermark -- written per transaction by a detached goroutine -- moved
+// past it. The scanner's fixed rescan depth then meant the hole could never be revisited.
+//
+// Here the block must leave nothing behind, the watermark must stop below it, and a later
+// successful re-ingest must heal it completely.
+func TestIncompleteBlockLeavesNoTraceAndDoesNotAdvance(t *testing.T) {
+	s := testStore(t)
+	cleanDB(t, s)
+	ctx := context.Background()
+
+	from := common.HexToAddress("0xaaaa000000000000000000000000000000000001")
+	to := common.HexToAddress("0xbbbb000000000000000000000000000000000002")
+
+	for _, n := range []uint64{1, 2, 3} {
+		if err := s.StoreBlock(ctx, &BlockData{
+			Block:        mkBlock(n),
+			Transactions: []*types.Transaction{mkTx(n, 0, from, to, big.NewInt(1))},
+		}); err != nil {
+			t.Fatalf("store block %d: %v", n, err)
+		}
+	}
+
+	// block 4: one transaction loads, one does not
+	err := s.StoreBlock(ctx, &BlockData{
+		Block: mkBlock(4),
+		Transactions: []*types.Transaction{
+			mkTx(4, 0, from, to, big.NewInt(1)),
+			nil,
+		},
+	})
+	if err == nil {
+		t.Fatal("an incomplete block was accepted")
+	}
+
+	// nothing from block 4 may exist
+	var blk4, tx4 int
+	if err := s.pool.QueryRow(ctx, `
+		SELECT (SELECT count(*) FROM block WHERE number = 4),
+		       (SELECT count(*) FROM tx WHERE block_number = 4)`).Scan(&blk4, &tx4); err != nil {
+		t.Fatalf("count block 4: %v", err)
+	}
+	if blk4 != 0 || tx4 != 0 {
+		t.Errorf("the failed block left %d block rows and %d transactions behind", blk4, tx4)
+	}
+
+	// the scanner's resume point must stop below the hole
+	resume, err := s.LastKnownBlock(ctx)
+	if err != nil {
+		t.Fatalf("resume point: %v", err)
+	}
+	if resume != 3 {
+		t.Errorf("resume point = %d, want 3 -- resuming above the hole is how gaps became permanent", resume)
+	}
+
+	// block 5 arriving later must NOT move the resume point past the hole
+	if err := s.StoreBlock(ctx, &BlockData{
+		Block:        mkBlock(5),
+		Transactions: []*types.Transaction{mkTx(5, 0, from, to, big.NewInt(1))},
+	}); err != nil {
+		t.Fatalf("store block 5: %v", err)
+	}
+	resume, _ = s.LastKnownBlock(ctx)
+	if resume != 3 {
+		t.Errorf("resume point advanced to %d across the hole at 4", resume)
+	}
+
+	// and the hole must be enumerable so the scanner knows where to go back to
+	missing, err := s.MissingBlocks(ctx, 1, 5, 10)
+	if err != nil {
+		t.Fatalf("MissingBlocks: %v", err)
+	}
+	if len(missing) != 1 || missing[0] != 4 {
+		t.Errorf("MissingBlocks = %v, want [4]", missing)
+	}
+
+	// the retry succeeds and heals everything
+	if err := s.StoreBlock(ctx, &BlockData{
+		Block: mkBlock(4),
+		Transactions: []*types.Transaction{
+			mkTx(4, 0, from, to, big.NewInt(1)),
+			mkTx(4, 1, from, to, big.NewInt(2)),
+		},
+	}); err != nil {
+		t.Fatalf("retry block 4: %v", err)
+	}
+
+	resume, _ = s.LastKnownBlock(ctx)
+	if resume != 5 {
+		t.Errorf("after healing the gap the resume point is %d, want 5", resume)
+	}
+
+	var healed int
+	if err := s.pool.QueryRow(ctx, "SELECT count(*) FROM tx WHERE block_number = 4").Scan(&healed); err != nil {
+		t.Fatalf("count healed: %v", err)
+	}
+	if healed != 2 {
+		t.Errorf("healed block 4 holds %d transactions, want 2", healed)
+	}
+}

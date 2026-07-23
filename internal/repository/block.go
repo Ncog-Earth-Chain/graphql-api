@@ -40,11 +40,6 @@ func (p *proxy) LastKnownBlock() (uint64, error) {
 	return p.pg.LastKnownBlock(storeCtx())
 }
 
-// UpdateLastKnownBlock update record about last known block.
-func (p *proxy) UpdateLastKnownBlock(blockNo *hexutil.Uint64) error {
-	return p.pg.UpdateLastKnownBlock(storeCtx(), uint64(*blockNo))
-}
-
 // CacheBlock puts a block to the internal block cache.
 func (p *proxy) CacheBlock(blk *types.Block) {
 	p.cache.AddBlock(blk)

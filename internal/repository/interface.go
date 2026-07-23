@@ -65,9 +65,6 @@ type Repository interface {
 	// LastKnownBlock returns number of the last block known to the repository.
 	LastKnownBlock() (uint64, error)
 
-	// UpdateLastKnownBlock update record about last known block.
-	UpdateLastKnownBlock(blockNo *hexutil.Uint64) error
-
 	// ObservedHeaders provides a channel fed with new headers observed
 	// by the connected blockchain node.
 	ObservedHeaders() chan *etc.Header
@@ -155,8 +152,9 @@ type Repository interface {
 	// IsStiContract returns true if the given address points to the STI contract.
 	IsStiContract(*common.Address) bool
 
-	// StoreTransaction adds a new incoming transaction from blockchain to the repository.
-	StoreTransaction(*types.Block, *types.Transaction) error
+	// StoreBlockAtomic stores a block and all of its transactions in one database
+	// transaction, advancing the ingest watermark inside it.
+	StoreBlockAtomic(*types.Block, []*types.Transaction) error
 
 	// LoadTransaction returns a transaction at Ncogearthchain blockchain
 	// by a hash loaded directly from the node.

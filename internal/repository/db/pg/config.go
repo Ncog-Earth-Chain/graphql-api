@@ -26,24 +26,15 @@ import (
 
 // LastKnownBlock returns the block the scanner should resume from.
 //
+// There is deliberately no setter. The watermark is derived inside the transaction that
+// writes a block, so it cannot be asserted from outside -- and an external setter is
+// exactly how the MongoDB watermark came to claim progress the data did not support.
+//
 // Deliberately the contiguous head rather than the height: resuming from the height would
 // skip a gap forever, which is precisely the MongoDB failure. Re-scanning a block already
 // stored is cheap and idempotent, so erring toward re-work is the correct direction.
 func (s *Store) LastKnownBlock(ctx context.Context) (uint64, error) {
 	return s.ContiguousHead(ctx)
-}
-
-// UpdateLastKnownBlock exists for interface compatibility and deliberately does nothing.
-//
-// The watermark is DERIVED from the block table inside the same transaction that writes a
-// block (advanceContiguousHead), so it cannot be set from outside. Accepting a value here
-// would let a caller assert progress the data does not support -- which is exactly how the
-// MongoDB watermark came to overstate what had been indexed.
-//
-// It returns nil rather than an error so an existing caller keeps working; the write it
-// intended has already happened, correctly, at ingest time.
-func (s *Store) UpdateLastKnownBlock(ctx context.Context, blockNo uint64) error {
-	return nil
 }
 
 // LastKnownEpochBlock returns the highest block recorded for an epoch.

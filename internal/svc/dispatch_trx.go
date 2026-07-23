@@ -8,9 +8,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	retypes "github.com/ethereum/go-ethereum/core/types"
-	"go.uber.org/atomic"
 )
 
 // trxAddressQueueCapacity is the number of addresses kept in the dispatch buffer.
@@ -37,7 +35,6 @@ type trxDispatcher struct {
 	service
 	onTransaction  chan *types.Transaction
 	bot            *time.Ticker
-	blkObserver    *atomic.Uint64
 	inTransaction  chan *eventTrx
 	outTransaction chan *eventTrx
 	outAccount     chan *eventAcc
@@ -52,7 +49,6 @@ func (trd *trxDispatcher) name() string {
 // init prepares the transaction dispatcher to perform its function.
 func (trd *trxDispatcher) init() {
 	trd.sigStop = make(chan bool, 1)
-	trd.blkObserver = atomic.NewUint64(1)
 	trd.outAccount = make(chan *eventAcc, trxAddressQueueCapacity)
 	trd.outLog = make(chan *types.LogRecord, trxLogQueueCapacity)
 	trd.outTransaction = make(chan *eventTrx, trxLogQueueCapacity)
@@ -102,7 +98,11 @@ func (trd *trxDispatcher) execute() {
 		case <-trd.sigStop:
 			return
 		case <-trd.bot.C:
-			trd.updateLastSeenBlock()
+			// The watermark is no longer maintained here. It is derived inside the
+			// block's own database transaction, where completeness is knowable; a
+			// periodic writer could only ever assert a number it had not verified.
+			// The ticker is kept as the dispatcher's liveness heartbeat.
+			log.Debugf("%s alive", trd.name())
 		case evt, ok := <-trd.inTransaction:
 			// is the channel even available for reading
 			if !ok {
@@ -116,20 +116,6 @@ func (trd *trxDispatcher) execute() {
 			}
 			trd.process(evt)
 		}
-	}
-}
-
-// updateLastSeenBlock updates the information about last known block
-// in the persistent database.
-func (trd *trxDispatcher) updateLastSeenBlock() {
-	// get the current value
-	lsb := trd.blkObserver.Load()
-	log.Noticef("last seen block is #%d", lsb)
-
-	// make the change in the database so the progress persists
-	err := repo.UpdateLastKnownBlock((*hexutil.Uint64)(&lsb))
-	if err != nil {
-		log.Errorf("could not update last seen block; %s", err.Error())
 	}
 }
 
@@ -153,7 +139,7 @@ func (trd *trxDispatcher) process(evt *eventTrx) {
 
 	// store the transaction into the database once the processing is done
 	// we spawn a lot of go-routines here, so we should test the optimal queue length above
-	go trd.waitAndStore(evt, &wg)
+	go trd.waitAndFinish(evt, &wg)
 
 	// broadcast new transaction; if it can not be broadcast quickly, skip
 	select {
@@ -162,17 +148,23 @@ func (trd *trxDispatcher) process(evt *eventTrx) {
 	}
 }
 
-// waitAndStore waits for the transaction processing to finish and stores the transaction into db.
-func (trd *trxDispatcher) waitAndStore(evt *eventTrx, wg *sync.WaitGroup) {
+// waitAndFinish waits for the derived processing to finish, then updates the caches.
+//
+// It no longer STORES the transaction: the block dispatcher already wrote it, atomically,
+// together with every other transaction in its block. Writing here was what made the
+// ingest non-atomic -- one row per detached goroutine, with no notion of whether the
+// block they belonged to was complete.
+//
+// It also no longer advances a watermark. blkObserver used to be updated here, from a
+// goroutine nothing joined at shutdown, which is how the watermark came to claim progress
+// past blocks that had not fully landed. The watermark is now derived inside the block's
+// own database transaction.
+func (trd *trxDispatcher) waitAndFinish(evt *eventTrx, wg *sync.WaitGroup) {
 	// wait until all the sub-processors finish their job
 	wg.Wait()
-	if err := repo.StoreTransaction(evt.blk, evt.trx); err != nil {
-		log.Errorf("can not store trx %s from block #%d", evt.trx.Hash.String(), evt.blk.Number)
-	}
 
 	repo.IncTrxCountEstimate(1)
 	repo.CacheTransaction(evt.trx)
-	trd.blkObserver.Store(uint64(evt.blk.Number))
 }
 
 // pushAccounts pushes given transaction accounts on both sides observing terminate signal on process.

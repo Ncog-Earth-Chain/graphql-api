@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"ncogearthchain-api-graphql/internal/repository/cache"
+	"ncogearthchain-api-graphql/internal/repository/db/pg"
 	"ncogearthchain-api-graphql/internal/types"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -23,12 +24,15 @@ import (
 // ErrTransactionNotFound represents an error returned if a transaction can not be found.
 var ErrTransactionNotFound = errors.New("requested transaction can not be found in Ncogearthchain blockchain")
 
-// StoreTransaction notifies a new incoming transaction from blockchain to the repository.
-func (p *proxy) StoreTransaction(block *types.Block, trx *types.Transaction) error {
-	// Writes the block header and the transaction atomically. The scanner still
-	// dispatches per transaction; moving it onto StoreBlock is what buys per-block
-	// completeness, and is tracked separately.
-	return p.pg.StoreTransaction(storeCtx(), block, trx)
+// StoreBlockAtomic stores a block and ALL of its transactions in one database
+// transaction, advancing the ingest watermark inside it.
+//
+// This is the write the indexer should use. A block is either wholly present or absent,
+// and the watermark -- derived from the block table rather than asserted -- cannot pass a
+// gap, so a scanner resuming from it re-scans anything incomplete instead of stepping
+// over it forever.
+func (p *proxy) StoreBlockAtomic(block *types.Block, txs []*types.Transaction) error {
+	return p.pg.StoreBlock(storeCtx(), &pg.BlockData{Block: block, Transactions: txs})
 }
 
 // CacheTransaction puts a transaction to the internal ring cache.
