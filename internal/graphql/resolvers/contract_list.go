@@ -2,6 +2,7 @@
 package resolvers
 
 import (
+	"context"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/repository"
 	"ncogearthchain-api-graphql/internal/types"
@@ -27,7 +28,7 @@ func NewContractList(cl *types.ContractList) *ContractList {
 }
 
 // Contracts resolves list of blockchain smart contracts encapsulated in a listable structure.
-func (rs *rootResolver) Contracts(args *struct {
+func (rs *rootResolver) Contracts(ctx context.Context, args *struct {
 	ValidatedOnly bool
 	Cursor        *Cursor
 	Count         int32
@@ -37,7 +38,7 @@ func (rs *rootResolver) Contracts(args *struct {
 	args.Count = listLimitCount(args.Count, listMaxEdgesPerRequest)
 
 	// get the contract list from repository
-	cl, err := repository.R().Contracts(args.ValidatedOnly, (*string)(args.Cursor), args.Count)
+	cl, err := repository.R().Contracts(ctx, args.ValidatedOnly, (*string)(args.Cursor), args.Count)
 	if err != nil {
 		log.Errorf("can not get contracts list; %s", err.Error())
 		return nil, err

@@ -10,6 +10,7 @@ package repository
 
 import (
 	"bytes"
+	"context"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/types"
 
@@ -156,16 +157,16 @@ func (p *proxy) IsSfcContract(addr *common.Address) bool {
 }
 
 // LastKnownEpoch returns the id of the last known and scanned epoch.
-func (p *proxy) LastKnownEpoch() (uint64, error) {
-	return p.pg.LastKnownEpoch(storeCtx())
+func (p *proxy) LastKnownEpoch(ctx context.Context) (uint64, error) {
+	return p.pg.LastKnownEpoch(ctx)
 }
 
 // AddEpoch stores an epoch reference in connected persistent storage.
-func (p *proxy) AddEpoch(e *types.Epoch) error {
-	return p.pg.AddEpoch(storeCtx(), e)
+func (p *proxy) AddEpoch(ctx context.Context, e *types.Epoch) error {
+	return p.pg.AddEpoch(ctx, e)
 }
 
 // Epochs pulls list of epochs starting at the specified cursor.
-func (p *proxy) Epochs(cursor *string, count int32) (*types.EpochList, error) {
-	return p.pg.Epochs(storeCtx(), cursor, count)
+func (p *proxy) Epochs(ctx context.Context, cursor *string, count int32) (*types.EpochList, error) {
+	return p.pg.Epochs(ctx, cursor, count)
 }

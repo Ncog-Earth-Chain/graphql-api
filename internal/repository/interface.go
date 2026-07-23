@@ -9,6 +9,7 @@ results. BigCache for in-memory object storage to speed up loading of frequently
 package repository
 
 import (
+	"context"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/config"
 	"ncogearthchain-api-graphql/internal/repository/rpc/contracts"
@@ -23,7 +24,7 @@ import (
 // Repository interface defines functions the underlying implementation provides to API resolvers.
 type Repository interface {
 	// Account returns account at Ncogearthchain blockchain for an address, nil if not found.
-	Account(*common.Address) (*types.Account, error)
+	Account(context.Context, *common.Address) (*types.Account, error)
 
 	// AccountBalance returns the current balance of an account at Ncogearthchain blockchain.
 	AccountBalance(*common.Address) (*hexutil.Big, error)
@@ -45,16 +46,16 @@ type Repository interface {
 	// of transactions newer than that.
 	//
 	// Transactions are always sorted from newer to older.
-	AccountTransactions(*common.Address, *common.Address, *string, int32) (*types.TransactionList, error)
+	AccountTransactions(context.Context, *common.Address, *common.Address, *string, int32) (*types.TransactionList, error)
 
 	// AccountsActive total number of accounts known to repository.
-	AccountsActive() (hexutil.Uint64, error)
+	AccountsActive(ctx context.Context) (hexutil.Uint64, error)
 
 	// AccountIsKnown checks if the account of the given address is known to the API server.
-	AccountIsKnown(*common.Address) bool
+	AccountIsKnown(context.Context, *common.Address) bool
 
 	// StoreAccount adds specified account detail into the repository.
-	StoreAccount(*types.Account) error
+	StoreAccount(context.Context, *types.Account) error
 
 	// AccountMarkActivity marks the latest account activity in the repository.
 	AccountMarkActivity(*common.Address, uint64) error
@@ -63,7 +64,7 @@ type Repository interface {
 	BlockHeight() (*hexutil.Big, error)
 
 	// LastKnownBlock returns number of the last block known to the repository.
-	LastKnownBlock() (uint64, error)
+	LastKnownBlock(ctx context.Context) (uint64, error)
 
 	// ObservedHeaders provides a channel fed with new headers observed
 	// by the connected blockchain node.
@@ -87,22 +88,22 @@ type Repository interface {
 	CacheBlock(blk *types.Block)
 
 	// Contract extract a smart contract information by address if available.
-	Contract(*common.Address) (*types.Contract, error)
+	Contract(context.Context, *common.Address) (*types.Contract, error)
 
 	// Contracts returns list of smart contracts at Ncogearthchain blockchain.
-	Contracts(bool, *string, int32) (*types.ContractList, error)
+	Contracts(context.Context, bool, *string, int32) (*types.ContractList, error)
 
 	// ValidateContract tries to validate contract byte code using
 	// provided source code. If successful, the contract information
 	// is updated the the repository.
-	ValidateContract(*types.Contract) error
+	ValidateContract(context.Context, *types.Contract) error
 
 	// VerifyProxyContract verifies a proxy address in a BscScan-like flow.
 	// If the address is a proxy and its implementation is not yet verified,
 	// returns the parent (implementation) address and a message instructing to verify it first.
 	// If the parent is already verified, links the proxy to the implementation, copies ABI/metadata,
 	// marks the proxy as validated, and returns the updated proxy contract.
-	VerifyProxyContract(*common.Address) (*types.Contract, *common.Address, bool, string, error)
+	VerifyProxyContract(context.Context, *common.Address) (*types.Contract, *common.Address, bool, string, error)
 
 	// GetAvailableCompilerVersions returns a list of available Solidity compiler versions.
 	GetAvailableCompilerVersions() []string
@@ -111,7 +112,7 @@ type Repository interface {
 	PreDownloadCompilerVersion(version string) error
 
 	// StoreContract updates the contract in repository.
-	StoreContract(*types.Contract) error
+	StoreContract(context.Context, *types.Contract) error
 
 	// SfcVersion returns current version of the SFC contract.
 	SfcVersion() (hexutil.Uint64, error)
@@ -123,10 +124,10 @@ type Repository interface {
 	CurrentEpoch() (hexutil.Uint64, error)
 
 	// LastKnownEpoch returns the id of the last known and scanned epoch.
-	LastKnownEpoch() (uint64, error)
+	LastKnownEpoch(ctx context.Context) (uint64, error)
 
 	// AddEpoch stores an epoch reference in connected persistent storage.
-	AddEpoch(e *types.Epoch) error
+	AddEpoch(ctx context.Context, e *types.Epoch) error
 
 	// Epoch returns the id of the current epoch.
 	Epoch(*hexutil.Uint64) (*types.Epoch, error)
@@ -135,7 +136,7 @@ type Repository interface {
 	CurrentSealedEpoch() (*types.Epoch, error)
 
 	// Epochs pulls list of epochs starting at the specified cursor.
-	Epochs(cursor *string, count int32) (*types.EpochList, error)
+	Epochs(ctx context.Context, cursor *string, count int32) (*types.EpochList, error)
 
 	// TotalStaked calculates current total staked amount for all stakers.
 	TotalStaked() (*hexutil.Big, error)
@@ -154,7 +155,7 @@ type Repository interface {
 
 	// StoreBlockAtomic stores a block and all of its transactions in one database
 	// transaction, advancing the ingest watermark inside it.
-	StoreBlockAtomic(*types.Block, []*types.Transaction) error
+	StoreBlockAtomic(context.Context, *types.Block, []*types.Transaction) error
 
 	// LoadTransaction returns a transaction at Ncogearthchain blockchain
 	// by a hash loaded directly from the node.
@@ -164,10 +165,10 @@ type Repository interface {
 	Transaction(*common.Hash) (*types.Transaction, error)
 
 	// Transactions returns list of transaction hashes at Ncogearthchain blockchain.
-	Transactions(*string, int32) (*types.TransactionList, error)
+	Transactions(context.Context, *string, int32) (*types.TransactionList, error)
 
 	// TransactionsCount returns total number of transactions in the block chain.
-	TransactionsCount() (uint64, error)
+	TransactionsCount(ctx context.Context) (uint64, error)
 
 	// EstimateTransactionsCount returns an approximate amount of transactions on the network.
 	EstimateTransactionsCount() (hexutil.Uint64, error)
@@ -221,29 +222,29 @@ type Repository interface {
 	RetrieveStakerInfo(*hexutil.Big) *types.StakerInfo
 
 	// IsDelegating returns if the given address is an SFC delegator.
-	IsDelegating(*common.Address) (bool, error)
+	IsDelegating(context.Context, *common.Address) (bool, error)
 
 	// StoreDelegation stores a delegation in the persistent repository.
-	StoreDelegation(*types.Delegation) error
+	StoreDelegation(context.Context, *types.Delegation) error
 
 	// UpdateDelegationBalance updates active balance of the given delegation.
-	UpdateDelegationBalance(*common.Address, *hexutil.Big, func(*big.Int) error) error
+	UpdateDelegationBalance(context.Context, *common.Address, *hexutil.Big, func(*big.Int) error) error
 
 	// Delegation returns a detail of delegation for the given address and validator ID.
-	Delegation(*common.Address, *hexutil.Big) (*types.Delegation, error)
+	Delegation(context.Context, *common.Address, *hexutil.Big) (*types.Delegation, error)
 
 	// DelegationAmountStaked returns the current amount of staked tokens
 	// for the given delegation.
 	DelegationAmountStaked(*common.Address, *hexutil.Big) (*big.Int, error)
 
 	// DelegationsByAddress returns a list of all delegations of a given delegator address.
-	DelegationsByAddress(*common.Address, *string, int32) (*types.DelegationList, error)
+	DelegationsByAddress(context.Context, *common.Address, *string, int32) (*types.DelegationList, error)
 
 	// DelegationsByAddressAll returns a list of all delegations of the given address un-paged.
-	DelegationsByAddressAll(addr *common.Address) ([]*types.Delegation, error)
+	DelegationsByAddressAll(ctx context.Context, addr *common.Address) ([]*types.Delegation, error)
 
 	// DelegationsOfValidator extracts a list of delegations for a validator by its ID.
-	DelegationsOfValidator(*hexutil.Big, *string, int32) (*types.DelegationList, error)
+	DelegationsOfValidator(context.Context, *hexutil.Big, *string, int32) (*types.DelegationList, error)
 
 	// DelegationLock returns delegation lock information using SFC contract binding.
 	DelegationLock(*common.Address, *hexutil.Big) (*types.DelegationLock, error)
@@ -269,30 +270,30 @@ type Repository interface {
 	DelegationFluidStakingActive(*common.Address, *hexutil.Big) (bool, error)
 
 	// StoreWithdrawRequest stores the given withdraw request in persistent storage.
-	StoreWithdrawRequest(*types.WithdrawRequest) error
+	StoreWithdrawRequest(context.Context, *types.WithdrawRequest) error
 
 	// UpdateWithdrawRequest stores the updated withdraw request in persistent storage.
-	UpdateWithdrawRequest(*types.WithdrawRequest) error
+	UpdateWithdrawRequest(context.Context, *types.WithdrawRequest) error
 
 	// WithdrawRequest extracts details of a withdraw request specified by the delegator, validator and request ID.
-	WithdrawRequest(*common.Address, *hexutil.Big, *hexutil.Big) (*types.WithdrawRequest, error)
+	WithdrawRequest(context.Context, *common.Address, *hexutil.Big, *hexutil.Big) (*types.WithdrawRequest, error)
 
 	// WithdrawRequests extracts a list of withdraw requests for the given address and validator.
-	WithdrawRequests(*common.Address, *hexutil.Big, *string, int32) (*types.WithdrawRequestList, error)
+	WithdrawRequests(context.Context, *common.Address, *hexutil.Big, *string, int32) (*types.WithdrawRequestList, error)
 
 	// WithdrawRequestsPendingTotal is the total value of all pending withdrawal requests
 	// for the given delegator and target staker ID.
-	WithdrawRequestsPendingTotal(*common.Address, *hexutil.Big) (*big.Int, error)
+	WithdrawRequestsPendingTotal(context.Context, *common.Address, *hexutil.Big) (*big.Int, error)
 
 	// StoreRewardClaim stores reward claim record in the persistent repository.
-	StoreRewardClaim(*types.RewardClaim) error
+	StoreRewardClaim(context.Context, *types.RewardClaim) error
 
 	// RewardsClaimed returns the sum of all the claimed rewards
 	// for the given delegator address and validator ID.
-	RewardsClaimed(adr *common.Address, valId *big.Int, since *int64, until *int64) (*big.Int, error)
+	RewardsClaimed(ctx context.Context, adr *common.Address, valId *big.Int, since *int64, until *int64) (*big.Int, error)
 
 	// RewardClaims provides list of reward claims for the given criteria.
-	RewardClaims(*common.Address, *big.Int, *string, int32) (*types.RewardClaimsList, error)
+	RewardClaims(context.Context, *common.Address, *big.Int, *string, int32) (*types.RewardClaimsList, error)
 
 	// Price returns a price information for the given target symbol.
 	Price(sym string) (types.Price, error)
@@ -304,7 +305,7 @@ type Repository interface {
 	GasPriceExtended() (*types.GasPrice, error)
 
 	// StoreGasPricePeriod stores gas price period data into the persistent storage.
-	StoreGasPricePeriod(*types.GasPricePeriod) error
+	StoreGasPricePeriod(context.Context, *types.GasPricePeriod) error
 
 	// GasEstimate calculates the estimated amount of Gas required to perform
 	// transaction described by the input params.
@@ -329,20 +330,20 @@ type Repository interface {
 	DefiTokenPrice(*common.Address) (hexutil.Big, error)
 
 	// TokenTransactions provides list of ERC20/ERC721/ERC1155 transactions based on given filters.
-	TokenTransactions(tokenType string, token *common.Address, tokenId *big.Int, acc *common.Address, txType []int32, cursor *string, count int32) (*types.TokenTransactionList, error)
+	TokenTransactions(ctx context.Context, tokenType string, token *common.Address, tokenId *big.Int, acc *common.Address, txType []int32, cursor *string, count int32) (*types.TokenTransactionList, error)
 
 	// TokenTransactionsByCall provides a list of token transaction made inside a specific
 	// transaction call (blockchain transaction).
-	TokenTransactionsByCall(*common.Hash) ([]*types.TokenTransaction, error)
+	TokenTransactionsByCall(context.Context, *common.Hash) ([]*types.TokenTransaction, error)
 
 	// Erc20Token returns an ERC20 token for the given address, if available.
 	Erc20Token(*common.Address) (*types.Erc20Token, error)
 
 	// Erc20TokensList returns a list of known ERC20 tokens ordered by their activity.
-	Erc20TokensList(int32) ([]common.Address, error)
+	Erc20TokensList(context.Context, int32) ([]common.Address, error)
 
 	// Erc20Assets provides list of ERC20 tokens involved with the given owner.
-	Erc20Assets(common.Address, int32) ([]common.Address, error)
+	Erc20Assets(context.Context, common.Address, int32) ([]common.Address, error)
 
 	// Erc20BalanceOf load the current available balance of and ERC20 token identified by the token
 	// contract address for an identified owner address.
@@ -368,7 +369,7 @@ type Repository interface {
 	Erc20LogoURL(*common.Address) string
 
 	// StoreTokenTransaction stores ERC20/ERC721/ERC1155 transaction into the repository.
-	StoreTokenTransaction(*types.TokenTransaction) error
+	StoreTokenTransaction(context.Context, *types.TokenTransaction) error
 
 	// Erc165SupportsInterface provides information about support of the interface by the contract.
 	Erc165SupportsInterface(contract *common.Address, interfaceID [4]byte) (bool, error)
@@ -377,7 +378,7 @@ type Repository interface {
 	Erc721Contract(*common.Address) (*types.Erc721Contract, error)
 
 	// Erc721ContractsList returns a list of known ERC721 tokens ordered by their activity.
-	Erc721ContractsList(int32) ([]common.Address, error)
+	Erc721ContractsList(context.Context, int32) ([]common.Address, error)
 
 	// Erc721Name provides information about the name of the ERC721 token.
 	Erc721Name(*common.Address) (string, error)
@@ -404,7 +405,7 @@ type Repository interface {
 	Erc721IsApprovedForAll(token *common.Address, owner *common.Address, operator *common.Address) (bool, error)
 
 	// Erc1155ContractsList returns a list of known ERC1155 contracts ordered by their activity.
-	Erc1155ContractsList(int32) ([]common.Address, error)
+	Erc1155ContractsList(context.Context, int32) ([]common.Address, error)
 
 	// Erc1155Uri provides URI of Metadata JSON Schema of the token.
 	Erc1155Uri(token *common.Address, tokenId *big.Int) (string, error)
@@ -473,13 +474,13 @@ type Repository interface {
 	FLendGetUserDepositHistory(*common.Address, *common.Address) ([]*types.FLendDeposit, error)
 
 	// TraceBlockByNumber traces a block by its number.
-	TraceBlockByNumber(number hexutil.Uint64, params map[string]interface{}) (interface{}, error)
+	TraceBlockByNumber(ctx context.Context, number hexutil.Uint64, params map[string]interface{}) (interface{}, error)
 
 	// TraceBlockByHash traces a block by its hash.
-	TraceBlockByHash(hash common.Hash, params map[string]interface{}) (interface{}, error)
+	TraceBlockByHash(ctx context.Context, hash common.Hash, params map[string]interface{}) (interface{}, error)
 
 	// TraceTransaction traces a transaction.
-	TraceTransaction(hash common.Hash, params map[string]interface{}) (interface{}, error)
+	TraceTransaction(ctx context.Context, hash common.Hash, params map[string]interface{}) (interface{}, error)
 
 	// --- DDB (Decentralized DataBase) introspection ---
 
@@ -505,35 +506,35 @@ type Repository interface {
 	DdbEndorsementStatus(requestID common.Hash) (interface{}, error)
 
 	// TrxFlowVolume resolves the list of daily trx flow aggregations.
-	TrxFlowVolume(from *time.Time, to *time.Time) ([]*types.DailyTrxVolume, error)
+	TrxFlowVolume(ctx context.Context, from *time.Time, to *time.Time) ([]*types.DailyTrxVolume, error)
 
 	// TrxGasSpeed provides speed of gas consumption per second by transactions.
-	TrxGasSpeed(from *time.Time, to *time.Time) (float64, error)
+	TrxGasSpeed(ctx context.Context, from *time.Time, to *time.Time) (float64, error)
 
 	// GasPriceTicks provides a list of gas price ticks for the given time period.
-	GasPriceTicks(from *time.Time, to *time.Time) ([]types.GasPricePeriod, error)
+	GasPriceTicks(ctx context.Context, from *time.Time, to *time.Time) ([]types.GasPricePeriod, error)
 
 	// TrxFlowUpdate executes the trx flow update in the database.
-	TrxFlowUpdate()
+	TrxFlowUpdate(ctx context.Context)
 
 	// TrxFlowSpeed provides speed of transaction per second for the last <sec> seconds.
-	TrxFlowSpeed(sec int32) (float64, error)
+	TrxFlowSpeed(ctx context.Context, sec int32) (float64, error)
 
 	// StoreNecBurn stores the given native NEC burn per block record into the persistent storage.
-	StoreNecBurn(burn *types.NecBurn) error
+	StoreNecBurn(ctx context.Context, burn *types.NecBurn) error
 
 	// NecBurnTotal provides the total amount of burned native NEC.
-	NecBurnTotal() (int64, error)
+	NecBurnTotal(ctx context.Context) (int64, error)
 
 	// NecBurnList provides list of per-block burned native NEC tokens.
-	NecBurnList(count int64) ([]types.NecBurn, error)
+	NecBurnList(ctx context.Context, count int64) ([]types.NecBurn, error)
 
 	// Close and cleanup the repository.
 	Close()
 
 	// TokenSummariesByAddress aggregates all token types for a wallet address.
-	TokenSummariesByAddress(addr common.Address, count int32) ([]TokenSummary, error)
+	TokenSummariesByAddress(ctx context.Context, addr common.Address, count int32) ([]TokenSummary, error)
 
 	// Erc721Assets returns all ERC721 contracts where the owner has a balance > 0.
-	Erc721Assets(owner common.Address, count int32) ([]common.Address, error)
+	Erc721Assets(ctx context.Context, owner common.Address, count int32) ([]common.Address, error)
 }

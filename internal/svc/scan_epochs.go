@@ -49,7 +49,7 @@ func (eps *epochScanner) run() {
 
 	// try to find the last known epoch, we want to start where we left off
 	var err error
-	eps.current, err = repo.LastKnownEpoch()
+	eps.current, err = repo.LastKnownEpoch(bgCtx())
 	if err != nil {
 		log.Criticalf("can not get the last known epoch; %s", err.Error())
 		eps.current = 1
@@ -171,7 +171,7 @@ func (eps *epochScanner) store(ep *types.Epoch) {
 	log.Debugf("processing epoch #%d", ep.Id)
 
 	// add the epoch to the database
-	err := repo.AddEpoch(ep)
+	err := repo.AddEpoch(bgCtx(), ep)
 	if err != nil {
 		log.Errorf("can not store epoch #%d; %s", ep.Id, err.Error())
 	}

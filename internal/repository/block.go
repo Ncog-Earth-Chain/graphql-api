@@ -9,6 +9,7 @@ results. BigCache for in-memory object storage to speed up loading of frequently
 package repository
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"ncogearthchain-api-graphql/internal/repository/cache"
@@ -36,8 +37,8 @@ func (p *proxy) BlockHeight() (*hexutil.Big, error) {
 }
 
 // LastKnownBlock returns number of the last block known to the repository.
-func (p *proxy) LastKnownBlock() (uint64, error) {
-	return p.pg.LastKnownBlock(storeCtx())
+func (p *proxy) LastKnownBlock(ctx context.Context) (uint64, error) {
+	return p.pg.LastKnownBlock(ctx)
 }
 
 // CacheBlock puts a block to the internal block cache.

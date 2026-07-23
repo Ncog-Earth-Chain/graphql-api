@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"ncogearthchain-api-graphql/internal/repository/db/pg"
 	"ncogearthchain-api-graphql/internal/types"
 )
@@ -71,8 +72,8 @@ var _ = pg.TokenTxCriteria{}
 
 // burnTotal adapts the store's BurnTotal to the cache's expected signature, which
 // predates contexts.
-func (p *proxy) burnTotal() (int64, error) {
-	return p.pg.BurnTotal(storeCtx())
+func (p *proxy) burnTotal(ctx context.Context) (int64, error) {
+	return p.pg.BurnTotal(ctx)
 }
 
 // buildContractList wraps a page of contracts with pagination state.

@@ -67,6 +67,10 @@ func (mgr *ServiceManager) Run() {
 func (mgr *ServiceManager) Close() {
 	log.Noticef("svc manager received a close signal")
 
+	// Cancel the pipeline's lifecycle context first, so any storage call already in
+	// flight returns instead of holding a worker that is being asked to stop.
+	stopCtx()
+
 	// pass the signal to all the services
 	for _, s := range mgr.svc {
 		log.Noticef("closing %s", s.name())

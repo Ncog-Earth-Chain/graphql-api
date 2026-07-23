@@ -71,7 +71,7 @@ func (tfm *trxFlowMonitor) execute() {
 		case <-tfm.sigStop:
 			return
 		case <-tfm.flowTicker.C:
-			repo.TrxFlowUpdate()
+			repo.TrxFlowUpdate(bgCtx())
 		case <-tfm.countTicker.C:
 			go tfm.updateCount()
 		}
@@ -81,7 +81,7 @@ func (tfm *trxFlowMonitor) execute() {
 // updateCount updates trx counter estimation.
 func (tfm *trxFlowMonitor) updateCount() {
 	// pull the value from DB
-	val, err := repo.TransactionsCount()
+	val, err := repo.TransactionsCount(bgCtx())
 	if err != nil {
 		log.Errorf("can not update trx count estimation; %s", err.Error())
 		return

@@ -1,6 +1,7 @@
 package resolvers
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/repository"
@@ -38,9 +39,9 @@ func NewEstimatedRewards(ep *types.Epoch, amount *hexutil.Uint64, total *hexutil
 }
 
 // estimateRewardsByAddress instantiates the estimated rewards for specified address if possible.
-func (rs *rootResolver) estimateRewardsByAddress(addr *common.Address, ep *types.Epoch, total *hexutil.Big) (EstimatedRewards, error) {
+func (rs *rootResolver) estimateRewardsByAddress(ctx context.Context, addr *common.Address, ep *types.Epoch, total *hexutil.Big) (EstimatedRewards, error) {
 	// try to get the address involved
-	acc, err := repository.R().Account(addr)
+	acc, err := repository.R().Account(ctx, addr)
 	if err != nil {
 		log.Error("invalid address or address not found")
 		return EstimatedRewards{}, fmt.Errorf("address not found")
@@ -62,7 +63,7 @@ func (rs *rootResolver) estimateRewardsByAddress(addr *common.Address, ep *types
 }
 
 // EstimateRewards resolves reward estimation for the given address or amount staked.
-func (rs *rootResolver) EstimateRewards(args *struct {
+func (rs *rootResolver) EstimateRewards(ctx context.Context, args *struct {
 	Address *common.Address
 	Amount  *hexutil.Uint64
 }) (EstimatedRewards, error) {
@@ -90,7 +91,7 @@ func (rs *rootResolver) EstimateRewards(args *struct {
 
 	// if address is specified, pull the estimation from it
 	if args.Address != nil {
-		return rs.estimateRewardsByAddress(args.Address, ep, total)
+		return rs.estimateRewardsByAddress(ctx, args.Address, ep, total)
 	}
 	return NewEstimatedRewards(ep, args.Amount, total), nil
 }

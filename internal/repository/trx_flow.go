@@ -9,6 +9,7 @@ results. BigCache for in-memory object storage to speed up loading of frequently
 package repository
 
 import (
+	"context"
 	"ncogearthchain-api-graphql/internal/types"
 	"time"
 )
@@ -17,29 +18,29 @@ import (
 const trxFlowUpdateRange = -2 * 24 * time.Hour
 
 // TrxFlowVolume resolves the list of daily trx flow aggregations.
-func (p *proxy) TrxFlowVolume(from *time.Time, to *time.Time) ([]*types.DailyTrxVolume, error) {
-	return p.pg.TrxDailyFlowList(storeCtx(), from, to)
+func (p *proxy) TrxFlowVolume(ctx context.Context, from *time.Time, to *time.Time) ([]*types.DailyTrxVolume, error) {
+	return p.pg.TrxDailyFlowList(ctx, from, to)
 }
 
 // TrxFlowSpeed provides speed of transaction per second for the last <sec> seconds.
-func (p *proxy) TrxFlowSpeed(sec int32) (float64, error) {
-	return p.pg.TrxRecentTrxSpeed(storeCtx(), sec)
+func (p *proxy) TrxFlowSpeed(ctx context.Context, sec int32) (float64, error) {
+	return p.pg.TrxRecentTrxSpeed(ctx, sec)
 }
 
 // TrxGasSpeed provides speed of gas consumption per second by transactions.
-func (p *proxy) TrxGasSpeed(from *time.Time, to *time.Time) (float64, error) {
-	return p.pg.TrxGasSpeed(storeCtx(), from, to)
+func (p *proxy) TrxGasSpeed(ctx context.Context, from *time.Time, to *time.Time) (float64, error) {
+	return p.pg.TrxGasSpeed(ctx, from, to)
 }
 
 // TrxFlowUpdate executes the trx flow update in the database.
-func (p *proxy) TrxFlowUpdate() {
+func (p *proxy) TrxFlowUpdate(ctx context.Context) {
 	// calculate previous midnight
 	now := time.Now().UTC()
 	h, m, s := now.Clock()
 	from := now.Add(time.Duration(-(h*3600 + m*60 + s)) * time.Second).Add(time.Duration(-now.Nanosecond()) * time.Nanosecond).Add(trxFlowUpdateRange)
 
 	// do the update
-	err := p.pg.TrxDailyFlowUpdate(storeCtx(), from)
+	err := p.pg.TrxDailyFlowUpdate(ctx, from)
 	if err != nil {
 		p.log.Criticalf("can not update trx flow; %s", err.Error())
 	}

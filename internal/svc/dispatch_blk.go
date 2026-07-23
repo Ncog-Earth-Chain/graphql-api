@@ -124,7 +124,7 @@ func (bld *blockDispatcher) process(blk *types.Block) bool {
 	// One database transaction for the block, its transactions, their logs and their
 	// account edges. The watermark advances inside it, so it can never claim progress
 	// the data does not back.
-	if err := repo.StoreBlockAtomic(blk, txs); err != nil {
+	if err := repo.StoreBlockAtomic(bgCtx(), blk, txs); err != nil {
 		log.Errorf("block #%d not stored; %s", blk.Number, err.Error())
 		return true
 	}

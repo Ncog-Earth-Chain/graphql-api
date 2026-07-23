@@ -2,6 +2,7 @@
 package resolvers
 
 import (
+	"context"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/repository"
 
@@ -55,7 +56,7 @@ func (rs *rootResolver) Staker(args struct {
 
 // SfcRewardsCollectedAmount resolves the amount of collected rewards
 // based on provided filtering criteria.
-func (rs *rootResolver) SfcRewardsCollectedAmount(args struct {
+func (rs *rootResolver) SfcRewardsCollectedAmount(ctx context.Context, args struct {
 	Delegator *common.Address
 	Staker    *hexutil.Big
 	Since     *hexutil.Uint64
@@ -76,7 +77,7 @@ func (rs *rootResolver) SfcRewardsCollectedAmount(args struct {
 	}
 
 	// get the filtered amount
-	val, err := repository.R().RewardsClaimed(args.Delegator, (*big.Int)(args.Staker), since, until)
+	val, err := repository.R().RewardsClaimed(ctx, args.Delegator, (*big.Int)(args.Staker), since, until)
 	if err != nil {
 		return hexutil.Big{}, err
 	}

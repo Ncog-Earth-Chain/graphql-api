@@ -41,7 +41,7 @@ func (cm *CompilerManager) GetCompilerPath(version string) (string, error) {
 
 	// Normalize version format (remove 'v' prefix if present)
 	normalizedVersion := strings.TrimPrefix(version, "v")
-	
+
 	// Check if we have this version cached
 	if path, exists := cm.compilers[normalizedVersion]; exists {
 		return path, nil
@@ -49,7 +49,7 @@ func (cm *CompilerManager) GetCompilerPath(version string) (string, error) {
 
 	// Try to find the compiler in the base path
 	compilerPath := cm.buildCompilerPath(normalizedVersion)
-	
+
 	// Check if the compiler exists and is executable
 	if _, err := exec.LookPath(compilerPath); err == nil {
 		cm.compilers[normalizedVersion] = compilerPath
@@ -72,12 +72,12 @@ func (cm *CompilerManager) GetCompilerPath(version string) (string, error) {
 // buildCompilerPath builds the expected compiler path for the given version
 func (cm *CompilerManager) buildCompilerPath(version string) string {
 	compilerPath := filepath.Join(cm.basePath, fmt.Sprintf("solc-%s", version))
-	
+
 	// On Windows, add .exe extension
 	if runtime.GOOS == "windows" && !strings.HasSuffix(compilerPath, ".exe") {
 		compilerPath += ".exe"
 	}
-	
+
 	return compilerPath
 }
 
@@ -87,16 +87,16 @@ func (cm *CompilerManager) getAlternativePaths(version string) []string {
 		filepath.Join(cm.basePath, fmt.Sprintf("solc-v%s", version)),
 		filepath.Join(cm.basePath, fmt.Sprintf("solc_%s", version)),
 	}
-	
+
 	// Add .exe extensions for Windows
 	if runtime.GOOS == "windows" {
-		paths = append(paths, 
+		paths = append(paths,
 			filepath.Join(cm.basePath, fmt.Sprintf("solc-%s.exe", version)),
 			filepath.Join(cm.basePath, fmt.Sprintf("solc-v%s.exe", version)),
 			filepath.Join(cm.basePath, fmt.Sprintf("solc_%s.exe", version)),
 		)
 	}
-	
+
 	return paths
 }
 
@@ -135,14 +135,14 @@ func (cm *CompilerManager) downloadAndInstallCompiler(version string) (string, e
 
 	// Cache the path
 	cm.compilers[version] = targetPath
-	
+
 	return targetPath, nil
 }
 
 // getDownloadURL returns the download URL for the specified Solidity version
 func (cm *CompilerManager) getDownloadURL(version string) (string, error) {
 	baseURL := fmt.Sprintf("https://github.com/ethereum/solidity/releases/download/v%s", version)
-	
+
 	var fileName string
 	switch runtime.GOOS {
 	case "windows":
@@ -154,7 +154,7 @@ func (cm *CompilerManager) getDownloadURL(version string) (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
 	}
-	
+
 	return fmt.Sprintf("%s/%s", baseURL, fileName), nil
 }
 
@@ -201,7 +201,7 @@ func (cm *CompilerManager) testCompiler(compilerPath string) error {
 	if err != nil {
 		return fmt.Errorf("compiler test failed: %s, output: %s", err.Error(), string(output))
 	}
-	
+
 	return nil
 }
 

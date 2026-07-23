@@ -9,6 +9,7 @@ results. BigCache for in-memory object storage to speed up loading of frequently
 package repository
 
 import (
+	"context"
 	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -47,6 +48,6 @@ func (p *proxy) UpdateTrxCountEstimate(val uint64) {
 }
 
 // TransactionsCount returns total number of transactions in the block chain.
-func (p *proxy) TransactionsCount() (uint64, error) {
-	return p.pg.TransactionsCount(storeCtx())
+func (p *proxy) TransactionsCount(ctx context.Context) (uint64, error) {
+	return p.pg.TransactionsCount(ctx)
 }

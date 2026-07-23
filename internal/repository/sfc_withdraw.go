@@ -9,6 +9,7 @@ results. BigCache for in-memory object storage to speed up loading of frequently
 package repository
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/repository/db/pg"
@@ -19,22 +20,22 @@ import (
 )
 
 // StoreWithdrawRequest stores the given withdraw request in persistent storage.
-func (p *proxy) StoreWithdrawRequest(wr *types.WithdrawRequest) error {
-	return p.pg.AddWithdrawal(storeCtx(), wr)
+func (p *proxy) StoreWithdrawRequest(ctx context.Context, wr *types.WithdrawRequest) error {
+	return p.pg.AddWithdrawal(ctx, wr)
 }
 
 // UpdateWithdrawRequest stores the given updated withdraw request in persistent storage.
-func (p *proxy) UpdateWithdrawRequest(wr *types.WithdrawRequest) error {
-	return p.pg.UpdateWithdrawal(storeCtx(), wr)
+func (p *proxy) UpdateWithdrawRequest(ctx context.Context, wr *types.WithdrawRequest) error {
+	return p.pg.UpdateWithdrawal(ctx, wr)
 }
 
 // WithdrawRequest extracts details of a withdraw request specified by the delegator, validator and request ID.
-func (p *proxy) WithdrawRequest(addr *common.Address, valID *hexutil.Big, reqID *hexutil.Big) (*types.WithdrawRequest, error) {
-	return p.pg.Withdrawal(storeCtx(), addr, valID, reqID)
+func (p *proxy) WithdrawRequest(ctx context.Context, addr *common.Address, valID *hexutil.Big, reqID *hexutil.Big) (*types.WithdrawRequest, error) {
+	return p.pg.Withdrawal(ctx, addr, valID, reqID)
 }
 
 // WithdrawRequests extracts a list of partial withdraw requests for the given address.
-func (p *proxy) WithdrawRequests(addr *common.Address, stakerID *hexutil.Big, cursor *string, count int32) (*types.WithdrawRequestList, error) {
+func (p *proxy) WithdrawRequests(ctx context.Context, addr *common.Address, stakerID *hexutil.Big, cursor *string, count int32) (*types.WithdrawRequestList, error) {
 	if addr == nil {
 		return nil, fmt.Errorf("address not given")
 	}
@@ -47,7 +48,7 @@ func (p *proxy) WithdrawRequests(addr *common.Address, stakerID *hexutil.Big, cu
 		if err != nil {
 			return nil, err
 		}
-		return p.pg.Withdrawals(storeCtx(), derefCursor(cursor), count, f)
+		return p.pg.Withdrawals(ctx, derefCursor(cursor), count, f)
 	}
 
 	// log the action and pull the list for specific address and val
@@ -56,7 +57,7 @@ func (p *proxy) WithdrawRequests(addr *common.Address, stakerID *hexutil.Big, cu
 	if err != nil {
 		return nil, err
 	}
-	return p.pg.Withdrawals(storeCtx(), derefCursor(cursor), count, f)
+	return p.pg.Withdrawals(ctx, derefCursor(cursor), count, f)
 }
 
 // WithdrawRequestsPendingTotal is the total value of all pending withdrawal requests
@@ -67,7 +68,7 @@ func (p *proxy) WithdrawRequests(addr *common.Address, stakerID *hexutil.Big, cu
 // "not finalized". It also failed to match documents where the field was ABSENT rather
 // than null, so requests written by the $set-only upsert path were left out of pending
 // totals entirely. PendingWithdrawalsOf spells it IS NULL, which covers both.
-func (p *proxy) WithdrawRequestsPendingTotal(addr *common.Address, stakerID *hexutil.Big) (*big.Int, error) {
+func (p *proxy) WithdrawRequestsPendingTotal(ctx context.Context, addr *common.Address, stakerID *hexutil.Big) (*big.Int, error) {
 	if addr == nil {
 		return nil, fmt.Errorf("address not given")
 	}
@@ -77,5 +78,5 @@ func (p *proxy) WithdrawRequestsPendingTotal(addr *common.Address, stakerID *hex
 	if err != nil {
 		return nil, err
 	}
-	return p.pg.WithdrawalsSumValue(storeCtx(), f)
+	return p.pg.WithdrawalsSumValue(ctx, f)
 }

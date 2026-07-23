@@ -2,6 +2,7 @@
 package resolvers
 
 import (
+	"context"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/repository"
 	"ncogearthchain-api-graphql/internal/types"
@@ -28,7 +29,7 @@ func NewTransactionList(txs *types.TransactionList) *TransactionList {
 }
 
 // Transactions resolves list of blockchain transactions encapsulated in a listable structure.
-func (rs *rootResolver) Transactions(args *struct {
+func (rs *rootResolver) Transactions(ctx context.Context, args *struct {
 	Cursor *Cursor
 	Count  int32
 }) (*TransactionList, error) {
@@ -37,7 +38,7 @@ func (rs *rootResolver) Transactions(args *struct {
 	args.Count = listLimitCount(args.Count, listMaxEdgesPerRequest)
 
 	// get the transaction hash list from repository
-	txs, err := repository.R().Transactions((*string)(args.Cursor), args.Count)
+	txs, err := repository.R().Transactions(ctx, (*string)(args.Cursor), args.Count)
 	if err != nil {
 		log.Errorf("can not get transactions list; %s", err.Error())
 		return nil, err

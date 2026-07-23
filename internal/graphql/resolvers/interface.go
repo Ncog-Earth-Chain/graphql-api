@@ -21,16 +21,16 @@ type ApiResolver interface {
 	Version() string
 
 	// Epochs resolves a list of epochs for the given cursor and count.
-	Epochs(args struct {
+	Epochs(ctx context.Context, args struct {
 		Cursor *Cursor
 		Count  int32
 	}) (*EpochList, error)
 
 	// Account resolves blockchain account by address.
-	Account(struct{ Address common.Address }) (*Account, error)
+	Account(context.Context, struct{ Address common.Address }) (*Account, error)
 
 	// Contracts resolves list of blockchain smart contracts encapsulated in a listable structure.
-	Contracts(*struct {
+	Contracts(context.Context, *struct {
 		ValidatedOnly bool
 		Cursor        *Cursor
 		Count         int32
@@ -39,10 +39,10 @@ type ApiResolver interface {
 	// ValidateContract resolves smart contract source code vs. deployed byte code and marks
 	// the contract as validated if the match is found. Peer API points are ringed on success
 	// to notify them about the change.
-	ValidateContract(*struct{ Contract ContractValidationInput }) (*Contract, error)
+	ValidateContract(context.Context, *struct{ Contract ContractValidationInput }) (*Contract, error)
 
 	// VerifyProxyContract verifies a proxy address in a BscScan-like flow.
-	VerifyProxyContract(*struct{ Address common.Address }) (*VerifyProxyResult, error)
+	VerifyProxyContract(context.Context, *struct{ Address common.Address }) (*VerifyProxyResult, error)
 
 	// Block resolves blockchain block by number or by hash. If neither is provided, the most recent block is given.
 	Block(*struct {
@@ -60,7 +60,7 @@ type ApiResolver interface {
 	Transaction(*struct{ Hash common.Hash }) (*Transaction, error)
 
 	// Transactions resolves list of blockchain transactions encapsulated in a listable structure.
-	Transactions(*struct {
+	Transactions(context.Context, *struct {
 		Cursor *Cursor
 		Count  int32
 	}) (*TransactionList, error)
@@ -93,20 +93,20 @@ type ApiResolver interface {
 	Stakers() ([]*Staker, error)
 
 	// Delegation resolves details of a delegator by its address.
-	Delegation(*struct {
+	Delegation(context.Context, *struct {
 		Address common.Address
 		Staker  hexutil.Big
 	}) (*Delegation, error)
 
 	// DelegationsOf a list of delegations information of a staker.
-	DelegationsOf(*struct {
+	DelegationsOf(context.Context, *struct {
 		Staker hexutil.Big
 		Cursor *Cursor
 		Count  int32
 	}) (*DelegationList, error)
 
 	// DelegationsByAddress a list of own delegations by the account address.
-	DelegationsByAddress(*struct {
+	DelegationsByAddress(context.Context, *struct {
 		Address common.Address
 		Cursor  *Cursor
 		Count   int32
@@ -128,14 +128,14 @@ type ApiResolver interface {
 	}) (*hexutil.Uint64, error)
 
 	// EstimateRewards resolves reward estimation for the given address or amount staked.
-	EstimateRewards(*struct {
+	EstimateRewards(context.Context, *struct {
 		Address *common.Address
 		Amount  *hexutil.Uint64
 	}) (EstimatedRewards, error)
 
 	// SfcRewardsCollectedAmount resolves the amount of collected rewards
 	// based on provided filtering criteria.
-	SfcRewardsCollectedAmount(struct {
+	SfcRewardsCollectedAmount(context.Context, struct {
 		Delegator *common.Address
 		Staker    *hexutil.Big
 		Since     *hexutil.Uint64
@@ -155,10 +155,10 @@ type ApiResolver interface {
 	Erc20Token(*struct{ Token common.Address }) *ERC20Token
 
 	// Erc20TokenList resolves a list of instances of ERC20 tokens.
-	Erc20TokenList(struct{ Count int32 }) ([]*ERC20Token, error)
+	Erc20TokenList(context.Context, struct{ Count int32 }) ([]*ERC20Token, error)
 
 	// Erc20Assets resolves a list of instances of ERC20 tokens for the given owner.
-	Erc20Assets(struct {
+	Erc20Assets(context.Context, struct {
 		Owner common.Address
 		Count int32
 	}) ([]*ERC20Token, error)
@@ -196,37 +196,37 @@ type ApiResolver interface {
 
 	// TrxVolume resolves list of daily aggregations
 	// of the network transaction flow.
-	TrxVolume(args struct {
+	TrxVolume(ctx context.Context, args struct {
 		From *string
 		To   *string
 	}) ([]*DailyTrxVolume, error)
 
 	// TrxSpeed resolves the recent speed of the network in transactions processed per second.
-	TrxSpeed(args struct {
+	TrxSpeed(ctx context.Context, args struct {
 		Range int32
 	}) (float64, error)
 
 	// TrxGasSpeed resolves the gas consumption speed
 	// of the network in transactions processed per second.
-	TrxGasSpeed(args struct {
+	TrxGasSpeed(ctx context.Context, args struct {
 		Range int32
 		To    *string
 	}) (float64, error)
 
 	// TraceBlockByNumber resolves the debug_traceBlockByNumber GraphQL query.
-	TraceBlockByNumber(args struct {
+	TraceBlockByNumber(ctx context.Context, args struct {
 		Number hexutil.Uint64
 		Params *JSONAny
 	}) (JSONAny, error)
 
 	// TraceBlockByHash resolves the debug_traceBlockByHash GraphQL query.
-	TraceBlockByHash(args struct {
+	TraceBlockByHash(ctx context.Context, args struct {
 		Hash   common.Hash
 		Params *JSONAny
 	}) (JSONAny, error)
 
 	// TraceTransaction resolves the debug_traceTransaction GraphQL query.
-	TraceTransaction(args struct {
+	TraceTransaction(ctx context.Context, args struct {
 		Hash   common.Hash
 		Params *JSONAny
 	}) (JSONAny, error)

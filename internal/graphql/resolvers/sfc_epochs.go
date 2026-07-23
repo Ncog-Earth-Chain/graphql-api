@@ -1,6 +1,7 @@
 package resolvers
 
 import (
+	"context"
 	"ncogearthchain-api-graphql/internal/repository"
 	"ncogearthchain-api-graphql/internal/types"
 
@@ -23,7 +24,7 @@ func NewEpochList(el *types.EpochList) *EpochList {
 }
 
 // Epochs resolves a list of epochs for the given cursor and count.
-func (rs *rootResolver) Epochs(args struct {
+func (rs *rootResolver) Epochs(ctx context.Context, args struct {
 	Cursor *Cursor
 	Count  int32
 }) (*EpochList, error) {
@@ -32,7 +33,7 @@ func (rs *rootResolver) Epochs(args struct {
 	args.Count = listLimitCount(args.Count, listMaxEdgesPerRequest)
 
 	// get the transaction hash list from repository
-	epl, err := repository.R().Epochs((*string)(args.Cursor), args.Count)
+	epl, err := repository.R().Epochs(ctx, (*string)(args.Cursor), args.Count)
 	if err != nil {
 		log.Errorf("can not get epoch list; %s", err.Error())
 		return nil, err

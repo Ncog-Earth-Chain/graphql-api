@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/types"
 
@@ -33,6 +34,6 @@ func (p *proxy) Erc1155IsApprovedForAll(token *common.Address, owner *common.Add
 }
 
 // Erc1155ContractsList returns a list of known ERC1155 tokens ordered by their activity.
-func (p *proxy) Erc1155ContractsList(count int32) ([]common.Address, error) {
-	return p.pg.AccountsByType(storeCtx(), types.AccountTypeERC1155Contract, count)
+func (p *proxy) Erc1155ContractsList(ctx context.Context, count int32) ([]common.Address, error) {
+	return p.pg.AccountsByType(ctx, types.AccountTypeERC1155Contract, count)
 }

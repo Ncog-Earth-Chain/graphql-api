@@ -2,6 +2,7 @@
 package resolvers
 
 import (
+	"context"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/repository"
 	"ncogearthchain-api-graphql/internal/types"
@@ -28,9 +29,9 @@ func NewAccount(acc *types.Account) *Account {
 }
 
 // Account resolves blockchain account by address.
-func (rs *rootResolver) Account(args struct{ Address common.Address }) (*Account, error) {
+func (rs *rootResolver) Account(ctx context.Context, args struct{ Address common.Address }) (*Account, error) {
 	// simply pull the block by hash
-	acc, err := repository.R().Account(&args.Address)
+	acc, err := repository.R().Account(ctx, &args.Address)
 	if err != nil {
 		log.Errorf("could not get the specified account")
 		return nil, err
@@ -39,8 +40,8 @@ func (rs *rootResolver) Account(args struct{ Address common.Address }) (*Account
 }
 
 // AccountsActive resolves total number of active accounts on the blockchain.
-func (rs *rootResolver) AccountsActive() (hexutil.Uint64, error) {
-	return repository.R().AccountsActive()
+func (rs *rootResolver) AccountsActive(ctx context.Context) (hexutil.Uint64, error) {
+	return repository.R().AccountsActive(ctx)
 }
 
 // Balance resolves total balance of the account.
@@ -58,7 +59,7 @@ func (acc *Account) Balance() (hexutil.Big, error) {
 }
 
 // TotalValue resolves account total value including delegated amount and pending rewards.
-func (acc *Account) TotalValue() (hexutil.Big, error) {
+func (acc *Account) TotalValue(ctx context.Context) (hexutil.Big, error) {
 	// get the balance
 	balance, err := acc.Balance()
 	if err != nil {
@@ -66,7 +67,7 @@ func (acc *Account) TotalValue() (hexutil.Big, error) {
 	}
 
 	// try to pull the delegations details
-	delegated, pendingOut, rewards, err := acc.delegationsTotal()
+	delegated, pendingOut, rewards, err := acc.delegationsTotal(ctx)
 	if err != nil {
 		return hexutil.Big{}, err
 	}
@@ -88,7 +89,7 @@ func (acc *Account) TxCount() (hexutil.Uint64, error) {
 }
 
 // TxList resolves list of transaction associated with the account.
-func (acc *Account) TxList(args struct {
+func (acc *Account) TxList(ctx context.Context, args struct {
 	Recipient *common.Address
 	Cursor    *Cursor
 	Count     int32
@@ -98,7 +99,7 @@ func (acc *Account) TxList(args struct {
 	args.Count = listLimitCount(args.Count, accMaxTransactionsPerRequest)
 
 	// get the transaction hash list from repository
-	bl, err := repository.R().AccountTransactions(&acc.Address, args.Recipient, (*string)(args.Cursor), args.Count)
+	bl, err := repository.R().AccountTransactions(ctx, &acc.Address, args.Recipient, (*string)(args.Cursor), args.Count)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +108,7 @@ func (acc *Account) TxList(args struct {
 }
 
 // Erc20TxList resolves list of ERC20 transactions associated with the account.
-func (acc *Account) Erc20TxList(args struct {
+func (acc *Account) Erc20TxList(ctx context.Context, args struct {
 	Cursor *Cursor
 	Count  int32
 	Token  *common.Address
@@ -118,7 +119,7 @@ func (acc *Account) Erc20TxList(args struct {
 	args.Count = listLimitCount(args.Count, accMaxTransactionsPerRequest)
 
 	// get the transaction hash list from repository
-	tl, err := repository.R().TokenTransactions(
+	tl, err := repository.R().TokenTransactions(ctx,
 		types.AccountTypeERC20Token,
 		args.Token,
 		nil,
@@ -135,7 +136,7 @@ func (acc *Account) Erc20TxList(args struct {
 }
 
 // Erc721TxList resolves list of ERC721 transactions associated with the account.
-func (acc *Account) Erc721TxList(args struct {
+func (acc *Account) Erc721TxList(ctx context.Context, args struct {
 	Cursor  *Cursor
 	Count   int32
 	Token   *common.Address
@@ -147,7 +148,7 @@ func (acc *Account) Erc721TxList(args struct {
 	args.Count = listLimitCount(args.Count, accMaxTransactionsPerRequest)
 
 	// get the transaction hash list from repository
-	tl, err := repository.R().TokenTransactions(
+	tl, err := repository.R().TokenTransactions(ctx,
 		types.AccountTypeERC721Contract,
 		args.Token,
 		(*big.Int)(args.TokenId),
@@ -164,7 +165,7 @@ func (acc *Account) Erc721TxList(args struct {
 }
 
 // Erc1155TxList resolves list of ERC1155 transactions associated with the account.
-func (acc *Account) Erc1155TxList(args struct {
+func (acc *Account) Erc1155TxList(ctx context.Context, args struct {
 	Cursor  *Cursor
 	Count   int32
 	Token   *common.Address
@@ -176,7 +177,7 @@ func (acc *Account) Erc1155TxList(args struct {
 	args.Count = listLimitCount(args.Count, accMaxTransactionsPerRequest)
 
 	// get the transaction hash list from repository
-	tl, err := repository.R().TokenTransactions(
+	tl, err := repository.R().TokenTransactions(ctx,
 		types.AccountTypeERC1155Contract,
 		args.Token,
 		(*big.Int)(args.TokenId),
@@ -208,7 +209,7 @@ func (acc *Account) Staker() (*Staker, error) {
 }
 
 // Delegations resolves a list of account delegations, if the account is a delegator.
-func (acc *Account) Delegations(args *struct {
+func (acc *Account) Delegations(ctx context.Context, args *struct {
 	Cursor *Cursor
 	Count  int32
 }) (*DelegationList, error) {
@@ -217,7 +218,7 @@ func (acc *Account) Delegations(args *struct {
 	args.Count = listLimitCount(args.Count, listMaxEdgesPerRequest)
 
 	// pull the list
-	dl, err := repository.R().DelegationsByAddress(&acc.Address, (*string)(args.Cursor), args.Count)
+	dl, err := repository.R().DelegationsByAddress(ctx, &acc.Address, (*string)(args.Cursor), args.Count)
 	if err != nil {
 		return nil, err
 	}
@@ -228,9 +229,9 @@ func (acc *Account) Delegations(args *struct {
 
 // Contract resolves the account smart contract detail,
 // if the account is a smart contract address.
-func (acc *Account) Contract() (*Contract, error) {
+func (acc *Account) Contract(ctx context.Context) (*Contract, error) {
 	// try to load contract details from repository first
-	con, err := repository.R().Contract(&acc.Address)
+	con, err := repository.R().Contract(ctx, &acc.Address)
 	if err != nil {
 		return nil, err
 	}
@@ -244,8 +245,8 @@ func (acc *Account) Contract() (*Contract, error) {
 }
 
 // TokenSummaries resolves all tokens (ERC20, fMint, ERC721, ERC1155, etc.) for the account.
-func (acc *Account) TokenSummaries() ([]*repository.TokenSummary, error) {
-	summaries, err := repository.R().TokenSummariesByAddress(acc.Address, 1000)
+func (acc *Account) TokenSummaries(ctx context.Context) ([]*repository.TokenSummary, error) {
+	summaries, err := repository.R().TokenSummariesByAddress(ctx, acc.Address, 1000)
 	if err != nil {
 		return nil, err
 	}
@@ -258,9 +259,9 @@ func (acc *Account) TokenSummaries() ([]*repository.TokenSummary, error) {
 
 // delegationsTotal calculates total sum of delegations of the given account including
 // pending rewards for those delegations.
-func (acc *Account) delegationsTotal() (amount *big.Int, inWithdraw *big.Int, rewards *big.Int, err error) {
+func (acc *Account) delegationsTotal(ctx context.Context) (amount *big.Int, inWithdraw *big.Int, rewards *big.Int, err error) {
 	// pull all the delegations of the account
-	list, err := repository.R().DelegationsByAddressAll(&acc.Address)
+	list, err := repository.R().DelegationsByAddressAll(ctx, &acc.Address)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -287,7 +288,7 @@ func (acc *Account) delegationsTotal() (amount *big.Int, inWithdraw *big.Int, re
 		}
 
 		// get pending withdrawals
-		wd, err := repository.R().WithdrawRequestsPendingTotal(&acc.Address, dlg.ToStakerId)
+		wd, err := repository.R().WithdrawRequestsPendingTotal(ctx, &acc.Address, dlg.ToStakerId)
 		if err != nil {
 			return nil, nil, nil, err
 		}

@@ -10,6 +10,7 @@ package repository
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"ncogearthchain-api-graphql/internal/repository/cache"
@@ -31,8 +32,8 @@ var ErrTransactionNotFound = errors.New("requested transaction can not be found 
 // and the watermark -- derived from the block table rather than asserted -- cannot pass a
 // gap, so a scanner resuming from it re-scans anything incomplete instead of stepping
 // over it forever.
-func (p *proxy) StoreBlockAtomic(block *types.Block, txs []*types.Transaction) error {
-	return p.pg.StoreBlock(storeCtx(), &pg.BlockData{Block: block, Transactions: txs})
+func (p *proxy) StoreBlockAtomic(ctx context.Context, block *types.Block, txs []*types.Transaction) error {
+	return p.pg.StoreBlock(ctx, &pg.BlockData{Block: block, Transactions: txs})
 }
 
 // CacheTransaction puts a transaction to the internal ring cache.
@@ -124,7 +125,7 @@ func (p *proxy) SendTransaction(tx hexutil.Bytes) (*types.Transaction, error) {
 // No-number boundaries are handled as follows:
 //   - For positive count we start from the most recent transaction and scan to older transactions.
 //   - For negative count we start from the first transaction and scan to newer transactions.
-func (p *proxy) Transactions(cursor *string, count int32) (*types.TransactionList, error) {
+func (p *proxy) Transactions(ctx context.Context, cursor *string, count int32) (*types.TransactionList, error) {
 	// we may be able to pull the list faster than from the db
 	if cursor == nil && count > 0 && count < cache.TransactionRingCacheSize {
 		// pull the quick list
@@ -144,11 +145,11 @@ func (p *proxy) Transactions(cursor *string, count int32) (*types.TransactionLis
 	}
 
 	// use slow trx list pulling
-	rows, err := p.pg.TransactionList(storeCtx(), derefCursor(cursor), count)
+	rows, err := p.pg.TransactionList(ctx, derefCursor(cursor), count)
 	if err != nil {
 		return nil, err
 	}
-	total, err := p.pg.TransactionsCount(storeCtx())
+	total, err := p.pg.TransactionsCount(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -156,6 +157,6 @@ func (p *proxy) Transactions(cursor *string, count int32) (*types.TransactionLis
 }
 
 // StoreGasPricePeriod stores the given gas price period data in the persistent storage
-func (p *proxy) StoreGasPricePeriod(gp *types.GasPricePeriod) error {
-	return p.pg.AddGasPricePeriod(storeCtx(), gp)
+func (p *proxy) StoreGasPricePeriod(ctx context.Context, gp *types.GasPricePeriod) error {
+	return p.pg.AddGasPricePeriod(ctx, gp)
 }

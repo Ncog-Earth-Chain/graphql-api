@@ -1,6 +1,7 @@
 package resolvers
 
 import (
+	"context"
 	"fmt"
 
 	"ncogearthchain-api-graphql/internal/repository"
@@ -90,7 +91,7 @@ func sanitizeTraceParams(in *JSONAny) (map[string]interface{}, error) {
 	return out, nil
 }
 
-func (rs *rootResolver) TraceBlockByNumber(args struct {
+func (rs *rootResolver) TraceBlockByNumber(ctx context.Context, args struct {
 	Number hexutil.Uint64
 	Params *JSONAny
 }) (JSONAny, error) {
@@ -99,14 +100,14 @@ func (rs *rootResolver) TraceBlockByNumber(args struct {
 		return JSONAny{}, err
 	}
 
-	result, err := repository.R().TraceBlockByNumber(args.Number, params)
+	result, err := repository.R().TraceBlockByNumber(ctx, args.Number, params)
 	if err != nil {
 		return JSONAny{}, err
 	}
 	return JSONAny{Value: result}, nil
 }
 
-func (rs *rootResolver) TraceBlockByHash(args struct {
+func (rs *rootResolver) TraceBlockByHash(ctx context.Context, args struct {
 	Hash   common.Hash
 	Params *JSONAny
 }) (JSONAny, error) {
@@ -115,14 +116,14 @@ func (rs *rootResolver) TraceBlockByHash(args struct {
 		return JSONAny{}, err
 	}
 
-	result, err := repository.R().TraceBlockByHash(args.Hash, params)
+	result, err := repository.R().TraceBlockByHash(ctx, args.Hash, params)
 	if err != nil {
 		return JSONAny{}, err
 	}
 	return JSONAny{Value: result}, nil
 }
 
-func (rs *rootResolver) TraceTransaction(args struct {
+func (rs *rootResolver) TraceTransaction(ctx context.Context, args struct {
 	Hash   common.Hash
 	Params *JSONAny
 }) (JSONAny, error) {
@@ -131,7 +132,7 @@ func (rs *rootResolver) TraceTransaction(args struct {
 		return JSONAny{}, err
 	}
 
-	result, err := repository.R().TraceTransaction(args.Hash, params)
+	result, err := repository.R().TraceTransaction(ctx, args.Hash, params)
 	if err != nil {
 		return JSONAny{}, err
 	}

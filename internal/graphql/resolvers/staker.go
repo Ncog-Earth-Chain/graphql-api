@@ -2,6 +2,7 @@
 package resolvers
 
 import (
+	"context"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/repository"
 	"ncogearthchain-api-graphql/internal/types"
@@ -40,7 +41,7 @@ func NewStaker(st *types.Validator) *Staker {
 }
 
 // Delegations resolves list of delegations associated with the staker.
-func (st Staker) Delegations(args struct {
+func (st Staker) Delegations(ctx context.Context, args struct {
 	Cursor *Cursor
 	Count  int32
 }) (*DelegationList, error) {
@@ -49,7 +50,7 @@ func (st Staker) Delegations(args struct {
 	args.Count = listLimitCount(args.Count, accMaxTransactionsPerRequest)
 
 	// get delegations
-	dl, err := repository.R().DelegationsOfValidator(&st.Id, (*string)(args.Cursor), args.Count)
+	dl, err := repository.R().DelegationsOfValidator(ctx, &st.Id, (*string)(args.Cursor), args.Count)
 	if err != nil {
 		return nil, err
 	}
@@ -112,9 +113,9 @@ func (st Staker) LockedFromEpoch() (hexutil.Uint64, error) {
 
 // WithdrawRequests resolves partial withdraw requests of the staker.
 // We load withdraw requests of the stake only, not the stake delegators.
-func (st Staker) WithdrawRequests() ([]WithdrawRequest, error) {
+func (st Staker) WithdrawRequests(ctx context.Context) ([]WithdrawRequest, error) {
 	// pull the requests list from remote server
-	wwl, err := repository.R().WithdrawRequests(&st.StakerAddress, nil, nil, 50)
+	wwl, err := repository.R().WithdrawRequests(ctx, &st.StakerAddress, nil, nil, 50)
 	if err != nil {
 		return nil, err
 	}

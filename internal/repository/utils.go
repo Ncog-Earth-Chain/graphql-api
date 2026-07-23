@@ -9,6 +9,7 @@ results. BigCache for in-memory object storage to speed up loading of frequently
 package repository
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -56,8 +57,8 @@ func (p *proxy) GasPriceExtended() (*types.GasPrice, error) {
 }
 
 // GasPriceTicks provides a list of gas price ticks for the given time period.
-func (p *proxy) GasPriceTicks(from *time.Time, to *time.Time) ([]types.GasPricePeriod, error) {
-	return p.pg.GasPriceTicks(storeCtx(), from, to)
+func (p *proxy) GasPriceTicks(ctx context.Context, from *time.Time, to *time.Time) ([]types.GasPricePeriod, error) {
+	return p.pg.GasPriceTicks(ctx, from, to)
 }
 
 // GasEstimate calculates the estimated amount of Gas required to perform

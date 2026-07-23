@@ -27,14 +27,14 @@ import (
 )
 
 // Contract extract a smart contract information by account address, if available.
-func (p *proxy) Contract(addr *common.Address) (*types.Contract, error) {
+func (p *proxy) Contract(ctx context.Context, addr *common.Address) (*types.Contract, error) {
 	// try cache first
 	sc := p.cache.PullContract(addr)
 
 	// we still don't know the contract? call the db for that
 	if sc == nil {
 		var err error
-		sc, err = p.pg.Contract(storeCtx(), addr)
+		sc, err = p.pg.Contract(ctx, addr)
 		if err != nil {
 			return nil, err
 		}
@@ -51,13 +51,13 @@ func (p *proxy) Contract(addr *common.Address) (*types.Contract, error) {
 }
 
 // Contracts returns list of smart contracts at Ncogearthchain blockchain.
-func (p *proxy) Contracts(validatedOnly bool, cursor *string, count int32) (*types.ContractList, error) {
+func (p *proxy) Contracts(ctx context.Context, validatedOnly bool, cursor *string, count int32) (*types.ContractList, error) {
 	// go to the database for the list of contracts searched
-	rows, err := p.pg.Contracts(storeCtx(), validatedOnly, derefCursor(cursor), count)
+	rows, err := p.pg.Contracts(ctx, validatedOnly, derefCursor(cursor), count)
 	if err != nil {
 		return nil, err
 	}
-	total, err := p.pg.ContractCount(storeCtx(), validatedOnly)
+	total, err := p.pg.ContractCount(ctx, validatedOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -912,7 +912,7 @@ func tryExtractCustomProxyTarget(runtime []byte) common.Address {
 // ValidateContract tries to validate contract byte code using
 // provided source code. If successful, the contract information
 // is updated the the repository.
-func (p *proxy) ValidateContract(sc *types.Contract) error {
+func (p *proxy) ValidateContract(ctx context.Context, sc *types.Contract) error {
 	// get the byte code of the actual contract
 	tx, err := p.Transaction(&sc.TransactionHash)
 	if err != nil {
@@ -1121,7 +1121,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 				}
 				now := hexutil.Uint64(uint64(time.Now().Unix()))
 				sc.Validated = &now
-				if err := p.pg.UpdateContractValidation(storeCtx(), sc); err != nil {
+				if err := p.pg.UpdateContractValidation(ctx, sc); err != nil {
 					p.log.Errorf("contract validation (UUPS impl) failed due to db error; %s", err.Error())
 					return err
 				}
@@ -1210,7 +1210,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 							}
 							now := hexutil.Uint64(uint64(time.Now().Unix()))
 							sc.Validated = &now
-							if err := p.pg.UpdateContractValidation(storeCtx(), sc); err != nil {
+							if err := p.pg.UpdateContractValidation(ctx, sc); err != nil {
 								p.log.Errorf("contract validation (UUPS impl) failed due to db error; %s", err.Error())
 								return err
 							}
@@ -1278,7 +1278,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 			sc.Validated = &now
 
 			// write update to the database
-			if err := p.pg.UpdateContractValidation(storeCtx(), sc); err != nil {
+			if err := p.pg.UpdateContractValidation(ctx, sc); err != nil {
 				p.log.Errorf("contract validation failed due to db error; %s", err.Error())
 				return err
 			}
@@ -1375,7 +1375,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 					now := hexutil.Uint64(uint64(time.Now().Unix()))
 					sc.Validated = &now
 
-					if err := p.pg.UpdateContractValidation(storeCtx(), sc); err != nil {
+					if err := p.pg.UpdateContractValidation(ctx, sc); err != nil {
 						p.log.Errorf("contract validation (runtime) failed due to db error; %s", err.Error())
 						return err
 					}
@@ -1439,7 +1439,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 							}
 							now := hexutil.Uint64(uint64(time.Now().Unix()))
 							sc.Validated = &now
-							if err := p.pg.UpdateContractValidation(storeCtx(), sc); err != nil {
+							if err := p.pg.UpdateContractValidation(ctx, sc); err != nil {
 								p.log.Errorf("contract validation (EIP-1167 impl) failed due to db error; %s", err.Error())
 								return err
 							}
@@ -1503,7 +1503,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 							}
 							now := hexutil.Uint64(uint64(time.Now().Unix()))
 							sc.Validated = &now
-							if err := p.pg.UpdateContractValidation(storeCtx(), sc); err != nil {
+							if err := p.pg.UpdateContractValidation(ctx, sc); err != nil {
 								p.log.Errorf("contract validation (custom proxy impl) failed due to db error; %s", err.Error())
 								return err
 							}
@@ -1579,7 +1579,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 								}
 								now := hexutil.Uint64(uint64(time.Now().Unix()))
 								sc.Validated = &now
-								if err := p.pg.UpdateContractValidation(storeCtx(), sc); err != nil {
+								if err := p.pg.UpdateContractValidation(ctx, sc); err != nil {
 									p.log.Errorf("contract validation (proxy impl) failed due to db error; %s", err.Error())
 									return err
 								}
@@ -1638,7 +1638,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 								}
 								now := hexutil.Uint64(uint64(time.Now().Unix()))
 								sc.Validated = &now
-								if err := p.pg.UpdateContractValidation(storeCtx(), sc); err != nil {
+								if err := p.pg.UpdateContractValidation(ctx, sc); err != nil {
 									p.log.Errorf("contract validation (proxy impl) failed due to db error; %s", err.Error())
 									return err
 								}
@@ -1691,7 +1691,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 															}
 															now := hexutil.Uint64(uint64(time.Now().Unix()))
 															sc.Validated = &now
-															if err := p.pg.UpdateContractValidation(storeCtx(), sc); err != nil {
+															if err := p.pg.UpdateContractValidation(ctx, sc); err != nil {
 																p.log.Errorf("contract validation (beacon impl) failed due to db error; %s", err.Error())
 																return err
 															}
@@ -1802,7 +1802,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 
 										now := hexutil.Uint64(uint64(time.Now().Unix()))
 										sc.Validated = &now
-										if err := p.pg.UpdateContractValidation(storeCtx(), sc); err != nil {
+										if err := p.pg.UpdateContractValidation(ctx, sc); err != nil {
 											p.log.Errorf("contract validation (proxy impl alt) failed due to db error; %s", err.Error())
 											return err
 										}
@@ -1827,13 +1827,13 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 // - Detect proxy (EIP-1167, EIP-1967, Beacon)
 // - If parent not verified: return parent address and instruction message
 // - If parent verified: link proxy -> implementation, copy ABI/metadata, mark proxy validated
-func (p *proxy) VerifyProxyContract(addr *common.Address) (*types.Contract, *common.Address, bool, string, error) {
+func (p *proxy) VerifyProxyContract(ctx context.Context, addr *common.Address) (*types.Contract, *common.Address, bool, string, error) {
 	if addr == nil {
 		return nil, nil, false, "no address provided", fmt.Errorf("no address provided")
 	}
 
 	// Load contract from DB
-	con, err := p.pg.Contract(storeCtx(), addr)
+	con, err := p.pg.Contract(ctx, addr)
 	if err != nil {
 		return nil, nil, false, "failed to load contract", err
 	}
@@ -1882,7 +1882,7 @@ func (p *proxy) VerifyProxyContract(addr *common.Address) (*types.Contract, *com
 		return con, nil, false, "A corresponding implementation contract was unfortunately not detected for the proxy address", nil
 	}
 
-	implCon, derr := p.pg.Contract(storeCtx(), &implAddr)
+	implCon, derr := p.pg.Contract(ctx, &implAddr)
 	if derr != nil {
 		return con, &implAddr, false, "failed to load implementation contract", derr
 	}
@@ -1925,7 +1925,7 @@ func (p *proxy) VerifyProxyContract(addr *common.Address) (*types.Contract, *com
 
 	now := hexutil.Uint64(uint64(time.Now().Unix()))
 	con.Validated = &now
-	if err := p.pg.UpdateContractValidation(storeCtx(), con); err != nil {
+	if err := p.pg.UpdateContractValidation(ctx, con); err != nil {
 		return con, &implAddr, false, "failed to update proxy contract", err
 	}
 	p.cache.EvictContract(&con.Address)
@@ -1934,12 +1934,12 @@ func (p *proxy) VerifyProxyContract(addr *common.Address) (*types.Contract, *com
 }
 
 // StoreContract adds new contract into the repository.
-func (p *proxy) StoreContract(con *types.Contract) error {
+func (p *proxy) StoreContract(ctx context.Context, con *types.Contract) error {
 	// is the a known contract which will be updated?
-	isUpdate, _ := p.pg.IsContractKnown(storeCtx(), &con.Address)
+	isUpdate, _ := p.pg.IsContractKnown(ctx, &con.Address)
 
 	// do the add/update op
-	if err := p.pg.AddContract(storeCtx(), con); err != nil {
+	if err := p.pg.AddContract(ctx, con); err != nil {
 		p.log.Errorf("contract %s store failed; %s", con.Address.String(), err.Error())
 		return err
 	}

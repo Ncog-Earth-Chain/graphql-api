@@ -223,8 +223,8 @@ func (p *proxy) Close() {
 }
 
 // Erc721Assets returns all ERC721 contracts where the owner has a balance > 0.
-func (p *proxy) Erc721Assets(owner common.Address, count int32) ([]common.Address, error) {
-	contracts, err := p.Erc721ContractsList(count)
+func (p *proxy) Erc721Assets(ctx context.Context, owner common.Address, count int32) ([]common.Address, error) {
+	contracts, err := p.Erc721ContractsList(ctx, count)
 	if err != nil {
 		return nil, err
 	}
@@ -254,11 +254,11 @@ type TokenSummary struct {
 }
 
 // TokenSummariesByAddress aggregates all token types for a wallet address.
-func (p *proxy) TokenSummariesByAddress(addr common.Address, count int32) ([]TokenSummary, error) {
+func (p *proxy) TokenSummariesByAddress(ctx context.Context, addr common.Address, count int32) ([]TokenSummary, error) {
 	var summaries []TokenSummary
 
 	// ERC20 tokens
-	erc20Tokens, err := p.Erc20Assets(addr, count)
+	erc20Tokens, err := p.Erc20Assets(ctx, addr, count)
 	if err != nil {
 		p.log.Errorf("Erc20Assets error for %s: %v", addr.Hex(), err)
 		return summaries, err
@@ -336,7 +336,7 @@ func (p *proxy) TokenSummariesByAddress(addr common.Address, count int32) ([]Tok
 	}
 
 	// ERC721 tokens (NFTs)
-	erc721Tokens, err := p.Erc721Assets(addr, count)
+	erc721Tokens, err := p.Erc721Assets(ctx, addr, count)
 	if err == nil {
 		for _, tokenAddr := range erc721Tokens {
 			name, _ := p.Erc721Name(&tokenAddr)

@@ -2,6 +2,7 @@
 package resolvers
 
 import (
+	"context"
 	"ncogearthchain-api-graphql/internal/repository"
 	"ncogearthchain-api-graphql/internal/types"
 
@@ -50,9 +51,9 @@ func (wr WithdrawRequest) Amount() hexutil.Big {
 }
 
 // Account resolves the account detail of the partial withdraw request.
-func (wr WithdrawRequest) Account() (*Account, error) {
+func (wr WithdrawRequest) Account(ctx context.Context) (*Account, error) {
 	// get the account detail by address
-	acc, err := repository.R().Account(&wr.Address)
+	acc, err := repository.R().Account(ctx, &wr.Address)
 	if err != nil {
 		return nil, err
 	}

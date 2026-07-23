@@ -1,6 +1,7 @@
 package resolvers
 
 import (
+	"context"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/repository"
 	"ncogearthchain-api-graphql/internal/types"
@@ -10,7 +11,7 @@ import (
 )
 
 // Erc20Transactions resolves list of ERC20 transactions.
-func (rs *rootResolver) Erc20Transactions(args struct {
+func (rs *rootResolver) Erc20Transactions(ctx context.Context, args struct {
 	Cursor  *Cursor
 	Count   int32
 	Token   *common.Address
@@ -22,7 +23,7 @@ func (rs *rootResolver) Erc20Transactions(args struct {
 	args.Count = listLimitCount(args.Count, accMaxTransactionsPerRequest)
 
 	// get the transaction hash list from repository
-	tl, err := repository.R().TokenTransactions(
+	tl, err := repository.R().TokenTransactions(ctx,
 		types.AccountTypeERC20Token,
 		args.Token,
 		nil,
@@ -39,7 +40,7 @@ func (rs *rootResolver) Erc20Transactions(args struct {
 }
 
 // Erc721Transactions resolves list of ERC721 transactions.
-func (rs *rootResolver) Erc721Transactions(args struct {
+func (rs *rootResolver) Erc721Transactions(ctx context.Context, args struct {
 	Cursor  *Cursor
 	Count   int32
 	Token   *common.Address
@@ -52,7 +53,7 @@ func (rs *rootResolver) Erc721Transactions(args struct {
 	args.Count = listLimitCount(args.Count, accMaxTransactionsPerRequest)
 
 	// get the transaction hash list from repository
-	tl, err := repository.R().TokenTransactions(
+	tl, err := repository.R().TokenTransactions(ctx,
 		types.AccountTypeERC721Contract,
 		args.Token,
 		(*big.Int)(args.TokenId),
@@ -69,7 +70,7 @@ func (rs *rootResolver) Erc721Transactions(args struct {
 }
 
 // Erc1155Transactions resolves list of ERC1155 transactions.
-func (rs *rootResolver) Erc1155Transactions(args struct {
+func (rs *rootResolver) Erc1155Transactions(ctx context.Context, args struct {
 	Cursor  *Cursor
 	Count   int32
 	Token   *common.Address
@@ -82,7 +83,7 @@ func (rs *rootResolver) Erc1155Transactions(args struct {
 	args.Count = listLimitCount(args.Count, accMaxTransactionsPerRequest)
 
 	// get the transaction hash list from repository
-	tl, err := repository.R().TokenTransactions(
+	tl, err := repository.R().TokenTransactions(ctx,
 		types.AccountTypeERC1155Contract,
 		args.Token,
 		(*big.Int)(args.TokenId),

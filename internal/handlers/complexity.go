@@ -44,11 +44,11 @@ var fieldWeights = map[string]int{
 	"internalTransactions": 100,
 
 	// one uncached node round-trip per item (two, where a receipt is also needed)
-	"txList":       2,
-	"transaction":  2,
-	"block":        2,
-	"parent":       2,
-	"contract":     2,
+	"txList":         2,
+	"transaction":    2,
+	"block":          2,
+	"parent":         2,
+	"contract":       2,
 	"erc20TokenList": 2,
 
 	// live contract calls, one per asset

@@ -200,13 +200,13 @@ func (nec *NecBridge) ObservedBlockProxy() chan *etc.Header {
 	return nec.headers
 }
 
-func (br *NecBridge) TraceBlockByNumber(number hexutil.Uint64, params map[string]interface{}) (interface{}, error) {
+func (br *NecBridge) TraceBlockByNumber(ctx context.Context, number hexutil.Uint64, params map[string]interface{}) (interface{}, error) {
 	var result interface{}
 	var err error
 	if params != nil {
-		err = br.rpc.CallContext(context.Background(), &result, "debug_traceBlockByNumber", number, params)
+		err = br.rpc.CallContext(ctx, &result, "debug_traceBlockByNumber", number, params)
 	} else {
-		err = br.rpc.CallContext(context.Background(), &result, "debug_traceBlockByNumber", number)
+		err = br.rpc.CallContext(ctx, &result, "debug_traceBlockByNumber", number)
 	}
 	if err != nil {
 		return nil, err
@@ -214,13 +214,13 @@ func (br *NecBridge) TraceBlockByNumber(number hexutil.Uint64, params map[string
 	return result, nil
 }
 
-func (br *NecBridge) TraceBlockByHash(hash common.Hash, params map[string]interface{}) (interface{}, error) {
+func (br *NecBridge) TraceBlockByHash(ctx context.Context, hash common.Hash, params map[string]interface{}) (interface{}, error) {
 	var result interface{}
 	var err error
 	if params != nil {
-		err = br.rpc.CallContext(context.Background(), &result, "debug_traceBlockByHash", hash, params)
+		err = br.rpc.CallContext(ctx, &result, "debug_traceBlockByHash", hash, params)
 	} else {
-		err = br.rpc.CallContext(context.Background(), &result, "debug_traceBlockByHash", hash)
+		err = br.rpc.CallContext(ctx, &result, "debug_traceBlockByHash", hash)
 	}
 	if err != nil {
 		return nil, err
@@ -229,13 +229,13 @@ func (br *NecBridge) TraceBlockByHash(hash common.Hash, params map[string]interf
 }
 
 // TraceTransaction fetches the execution-trace for the given transaction hash.
-func (br *NecBridge) TraceTransaction(txHash common.Hash, params map[string]interface{}) (interface{}, error) {
+func (br *NecBridge) TraceTransaction(ctx context.Context, txHash common.Hash, params map[string]interface{}) (interface{}, error) {
 	var result interface{}
 	var err error
 	if params != nil {
-		err = br.rpc.CallContext(context.Background(), &result, "debug_traceTransaction", txHash, params)
+		err = br.rpc.CallContext(ctx, &result, "debug_traceTransaction", txHash, params)
 	} else {
-		err = br.rpc.CallContext(context.Background(), &result, "debug_traceTransaction", txHash)
+		err = br.rpc.CallContext(ctx, &result, "debug_traceTransaction", txHash)
 	}
 	if err != nil {
 		return nil, err

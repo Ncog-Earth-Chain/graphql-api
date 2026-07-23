@@ -2,6 +2,7 @@
 package resolvers
 
 import (
+	"context"
 	"ncogearthchain-api-graphql/internal/repository"
 	"ncogearthchain-api-graphql/internal/types"
 
@@ -63,7 +64,7 @@ func (dle *DelegationListEdge) Cursor() Cursor {
 }
 
 // DelegationsOf resolves a list of delegations information of a staker.
-func (rs *rootResolver) DelegationsOf(args *struct {
+func (rs *rootResolver) DelegationsOf(ctx context.Context, args *struct {
 	Staker hexutil.Big
 	Cursor *Cursor
 	Count  int32
@@ -73,7 +74,7 @@ func (rs *rootResolver) DelegationsOf(args *struct {
 	args.Count = listLimitCount(args.Count, listMaxEdgesPerRequest)
 
 	// get the list
-	dl, err := repository.R().DelegationsOfValidator(&args.Staker, (*string)(args.Cursor), args.Count)
+	dl, err := repository.R().DelegationsOfValidator(ctx, &args.Staker, (*string)(args.Cursor), args.Count)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +84,7 @@ func (rs *rootResolver) DelegationsOf(args *struct {
 }
 
 // DelegationsByAddress resolves a list of own delegations by the account address.
-func (rs *rootResolver) DelegationsByAddress(args *struct {
+func (rs *rootResolver) DelegationsByAddress(ctx context.Context, args *struct {
 	Address common.Address
 	Cursor  *Cursor
 	Count   int32
@@ -93,7 +94,7 @@ func (rs *rootResolver) DelegationsByAddress(args *struct {
 	args.Count = listLimitCount(args.Count, listMaxEdgesPerRequest)
 
 	// get the list of delegations
-	dl, err := repository.R().DelegationsByAddress(&args.Address, (*string)(args.Cursor), args.Count)
+	dl, err := repository.R().DelegationsByAddress(ctx, &args.Address, (*string)(args.Cursor), args.Count)
 	if err != nil {
 		return nil, err
 	}

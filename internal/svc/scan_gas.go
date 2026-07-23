@@ -171,7 +171,7 @@ func (gps *gpsMonitor) flip() {
 // store this period worth of data into the persistent storage.
 func (gps *gpsMonitor) store(now time.Time) {
 	// prep and store the period data
-	err := repo.StoreGasPricePeriod(&types.GasPricePeriod{
+	err := repo.StoreGasPricePeriod(bgCtx(), &types.GasPricePeriod{
 		Type:  types.GasPricePeriodTypeSuggestion,
 		Open:  gps.ticks[0],
 		Close: gps.ticks[gps.count-1],

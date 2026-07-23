@@ -1,6 +1,7 @@
 package resolvers
 
 import (
+	"context"
 	"math"
 	"ncogearthchain-api-graphql/internal/repository"
 	"ncogearthchain-api-graphql/internal/types"
@@ -17,7 +18,7 @@ const maxGasPriceListRange = 90 * 24 * time.Hour
 type GasPriceTick types.GasPricePeriod
 
 // GasPriceList resolves a list of gas price ticks for the given time period.
-func (rs *rootResolver) GasPriceList(args struct {
+func (rs *rootResolver) GasPriceList(ctx context.Context, args struct {
 	From time.Time
 	To   *time.Time
 }) ([]*GasPriceTick, error) {
@@ -35,7 +36,7 @@ func (rs *rootResolver) GasPriceList(args struct {
 	}
 
 	// pull the data
-	ticks, err := repository.R().GasPriceTicks(&args.From, args.To)
+	ticks, err := repository.R().GasPriceTicks(ctx, &args.From, args.To)
 	if err != nil {
 		return nil, err
 	}

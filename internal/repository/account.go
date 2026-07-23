@@ -9,6 +9,7 @@ results. BigCache for in-memory object storage to speed up loading of frequently
 package repository
 
 import (
+	"context"
 	"fmt"
 	"ncogearthchain-api-graphql/internal/types"
 
@@ -17,13 +18,13 @@ import (
 )
 
 // Account returns account at Ncogearthchain blockchain for an address, nil if not found.
-func (p *proxy) Account(addr *common.Address) (acc *types.Account, err error) {
+func (p *proxy) Account(ctx context.Context, addr *common.Address) (acc *types.Account, err error) {
 	// try to get the account from cache
 	acc = p.cache.PullAccount(addr)
 
 	// we still don't know the account? try to manually construct it if possible
 	if acc == nil {
-		acc, err = p.getAccount(addr)
+		acc, err = p.getAccount(ctx, addr)
 		if err != nil {
 			return nil, err
 		}
@@ -34,7 +35,7 @@ func (p *proxy) Account(addr *common.Address) (acc *types.Account, err error) {
 }
 
 // getAccount builds the account representation after validating it against Forest node.
-func (p *proxy) getAccount(addr *common.Address) (*types.Account, error) {
+func (p *proxy) getAccount(ctx context.Context, addr *common.Address) (*types.Account, error) {
 	// any address given?
 	if addr == nil {
 		p.log.Error("no address given")
@@ -42,7 +43,7 @@ func (p *proxy) getAccount(addr *common.Address) (*types.Account, error) {
 	}
 
 	// try to get the account from database first
-	acc, err := p.pg.Account(storeCtx(), addr)
+	acc, err := p.pg.Account(ctx, addr)
 	if err != nil {
 		p.log.Errorf("can not get the account %s; %s", addr.String(), err.Error())
 		return nil, err
@@ -57,7 +58,7 @@ func (p *proxy) getAccount(addr *common.Address) (*types.Account, error) {
 		acc = &types.Account{Address: *addr, Type: types.AccountTypeWallet}
 
 		// check if this is a smart contract account; we log the error on the call
-		acc.ContractTx, _ = p.pg.ContractTransaction(storeCtx(), addr)
+		acc.ContractTx, _ = p.pg.ContractTransaction(ctx, addr)
 	}
 
 	// also keep a copy at the in-memory cache
@@ -78,7 +79,7 @@ func (p *proxy) AccountNonce(addr *common.Address) (*hexutil.Uint64, error) {
 }
 
 // AccountTransactions returns slice of AccountTransaction structure for a given account at Ncogearthchain blockchain.
-func (p *proxy) AccountTransactions(addr *common.Address, rec *common.Address, cursor *string, count int32) (*types.TransactionList, error) {
+func (p *proxy) AccountTransactions(ctx context.Context, addr *common.Address, rec *common.Address, cursor *string, count int32) (*types.TransactionList, error) {
 	// do we have an account?
 	if addr == nil {
 		return nil, fmt.Errorf("can not get transaction list for empty account")
@@ -88,12 +89,12 @@ func (p *proxy) AccountTransactions(addr *common.Address, rec *common.Address, c
 	// tx_account is keyed by address, which makes counting an account's transactions an
 	// index-only scan rather than the $or over the whole transaction collection that
 	// MongoDB needed (and that could time out and report the CHAIN's total instead).
-	list, err := p.pg.TransactionsByAccount(storeCtx(), addr, derefCursor(cursor), count)
+	list, err := p.pg.TransactionsByAccount(ctx, addr, derefCursor(cursor), count)
 	if err != nil {
 		return nil, err
 	}
 
-	total, err := p.pg.AccountTransactionCount(storeCtx(), addr)
+	total, err := p.pg.AccountTransactionCount(ctx, addr)
 	if err != nil {
 		return nil, err
 	}
@@ -102,13 +103,13 @@ func (p *proxy) AccountTransactions(addr *common.Address, rec *common.Address, c
 }
 
 // AccountsActive returns total number of accounts known to repository.
-func (p *proxy) AccountsActive() (hexutil.Uint64, error) {
-	val, err := p.pg.AccountCount(storeCtx())
+func (p *proxy) AccountsActive(ctx context.Context) (hexutil.Uint64, error) {
+	val, err := p.pg.AccountCount(ctx)
 	return hexutil.Uint64(val), err
 }
 
 // AccountIsKnown checks if the account of the given address is known to the API server.
-func (p *proxy) AccountIsKnown(addr *common.Address) bool {
+func (p *proxy) AccountIsKnown(ctx context.Context, addr *common.Address) bool {
 	// try cache first
 	stat := p.cache.CheckAccountKnown(addr)
 	if nil != stat {
@@ -116,7 +117,7 @@ func (p *proxy) AccountIsKnown(addr *common.Address) bool {
 	}
 
 	// check if the database knows the address
-	known, err := p.pg.IsAccountKnown(storeCtx(), addr)
+	known, err := p.pg.IsAccountKnown(ctx, addr)
 	if err != nil {
 		p.log.Errorf("can not check account %s existence; %s", addr.String(), err.Error())
 		return false
@@ -130,9 +131,9 @@ func (p *proxy) AccountIsKnown(addr *common.Address) bool {
 }
 
 // StoreAccount adds specified account detail into the repository.
-func (p *proxy) StoreAccount(acc *types.Account) error {
+func (p *proxy) StoreAccount(ctx context.Context, acc *types.Account) error {
 	// add this account to the database and remember it's been added
-	err := p.pg.AddAccount(storeCtx(), acc)
+	err := p.pg.AddAccount(ctx, acc)
 	if err == nil {
 		p.cache.PushAccountKnown(&acc.Address)
 	}

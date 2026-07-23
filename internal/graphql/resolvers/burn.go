@@ -2,6 +2,7 @@
 package resolvers
 
 import (
+	"context"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/repository"
 	"ncogearthchain-api-graphql/internal/types"
@@ -10,8 +11,8 @@ import (
 )
 
 // NecBurnedTotal resolves total amount of burned NEC tokens in WEI units.
-func (rs *rootResolver) NecBurnedTotal() hexutil.Big {
-	val, err := repository.R().NecBurnTotal()
+func (rs *rootResolver) NecBurnedTotal(ctx context.Context) hexutil.Big {
+	val, err := repository.R().NecBurnTotal(ctx)
 	if err != nil {
 		log.Criticalf("failed to load burned total; %s", err.Error())
 		return hexutil.Big{}
@@ -20,8 +21,8 @@ func (rs *rootResolver) NecBurnedTotal() hexutil.Big {
 }
 
 // NecBurnedTotalAmount resolves total amount of burned NEC tokens in NEC units.
-func (rs *rootResolver) NecBurnedTotalAmount() float64 {
-	val, err := repository.R().NecBurnTotal()
+func (rs *rootResolver) NecBurnedTotalAmount(ctx context.Context) float64 {
+	val, err := repository.R().NecBurnTotal(ctx)
 	if err != nil {
 		log.Criticalf("failed to load burned total; %s", err.Error())
 		return 0
@@ -30,9 +31,9 @@ func (rs *rootResolver) NecBurnedTotalAmount() float64 {
 }
 
 // NecLatestBlockBurnList resolves a list of the latest block burns.
-func (rs *rootResolver) NecLatestBlockBurnList(args struct{ Count int32 }) ([]types.NecBurn, error) {
+func (rs *rootResolver) NecLatestBlockBurnList(ctx context.Context, args struct{ Count int32 }) ([]types.NecBurn, error) {
 	if args.Count < 1 || args.Count > 50 {
 		args.Count = 25
 	}
-	return repository.R().NecBurnList(int64(args.Count))
+	return repository.R().NecBurnList(ctx, int64(args.Count))
 }

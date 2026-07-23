@@ -2,6 +2,7 @@
 package resolvers
 
 import (
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"html"
@@ -222,7 +223,7 @@ func updateContractFromInput(con *ContractValidationInput, sc *types.Contract) {
 // ValidateContract resolves smart contract source code vs. deployed byte code and marks
 // the contract as validated if the match is found. Peer API points are ringed on success
 // to notify them about the change.
-func (rs *rootResolver) ValidateContract(args *struct{ Contract ContractValidationInput }) (*Contract, error) {
+func (rs *rootResolver) ValidateContract(ctx context.Context, args *struct{ Contract ContractValidationInput }) (*Contract, error) {
 	// validate the input
 	if err := isValidationValid(&args.Contract); err != nil {
 		log.Errorf("can not validate contract, validation request is not valid; %s", err.Error())
@@ -230,7 +231,7 @@ func (rs *rootResolver) ValidateContract(args *struct{ Contract ContractValidati
 	}
 
 	// get a contract to be validated if any
-	sc, err := repository.R().Contract(&args.Contract.Address)
+	sc, err := repository.R().Contract(ctx, &args.Contract.Address)
 	if err != nil {
 		log.Errorf("contract [%s] not found", args.Contract.Address.String())
 		return nil, err
@@ -248,7 +249,7 @@ func (rs *rootResolver) ValidateContract(args *struct{ Contract ContractValidati
 	updateContractFromInput(&args.Contract, sc)
 
 	// do the validation
-	if err := repository.R().ValidateContract(sc); err != nil {
+	if err := repository.R().ValidateContract(ctx, sc); err != nil {
 		log.Errorf("contract validation failed; %s", err.Error())
 		return nil, err
 	}
@@ -263,8 +264,8 @@ func (rs *rootResolver) ValidateContract(args *struct{ Contract ContractValidati
 
 // VerifyProxyContract verifies a proxy address and either instructs to verify parent first,
 // or links the proxy to already-verified implementation and marks it verified.
-func (rs *rootResolver) VerifyProxyContract(args *struct{ Address common.Address }) (*VerifyProxyResult, error) {
-	proxyCon, parentAddr, ok, msg, err := repository.R().VerifyProxyContract(&args.Address)
+func (rs *rootResolver) VerifyProxyContract(ctx context.Context, args *struct{ Address common.Address }) (*VerifyProxyResult, error) {
+	proxyCon, parentAddr, ok, msg, err := repository.R().VerifyProxyContract(ctx, &args.Address)
 	if err != nil {
 		return nil, err
 	}

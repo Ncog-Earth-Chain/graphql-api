@@ -2,6 +2,7 @@
 package resolvers
 
 import (
+	"context"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/repository"
 	"ncogearthchain-api-graphql/internal/types"
@@ -29,12 +30,12 @@ func NewDelegation(d *types.Delegation) *Delegation {
 }
 
 // Delegation resolves details of a delegator by it's address.
-func (rs *rootResolver) Delegation(args *struct {
+func (rs *rootResolver) Delegation(ctx context.Context, args *struct {
 	Address common.Address
 	Staker  hexutil.Big
 }) (*Delegation, error) {
 	// get the delegator detail from backend
-	d, err := repository.R().Delegation(&args.Address, &args.Staker)
+	d, err := repository.R().Delegation(ctx, &args.Address, &args.Staker)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +66,7 @@ func (del Delegation) ToStakerId() hexutil.Big {
 }
 
 // Amount returns total delegated amount for the delegator.
-func (del Delegation) Amount() (hexutil.Big, error) {
+func (del Delegation) Amount(ctx context.Context) (hexutil.Big, error) {
 	// get the base amount delegated
 	base, err := repository.R().DelegationAmountStaked(&del.Address, del.Delegation.ToStakerId)
 	if err != nil {
@@ -73,7 +74,7 @@ func (del Delegation) Amount() (hexutil.Big, error) {
 	}
 
 	// get the sum of all pending withdrawals
-	wd, err := del.pendingWithdrawalsValue()
+	wd, err := del.pendingWithdrawalsValue(ctx)
 	if err != nil {
 		return hexutil.Big{}, err
 	}
@@ -83,10 +84,10 @@ func (del Delegation) Amount() (hexutil.Big, error) {
 
 // pendingWithdrawalsValue returns total amount of tokens
 // locked in pending withdrawals for the delegation.
-func (del Delegation) pendingWithdrawalsValue() (*big.Int, error) {
+func (del Delegation) pendingWithdrawalsValue(ctx context.Context) (*big.Int, error) {
 	// call for it only once
 	val, err, _ := del.cg.Do("withdraw-total", func() (interface{}, error) {
-		return repository.R().WithdrawRequestsPendingTotal(&del.Address, del.Delegation.ToStakerId)
+		return repository.R().WithdrawRequestsPendingTotal(ctx, &del.Address, del.Delegation.ToStakerId)
 	})
 	if err != nil {
 		return nil, err
@@ -95,8 +96,8 @@ func (del Delegation) pendingWithdrawalsValue() (*big.Int, error) {
 }
 
 // AmountInWithdraw returns total delegated amount in pending withdrawals for the delegator.
-func (del Delegation) AmountInWithdraw() (hexutil.Big, error) {
-	val, err := del.pendingWithdrawalsValue()
+func (del Delegation) AmountInWithdraw(ctx context.Context) (hexutil.Big, error) {
+	val, err := del.pendingWithdrawalsValue(ctx)
 	if err != nil {
 		return hexutil.Big{}, err
 	}
@@ -113,8 +114,8 @@ func (del Delegation) PendingRewards() (types.PendingRewards, error) {
 }
 
 // ClaimedReward resolves the total amount of rewards received on the delegation.
-func (del Delegation) ClaimedReward() (hexutil.Big, error) {
-	val, err := repository.R().RewardsClaimed(&del.Address, (*big.Int)(del.Delegation.ToStakerId), nil, nil)
+func (del Delegation) ClaimedReward(ctx context.Context) (hexutil.Big, error) {
+	val, err := repository.R().RewardsClaimed(ctx, &del.Address, (*big.Int)(del.Delegation.ToStakerId), nil, nil)
 	if err != nil {
 		return hexutil.Big{}, err
 	}
@@ -122,7 +123,7 @@ func (del Delegation) ClaimedReward() (hexutil.Big, error) {
 }
 
 // WithdrawRequests resolves partial withdraw requests of the delegator.
-func (del Delegation) WithdrawRequests(args struct {
+func (del Delegation) WithdrawRequests(ctx context.Context, args struct {
 	Cursor *Cursor
 	Count  int32
 }) ([]WithdrawRequest, error) {
@@ -131,7 +132,7 @@ func (del Delegation) WithdrawRequests(args struct {
 	args.Count = listLimitCount(args.Count, listMaxEdgesPerRequest)
 
 	// pull list of withdrawals
-	wr, err := repository.R().WithdrawRequests(&del.Address, del.Delegation.ToStakerId, (*string)(args.Cursor), args.Count)
+	wr, err := repository.R().WithdrawRequests(ctx, &del.Address, del.Delegation.ToStakerId, (*string)(args.Cursor), args.Count)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +148,7 @@ func (del Delegation) WithdrawRequests(args struct {
 }
 
 // RewardClaims resolves list of reward claims of the delegation.
-func (del Delegation) RewardClaims(args struct {
+func (del Delegation) RewardClaims(ctx context.Context, args struct {
 	Cursor *Cursor
 	Count  int32
 }) (*RewardClaimList, error) {
@@ -156,7 +157,7 @@ func (del Delegation) RewardClaims(args struct {
 	args.Count = listLimitCount(args.Count, listMaxEdgesPerRequest)
 
 	// pull list of withdrawals
-	cl, err := repository.R().RewardClaims(&del.Address, (*big.Int)(del.Delegation.ToStakerId), (*string)(args.Cursor), args.Count)
+	cl, err := repository.R().RewardClaims(ctx, &del.Address, (*big.Int)(del.Delegation.ToStakerId), (*string)(args.Cursor), args.Count)
 	if err != nil {
 		return nil, err
 	}

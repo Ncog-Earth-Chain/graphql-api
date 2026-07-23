@@ -87,7 +87,7 @@ func (acd *accDispatcher) process(acc *eventAcc) error {
 	log.Debugf("account %s received for processing", acc.addr.String())
 
 	// check if the account is new; if we already know it, we are done
-	if repo.AccountIsKnown(acc.addr) {
+	if repo.AccountIsKnown(bgCtx(), acc.addr) {
 		return repo.AccountMarkActivity(acc.addr, uint64(acc.blk.TimeStamp))
 	}
 
@@ -112,7 +112,7 @@ func (acd *accDispatcher) wallet(acc *eventAcc) error {
 	acd.checkSfc(acc)
 
 	// add the account into the database
-	err := repo.StoreAccount(&types.Account{
+	err := repo.StoreAccount(bgCtx(), &types.Account{
 		Address:      *acc.addr,
 		ContractTx:   acc.deploy,
 		Type:         acc.act,
@@ -140,7 +140,7 @@ func (acd *accDispatcher) checkSfc(acc *eventAcc) {
 			log.Debugf("detected SFC contract %d.%d.%d", byte((ver>>16)&255), byte((ver>>8)&255), byte(ver&255))
 
 			// add the contract
-			err = repo.StoreContract(types.NewSfcContract(acc.addr, uint64(ver), acc.blk, acc.trx))
+			err = repo.StoreContract(bgCtx(), types.NewSfcContract(acc.addr, uint64(ver), acc.blk, acc.trx))
 			if err != nil {
 				log.Errorf("can not add the SFC contract at %s; %s", acc.addr.String(), err.Error())
 			}
@@ -163,7 +163,7 @@ func (acd *accDispatcher) processContract(acc *eventAcc) error {
 
 	// insert the contract record if possible
 	if contract != nil {
-		err = repo.StoreContract(contract)
+		err = repo.StoreContract(bgCtx(), contract)
 		if err != nil {
 			log.Errorf("can not add contract at %s; %s", acc.addr.String(), err.Error())
 			return err

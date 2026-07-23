@@ -2,6 +2,7 @@
 package resolvers
 
 import (
+	"context"
 	"ncogearthchain-api-graphql/internal/config"
 	"ncogearthchain-api-graphql/internal/repository"
 
@@ -36,8 +37,8 @@ func (cst CurrentState) Validators() (hexutil.Uint64, error) {
 }
 
 // Accounts resolves the number of accounts participating on chain transactions.
-func (cst CurrentState) Accounts() (hexutil.Uint64, error) {
-	return repository.R().AccountsActive()
+func (cst CurrentState) Accounts(ctx context.Context) (hexutil.Uint64, error) {
+	return repository.R().AccountsActive(ctx)
 }
 
 // Blocks resolves the total number of blocks in the chain.

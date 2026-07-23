@@ -101,7 +101,7 @@ func tokenTrxType(trxType int32, from common.Address, to common.Address) int32 {
 
 // storeTokenTransaction handles general token (ERC20/ERC721/ERC1155) transaction.
 func storeTokenTransaction(lr *types.LogRecord, tokenType string, eventType int32, from common.Address, to common.Address, amount big.Int, tokenId big.Int, seq uint16) {
-	if err := repo.StoreTokenTransaction(&types.TokenTransaction{
+	if err := repo.StoreTokenTransaction(bgCtx(), &types.TokenTransaction{
 		Transaction:  lr.TxHash,
 		TrxIndex:     hexutil.Uint64(uint64(lr.TxIndex)),
 		TokenAddress: lr.Address,

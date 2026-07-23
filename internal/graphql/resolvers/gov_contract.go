@@ -2,6 +2,7 @@
 package resolvers
 
 import (
+	"context"
 	"fmt"
 	"ncogearthchain-api-graphql/internal/repository"
 
@@ -98,11 +99,11 @@ func (gc *GovernanceContract) Proposals(args *struct {
 
 // DelegationsBy resolves list of delegations an address has in context of the given
 // governance contract.
-func (gc *GovernanceContract) DelegationsBy(args struct{ From common.Address }) ([]common.Address, error) {
+func (gc *GovernanceContract) DelegationsBy(ctx context.Context, args struct{ From common.Address }) ([]common.Address, error) {
 	// decide by the contract type
 	switch gc.Type {
 	case "sfc":
-		return gc.sfcDelegationsBy(args.From)
+		return gc.sfcDelegationsBy(ctx, args.From)
 	}
 
 	// no delegations by default
@@ -111,11 +112,11 @@ func (gc *GovernanceContract) DelegationsBy(args struct{ From common.Address }) 
 }
 
 // CanVote resolves if the given address can post votes in context of the given governance contract.
-func (gc *GovernanceContract) CanVote(args struct{ From common.Address }) (bool, error) {
+func (gc *GovernanceContract) CanVote(ctx context.Context, args struct{ From common.Address }) (bool, error) {
 	// decide by the contract type
 	switch gc.Type {
 	case "sfc":
-		return gc.sfcCanVote(args.From)
+		return gc.sfcCanVote(ctx, args.From)
 	}
 
 	// voting disabled by default
@@ -124,9 +125,9 @@ func (gc *GovernanceContract) CanVote(args struct{ From common.Address }) (bool,
 }
 
 // sfcDelegationsBy resolves delegations of the SFC type.
-func (gc *GovernanceContract) sfcDelegationsBy(addr common.Address) ([]common.Address, error) {
+func (gc *GovernanceContract) sfcDelegationsBy(ctx context.Context, addr common.Address) ([]common.Address, error) {
 	// get SFC delegations list
-	dl, err := repository.R().DelegationsByAddressAll(&addr)
+	dl, err := repository.R().DelegationsByAddressAll(ctx, &addr)
 	if err != nil {
 		return nil, err
 	}
@@ -148,9 +149,9 @@ func (gc *GovernanceContract) sfcDelegationsBy(addr common.Address) ([]common.Ad
 }
 
 // sfcCanVote resolves if a given address can vote in SFC governance context.
-func (gc *GovernanceContract) sfcCanVote(addr common.Address) (bool, error) {
+func (gc *GovernanceContract) sfcCanVote(ctx context.Context, addr common.Address) (bool, error) {
 	// even validators are actually delegating to themself on SFCv3
-	return repository.R().IsDelegating(&addr)
+	return repository.R().IsDelegating(ctx, &addr)
 }
 
 // ProposalFee resolves the fee required by the Governance contract to allow

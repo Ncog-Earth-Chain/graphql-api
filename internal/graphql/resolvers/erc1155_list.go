@@ -2,17 +2,18 @@
 package resolvers
 
 import (
+	"context"
 	"ncogearthchain-api-graphql/internal/repository"
 )
 
 // Erc1155ContractList resolves a list of ERC1155 multi-token contracts.
-func (rs *rootResolver) Erc1155ContractList(args struct{ Count int32 }) ([]*ERC1155Contract, error) {
+func (rs *rootResolver) Erc1155ContractList(ctx context.Context, args struct{ Count int32 }) ([]*ERC1155Contract, error) {
 	// limit query size; the count can be either positive or negative
 	// this controls the loading direction
 	args.Count = listLimitCount(args.Count, listMaxEdgesPerRequest)
 
 	// get the list of addresses of active tokens
-	al, err := repository.R().Erc1155ContractsList(args.Count)
+	al, err := repository.R().Erc1155ContractsList(ctx, args.Count)
 	if err != nil {
 		return nil, err
 	}

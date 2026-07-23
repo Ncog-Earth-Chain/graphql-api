@@ -37,7 +37,7 @@ func handleNewDelegation(lr *types.LogRecord, stakerID *big.Int, addr common.Add
 	}
 
 	// store the delegation
-	if err := repo.StoreDelegation(&dl); err != nil {
+	if err := repo.StoreDelegation(bgCtx(), &dl); err != nil {
 		log.Errorf("failed to store delegation; %s", err.Error())
 	}
 }
@@ -103,12 +103,12 @@ func handleNewWithdrawRequest(wrt string, adr common.Address, valID *big.Int, re
 	)
 
 	// store the request
-	if err := repo.StoreWithdrawRequest(&wr); err != nil {
+	if err := repo.StoreWithdrawRequest(bgCtx(), &wr); err != nil {
 		log.Errorf("failed to store new withdraw request; %s", err.Error())
 	}
 
 	// check active amount on the delegation
-	if err := repo.UpdateDelegationBalance(&wr.Address, wr.StakerID, func(amo *big.Int) error {
+	if err := repo.UpdateDelegationBalance(bgCtx(), &wr.Address, wr.StakerID, func(amo *big.Int) error {
 		return makeAdHocDelegation(lr, &wr.Address, wr.StakerID, amo)
 	}); err != nil {
 		log.Errorf("failed to update delegation; %s", err.Error())
@@ -120,7 +120,7 @@ func handleFinishedWithdrawRequest(adr common.Address, valID *big.Int, reqID *bi
 	// make sure the delegation balance will be updated
 	defer func() {
 		// check active amount on the delegation
-		if err := repo.UpdateDelegationBalance(&adr, (*hexutil.Big)(valID), func(amo *big.Int) error {
+		if err := repo.UpdateDelegationBalance(bgCtx(), &adr, (*hexutil.Big)(valID), func(amo *big.Int) error {
 			return makeAdHocDelegation(lr, &adr, (*hexutil.Big)(valID), amo)
 		}); err != nil {
 			log.Errorf("failed to update delegation; %s", err.Error())
@@ -136,7 +136,7 @@ func handleFinishedWithdrawRequest(adr common.Address, valID *big.Int, reqID *bi
 	)
 
 	// try to get the request from database
-	req, err := repo.WithdrawRequest(&adr, (*hexutil.Big)(valID), (*hexutil.Big)(reqID))
+	req, err := repo.WithdrawRequest(bgCtx(), &adr, (*hexutil.Big)(valID), (*hexutil.Big)(reqID))
 	if err != nil {
 		log.Errorf("can not load withdraw requests to finalise; %s", err.Error())
 		return
@@ -148,7 +148,7 @@ func handleFinishedWithdrawRequest(adr common.Address, valID *big.Int, reqID *bi
 	req.Penalty = (*hexutil.Big)(penalty)
 
 	// store the updated request
-	if err := repo.UpdateWithdrawRequest(req); err != nil {
+	if err := repo.UpdateWithdrawRequest(bgCtx(), req); err != nil {
 		log.Errorf("failed to store finalized withdraw request; %s", err.Error())
 	}
 }
@@ -183,7 +183,7 @@ func makeAdHocDelegation(lr *types.LogRecord, addr *common.Address, stakerID *he
 
 	// do the insert
 	log.Noticef("creating ad-hoc delegation of %s to #%d", addr.String(), stakerID.ToInt().Uint64())
-	return repo.StoreDelegation(&types.Delegation{
+	return repo.StoreDelegation(bgCtx(), &types.Delegation{
 		Transaction:     lr.TxHash,
 		Address:         *addr,
 		ToStakerId:      stakerID,

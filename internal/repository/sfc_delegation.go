@@ -9,6 +9,7 @@ results. BigCache for in-memory object storage to speed up loading of frequently
 package repository
 
 import (
+	"context"
 	"errors"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/repository/db/pg"
@@ -19,22 +20,22 @@ import (
 )
 
 // IsDelegating returns if the given address is an SFC delegator.
-func (p *proxy) IsDelegating(addr *common.Address) (bool, error) {
+func (p *proxy) IsDelegating(ctx context.Context, addr *common.Address) (bool, error) {
 	// count only active delegations (with non-zero value)
 	// IsDelegating asks the question directly rather than counting rows to compare
 	// against zero -- EXISTS stops at the first match.
-	return p.pg.IsDelegating(storeCtx(), addr)
+	return p.pg.IsDelegating(ctx, addr)
 }
 
 // StoreDelegation stores the delegation in persistent database.
-func (p *proxy) StoreDelegation(dl *types.Delegation) error {
+func (p *proxy) StoreDelegation(ctx context.Context, dl *types.Delegation) error {
 	// The block position comes from the delegation's creation transaction, which the
 	// caller has already resolved onto the record.
-	return p.pg.AddDelegation(storeCtx(), dl, uint64(dl.CreatedTime), 0)
+	return p.pg.AddDelegation(ctx, dl, uint64(dl.CreatedTime), 0)
 }
 
 // UpdateDelegationBalance updates active balance of the given delegation.
-func (p *proxy) UpdateDelegationBalance(addr *common.Address, valID *hexutil.Big, unknownDelegation func(*big.Int) error) error {
+func (p *proxy) UpdateDelegationBalance(ctx context.Context, addr *common.Address, valID *hexutil.Big, unknownDelegation func(*big.Int) error) error {
 	// pull the current value
 	val, err := p.DelegationAmountStaked(addr, valID)
 	if err != nil {
@@ -43,7 +44,7 @@ func (p *proxy) UpdateDelegationBalance(addr *common.Address, valID *hexutil.Big
 	}
 
 	// do the update
-	err = p.updateDelegationBalance(addr, valID, val)
+	err = p.updateDelegationBalance(ctx, addr, valID, val)
 	if err == nil {
 		return nil
 	}
@@ -60,9 +61,9 @@ func (p *proxy) UpdateDelegationBalance(addr *common.Address, valID *hexutil.Big
 }
 
 // updateDelegationBalance performs delegation balance update if needed.
-func (p *proxy) updateDelegationBalance(addr *common.Address, valID *hexutil.Big, amo *big.Int) error {
+func (p *proxy) updateDelegationBalance(ctx context.Context, addr *common.Address, valID *hexutil.Big, amo *big.Int) error {
 	// get the delegation detail
-	dlg, err := p.Delegation(addr, valID)
+	dlg, err := p.Delegation(ctx, addr, valID)
 	if err != nil {
 		return err
 	}
@@ -74,7 +75,7 @@ func (p *proxy) updateDelegationBalance(addr *common.Address, valID *hexutil.Big
 
 	// update the delegation in DB and memory
 	dlg.AmountDelegated = (*hexutil.Big)(amo)
-	err = p.pg.UpdateDelegationBalance(storeCtx(), addr, valID, dlg.AmountDelegated)
+	err = p.pg.UpdateDelegationBalance(ctx, addr, valID, dlg.AmountDelegated)
 	if nil == err {
 		p.cache.PushDelegation(dlg)
 	}
@@ -82,7 +83,7 @@ func (p *proxy) updateDelegationBalance(addr *common.Address, valID *hexutil.Big
 }
 
 // Delegation returns a detail of delegation for the given address.
-func (p *proxy) Delegation(adr *common.Address, valID *hexutil.Big) (*types.Delegation, error) {
+func (p *proxy) Delegation(ctx context.Context, adr *common.Address, valID *hexutil.Big) (*types.Delegation, error) {
 	// log what we do
 	p.log.Debugf("accessing delegation of %s to #%d", adr.String(), valID.ToInt().Uint64())
 
@@ -93,7 +94,7 @@ func (p *proxy) Delegation(adr *common.Address, valID *hexutil.Big) (*types.Dele
 	}
 
 	// pull from DB instead; do we actually have it?
-	dlg, err := p.pg.Delegation(storeCtx(), adr, valID)
+	dlg, err := p.pg.Delegation(ctx, adr, valID)
 	if err != nil {
 		return nil, err
 	}
@@ -116,21 +117,21 @@ func (p *proxy) DelegationAmountStaked(addr *common.Address, valID *hexutil.Big)
 }
 
 // DelegationsByAddress returns a list of all delegations of a given delegator address.
-func (p *proxy) DelegationsByAddress(addr *common.Address, cursor *string, count int32) (*types.DelegationList, error) {
+func (p *proxy) DelegationsByAddress(ctx context.Context, addr *common.Address, cursor *string, count int32) (*types.DelegationList, error) {
 	p.log.Debugf("loading delegations of %s", addr.String())
-	return p.pg.DelegationsByDelegator(storeCtx(), addr, derefCursor(cursor), count)
+	return p.pg.DelegationsByDelegator(ctx, addr, derefCursor(cursor), count)
 }
 
 // DelegationsByAddressAll returns a list of all delegations of the given address un-paged.
-func (p *proxy) DelegationsByAddressAll(addr *common.Address) ([]*types.Delegation, error) {
+func (p *proxy) DelegationsByAddressAll(ctx context.Context, addr *common.Address) ([]*types.Delegation, error) {
 	p.log.Debugf("loading all delegations of %s", addr.String())
-	return p.pg.DelegationsByDelegatorAll(storeCtx(), addr, 0)
+	return p.pg.DelegationsByDelegatorAll(ctx, addr, 0)
 }
 
 // DelegationsOfValidator extract a list of delegations for a given validator.
-func (p *proxy) DelegationsOfValidator(valID *hexutil.Big, cursor *string, count int32) (*types.DelegationList, error) {
+func (p *proxy) DelegationsOfValidator(ctx context.Context, valID *hexutil.Big, cursor *string, count int32) (*types.DelegationList, error) {
 	p.log.Debugf("loading delegations of #%d", valID.ToInt().Uint64())
-	return p.pg.DelegationsByValidator(storeCtx(), valID, derefCursor(cursor), count)
+	return p.pg.DelegationsByValidator(ctx, valID, derefCursor(cursor), count)
 }
 
 // DelegationLock returns delegation lock information using SFC contract binding.

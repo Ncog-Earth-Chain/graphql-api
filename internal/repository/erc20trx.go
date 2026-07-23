@@ -9,6 +9,7 @@ results. BigCache for in-memory object storage to speed up loading of frequently
 package repository
 
 import (
+	"context"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/repository/db/pg"
 	"ncogearthchain-api-graphql/internal/types"
@@ -17,14 +18,14 @@ import (
 )
 
 // StoreTokenTransaction stores ERC20/ERC721/ERC1155 transaction into the repository.
-func (p *proxy) StoreTokenTransaction(trx *types.TokenTransaction) error {
-	return p.pg.StoreTokenTransaction(storeCtx(), trx)
+func (p *proxy) StoreTokenTransaction(ctx context.Context, trx *types.TokenTransaction) error {
+	return p.pg.StoreTokenTransaction(ctx, trx)
 }
 
 // TokenTransactionsByCall provides a list of token transaction made inside a specific
 // transaction call (blockchain transaction).
-func (p *proxy) TokenTransactionsByCall(trxHash *common.Hash) ([]*types.TokenTransaction, error) {
-	return p.pg.TokenTransactionsByCall(storeCtx(), trxHash)
+func (p *proxy) TokenTransactionsByCall(ctx context.Context, trxHash *common.Hash) ([]*types.TokenTransaction, error) {
+	return p.pg.TokenTransactionsByCall(ctx, trxHash)
 }
 
 // TokenTransactions provides list of ERC20/ERC721/ERC1155 transactions based on given filters.
@@ -33,8 +34,8 @@ func (p *proxy) TokenTransactionsByCall(trxHash *common.Hash) ([]*types.TokenTra
 // not being a seam: MongoDB's query language was built HERE, above it, so the storage
 // could not be swapped without rewriting its callers. The criteria are now a typed struct
 // the store renders to SQL itself.
-func (p *proxy) TokenTransactions(tokenType string, token *common.Address, tokenId *big.Int, acc *common.Address, txType []int32, cursor *string, count int32) (*types.TokenTransactionList, error) {
-	return p.pg.TokenTransactions(storeCtx(), pg.TokenTxCriteria{
+func (p *proxy) TokenTransactions(ctx context.Context, tokenType string, token *common.Address, tokenId *big.Int, acc *common.Address, txType []int32, cursor *string, count int32) (*types.TokenTransactionList, error) {
+	return p.pg.TokenTransactions(ctx, pg.TokenTxCriteria{
 		TokenType:  tokenType,
 		Token:      token,
 		TokenId:    tokenId,
@@ -44,6 +45,6 @@ func (p *proxy) TokenTransactions(tokenType string, token *common.Address, token
 }
 
 // Erc20Assets provides a list of known assets for the given owner.
-func (p *proxy) Erc20Assets(owner common.Address, count int32) ([]common.Address, error) {
-	return p.pg.TokenAssetsByOwner(storeCtx(), &owner, types.AccountTypeERC20Token, count)
+func (p *proxy) Erc20Assets(ctx context.Context, owner common.Address, count int32) ([]common.Address, error) {
+	return p.pg.TokenAssetsByOwner(ctx, &owner, types.AccountTypeERC20Token, count)
 }

@@ -15,7 +15,7 @@ func handleSfcRewardClaim(lr *types.LogRecord, addr common.Address, valID *hexut
 	log.Debugf("%s claimed %d in stake to #%d", addr.String(), amo.Uint64(), valID.ToInt().Uint64())
 
 	// add the rewards claim into the repository
-	if err := repo.StoreRewardClaim(&types.RewardClaim{
+	if err := repo.StoreRewardClaim(bgCtx(), &types.RewardClaim{
 		Delegator:     addr,
 		ToValidatorId: *valID,
 		Claimed:       lr.Block.TimeStamp,
@@ -28,7 +28,7 @@ func handleSfcRewardClaim(lr *types.LogRecord, addr common.Address, valID *hexut
 	}
 
 	// check active amount on the delegation
-	if err := repo.UpdateDelegationBalance(&addr, valID, func(amo *big.Int) error {
+	if err := repo.UpdateDelegationBalance(bgCtx(), &addr, valID, func(amo *big.Int) error {
 		return makeAdHocDelegation(lr, &addr, valID, amo)
 	}); err != nil {
 		log.Errorf("failed to update delegation; %s", err.Error())

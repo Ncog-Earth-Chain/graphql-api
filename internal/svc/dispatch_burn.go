@@ -92,7 +92,7 @@ func (bud *burnDispatcher) process(tx *eventTrx, burn *types.NecBurn) *types.Nec
 		val := float64(new(big.Int).Div((*big.Int)(&burn.Amount), types.BurnDecimalsCorrection).Int64()) / 1_000_000
 		log.Debugf("collected block burn of %.4f NEC at #%d", val, burn.BlockNumber)
 
-		if err := repo.StoreNecBurn(burn); err != nil {
+		if err := repo.StoreNecBurn(bgCtx(), burn); err != nil {
 			log.Warningf("could not store previous burn; %s", err.Error())
 		}
 

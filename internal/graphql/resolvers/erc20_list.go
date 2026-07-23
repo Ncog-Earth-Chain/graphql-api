@@ -2,19 +2,20 @@
 package resolvers
 
 import (
+	"context"
 	"ncogearthchain-api-graphql/internal/repository"
 
 	"github.com/ethereum/go-ethereum/common"
 )
 
 // Erc20TokenList resolves an instance of ERC20 token list if available.
-func (rs *rootResolver) Erc20TokenList(args struct{ Count int32 }) ([]*ERC20Token, error) {
+func (rs *rootResolver) Erc20TokenList(ctx context.Context, args struct{ Count int32 }) ([]*ERC20Token, error) {
 	// limit query size; the count can be either positive or negative
 	// this controls the loading direction
 	args.Count = listLimitCount(args.Count, listMaxEdgesPerRequest)
 
 	// get the list of addresses of active tokens
-	al, err := repository.R().Erc20TokensList(args.Count)
+	al, err := repository.R().Erc20TokensList(ctx, args.Count)
 	if err != nil {
 		return nil, err
 	}
@@ -29,7 +30,7 @@ func (rs *rootResolver) Erc20TokenList(args struct{ Count int32 }) ([]*ERC20Toke
 }
 
 // Erc20Assets resolves a list of instances of ERC20 tokens for the given owner.
-func (rs *rootResolver) Erc20Assets(args struct {
+func (rs *rootResolver) Erc20Assets(ctx context.Context, args struct {
 	Owner common.Address
 	Count int32
 }) ([]*ERC20Token, error) {
@@ -38,7 +39,7 @@ func (rs *rootResolver) Erc20Assets(args struct {
 	args.Count = listLimitCount(args.Count, listMaxEdgesPerRequest)
 
 	// get the list of addresses of active tokens for the owner
-	al, err := repository.R().Erc20Assets(args.Owner, args.Count)
+	al, err := repository.R().Erc20Assets(ctx, args.Owner, args.Count)
 	if err != nil {
 		return nil, err
 	}

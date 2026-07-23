@@ -9,6 +9,7 @@ results. BigCache for in-memory object storage to speed up loading of frequently
 package repository
 
 import (
+	"context"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/types"
 
@@ -16,20 +17,20 @@ import (
 )
 
 // StoreRewardClaim stores reward claim record in the persistent repository.
-func (p *proxy) StoreRewardClaim(rc *types.RewardClaim) error {
-	return p.pg.AddRewardClaim(storeCtx(), rc)
+func (p *proxy) StoreRewardClaim(ctx context.Context, rc *types.RewardClaim) error {
+	return p.pg.AddRewardClaim(ctx, rc)
 }
 
 // RewardClaims provides a list of reward claims for the given delegation and/or filter.
-func (p *proxy) RewardClaims(adr *common.Address, valID *big.Int, cursor *string, count int32) (*types.RewardClaimsList, error) {
+func (p *proxy) RewardClaims(ctx context.Context, adr *common.Address, valID *big.Int, cursor *string, count int32) (*types.RewardClaimsList, error) {
 	// Both filters are optional and both are now typed arguments; the store renders them
 	// to bound predicates. This replaces a bson.D built here, above the storage seam.
-	return p.pg.RewardClaims(storeCtx(), adr, valID, cursor, count)
+	return p.pg.RewardClaims(ctx, adr, valID, cursor, count)
 }
 
 // RewardsClaimed returns sum of all claimed rewards for the given delegator address and validator ID.
-func (p *proxy) RewardsClaimed(adr *common.Address, valId *big.Int, since *int64, until *int64) (*big.Int, error) {
+func (p *proxy) RewardsClaimed(ctx context.Context, adr *common.Address, valId *big.Int, since *int64, until *int64) (*big.Int, error) {
 	// All four filters are optional typed arguments now; the store renders them to bound
 	// predicates. This replaces a bson.D assembled above the storage seam.
-	return p.pg.RewardsClaimed(storeCtx(), adr, valId, since, until)
+	return p.pg.RewardsClaimed(ctx, adr, valId, since, until)
 }

@@ -2,6 +2,7 @@
 package resolvers
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/repository"
@@ -20,7 +21,7 @@ type DailyTrxVolume struct {
 }
 
 // TrxVolume resolves list of daily aggregations of the network transaction flow.
-func (rs *rootResolver) TrxVolume(args struct {
+func (rs *rootResolver) TrxVolume(ctx context.Context, args struct {
 	From *string
 	To   *string
 }) ([]*DailyTrxVolume, error) {
@@ -31,7 +32,7 @@ func (rs *rootResolver) TrxVolume(args struct {
 	}
 
 	// load data
-	dv, err := repository.R().TrxFlowVolume(from, to)
+	dv, err := repository.R().TrxFlowVolume(ctx, from, to)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +47,7 @@ func (rs *rootResolver) TrxVolume(args struct {
 
 // TrxGasSpeed resolves the gas consumption speed speed
 // of the network in transactions processed per second.
-func (rs *rootResolver) TrxGasSpeed(args struct {
+func (rs *rootResolver) TrxGasSpeed(ctx context.Context, args struct {
 	Range int32
 	To    *string
 }) (val float64, err error) {
@@ -69,18 +70,18 @@ func (rs *rootResolver) TrxGasSpeed(args struct {
 
 	// log what we do
 	log.Noticef("calculating gas speed from %s to %s", from.String(), to.String())
-	return repository.R().TrxGasSpeed(&from, &to)
+	return repository.R().TrxGasSpeed(ctx, &from, &to)
 }
 
 // TrxSpeed resolves the recent speed of the network in transactions processed per second.
-func (rs *rootResolver) TrxSpeed(args struct {
+func (rs *rootResolver) TrxSpeed(ctx context.Context, args struct {
 	Range int32
 }) (float64, error) {
 	// make sure to obey the minimal range
 	if args.Range < 60 {
 		args.Range = 60
 	}
-	return repository.R().TrxFlowSpeed(args.Range)
+	return repository.R().TrxFlowSpeed(ctx, args.Range)
 }
 
 // trxVolumeRange generates the time range for trx volume resolver.

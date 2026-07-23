@@ -98,7 +98,7 @@ func (bls *blkScanner) close() {
 // boundaries provides the block scanner initial range.
 func (bls *blkScanner) boundaries() (uint64, error) {
 	// get the newest known transaction
-	lnb, err := repo.LastKnownBlock()
+	lnb, err := repo.LastKnownBlock(bgCtx())
 	if err != nil {
 		log.Critical("can not scan blockchain; %s", err.Error())
 		return 0, err

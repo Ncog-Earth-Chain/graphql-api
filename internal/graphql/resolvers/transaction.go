@@ -2,6 +2,7 @@
 package resolvers
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/repository"
@@ -64,9 +65,9 @@ func (rs *rootResolver) SendTransaction(args *struct{ Tx hexutil.Bytes }) (*Tran
 }
 
 // Sender resolves sender's account of the transaction.
-func (trx *Transaction) Sender() (*Account, error) {
+func (trx *Transaction) Sender(ctx context.Context) (*Account, error) {
 	// get the sender by address
-	acc, err := repository.R().Account(&trx.From)
+	acc, err := repository.R().Account(ctx, &trx.From)
 	if err != nil {
 		return nil, err
 	}
@@ -75,14 +76,14 @@ func (trx *Transaction) Sender() (*Account, error) {
 }
 
 // Recipient resolves recipient's account of the transaction.
-func (trx *Transaction) Recipient() (*Account, error) {
+func (trx *Transaction) Recipient(ctx context.Context) (*Account, error) {
 	// no recipient available
 	if trx.To == nil {
 		return nil, nil
 	}
 
 	// get the recipient by address
-	acc, err := repository.R().Account(trx.To)
+	acc, err := repository.R().Account(ctx, trx.To)
 	if err != nil {
 		return nil, err
 	}
@@ -107,11 +108,11 @@ func (trx *Transaction) Block() (*Block, error) {
 }
 
 // tokenTransactions loads list of all token transaction related to this transaction call.
-func (trx *Transaction) tokenTransactions() ([]*types.TokenTransaction, error) {
+func (trx *Transaction) tokenTransactions(ctx context.Context) ([]*types.TokenTransaction, error) {
 	// call for it only once
 	val, err, _ := trx.cg.Do("erc", func() (interface{}, error) {
 		log.Noticef("Loading ERC list for %s", trx.Hash.String())
-		return repository.R().TokenTransactionsByCall(&trx.Hash)
+		return repository.R().TokenTransactionsByCall(ctx, &trx.Hash)
 	})
 	if err != nil {
 		return nil, err
@@ -121,9 +122,9 @@ func (trx *Transaction) tokenTransactions() ([]*types.TokenTransaction, error) {
 
 // TokenTransactions resolves list of all generic token transactions involved
 // with the base transaction call.
-func (trx *Transaction) TokenTransactions() ([]*TokenTransaction, error) {
+func (trx *Transaction) TokenTransactions(ctx context.Context) ([]*TokenTransaction, error) {
 	// get all the transaction
-	tl, err := trx.tokenTransactions()
+	tl, err := trx.tokenTransactions(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -138,9 +139,9 @@ func (trx *Transaction) TokenTransactions() ([]*TokenTransaction, error) {
 
 // Erc20Transactions resolves list of ERC-20 transactions executed in the scope
 // of this general transaction function call.
-func (trx *Transaction) Erc20Transactions() ([]*ERC20Transaction, error) {
+func (trx *Transaction) Erc20Transactions(ctx context.Context) ([]*ERC20Transaction, error) {
 	// get all the transaction
-	tl, err := trx.tokenTransactions()
+	tl, err := trx.tokenTransactions(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -156,9 +157,9 @@ func (trx *Transaction) Erc20Transactions() ([]*ERC20Transaction, error) {
 
 // Erc721Transactions resolves list of ERC-721 transactions executed in the scope
 // of this general transaction function call.
-func (trx *Transaction) Erc721Transactions() ([]*ERC721Transaction, error) {
+func (trx *Transaction) Erc721Transactions(ctx context.Context) ([]*ERC721Transaction, error) {
 	// get all the transaction
-	tl, err := trx.tokenTransactions()
+	tl, err := trx.tokenTransactions(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -174,9 +175,9 @@ func (trx *Transaction) Erc721Transactions() ([]*ERC721Transaction, error) {
 
 // Erc1155Transactions resolves list of ERC-155 transactions executed in the scope
 // of this general transaction function call.
-func (trx *Transaction) Erc1155Transactions() ([]*ERC1155Transaction, error) {
+func (trx *Transaction) Erc1155Transactions(ctx context.Context) ([]*ERC1155Transaction, error) {
 	// get all the transaction
-	tl, err := trx.tokenTransactions()
+	tl, err := trx.tokenTransactions(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -201,8 +202,8 @@ func NewInternalTransaction(itx *types.InternalTransaction) *InternalTransaction
 }
 
 // InternalTransactions resolves the list of internal transactions for this transaction.
-func (trx *Transaction) InternalTransactions() ([]*InternalTransaction, error) {
-	result, err := repository.R().TraceTransaction(trx.Hash, map[string]interface{}{
+func (trx *Transaction) InternalTransactions(ctx context.Context) ([]*InternalTransaction, error) {
+	result, err := repository.R().TraceTransaction(ctx, trx.Hash, map[string]interface{}{
 		"tracer": "callTracer",
 	})
 	if err != nil {

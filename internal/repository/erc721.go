@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/repository/cache"
 	"ncogearthchain-api-graphql/internal/types"
@@ -110,6 +111,6 @@ func (p *proxy) Erc721IsApprovedForAll(token *common.Address, owner *common.Addr
 }
 
 // Erc721ContractsList returns a list of known ERC721 tokens ordered by their activity.
-func (p *proxy) Erc721ContractsList(count int32) ([]common.Address, error) {
-	return p.pg.AccountsByType(storeCtx(), types.AccountTypeERC721Contract, count)
+func (p *proxy) Erc721ContractsList(ctx context.Context, count int32) ([]common.Address, error) {
+	return p.pg.AccountsByType(ctx, types.AccountTypeERC721Contract, count)
 }
