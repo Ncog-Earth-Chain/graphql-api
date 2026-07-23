@@ -56,10 +56,6 @@ const (
 	// which asserts every key resolves to a real field.
 	keyForestUrl = "node.url"
 
-	// off-chain database related options
-	keyMongoUrl      = "db.url"
-	keyMongoDatabase = "db.db"
-
 	// PostgreSQL -- the explorer's storage
 	keyPgUrl              = "pg.url"
 	keyPgMaxConns         = "pg.max_conns"

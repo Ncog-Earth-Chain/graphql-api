@@ -135,7 +135,6 @@ func (p *proxy) Transactions(cursor *string, count int32) (*types.TransactionLis
 				Last:       tl[len(tl)-1].Uid(),
 				IsStart:    true,
 				IsEnd:      false,
-				Filter:     nil,
 			}, nil
 		}
 	}

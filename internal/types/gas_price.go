@@ -3,8 +3,6 @@ package types
 
 import (
 	"time"
-
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 const (
@@ -51,23 +49,13 @@ type GasPrice struct {
 // GasPricePeriod represents a data set of interval of gas price
 // estimation provided by the Ncogearthchain node.
 type GasPricePeriod struct {
-	Type  int8      `json:"type" bson:"type"`
-	Open  int64     `json:"open" bson:"open"`
-	Close int64     `json:"close" bson:"close"`
-	Min   int64     `json:"min" bson:"min"`
-	Max   int64     `json:"max" bson:"max"`
-	Avg   int64     `json:"avg" bson:"avg"`
-	From  time.Time `json:"from" bson:"from"`
-	To    time.Time `json:"to" bson:"to"`
-	Tick  int64     `json:"tick" bson:"tick"`
-}
-
-// MarshalBSON creates a BSON representation of the gas price estimation record.
-func (gpp *GasPricePeriod) MarshalBSON() ([]byte, error) {
-	return bson.Marshal(*gpp)
-}
-
-// UnmarshalBSON updates the value from BSON source.
-func (gpp *GasPricePeriod) UnmarshalBSON(data []byte) (err error) {
-	return bson.Unmarshal(data, gpp)
+	Type  int8      `json:"type"`
+	Open  int64     `json:"open"`
+	Close int64     `json:"close"`
+	Min   int64     `json:"min"`
+	Max   int64     `json:"max"`
+	Avg   int64     `json:"avg"`
+	From  time.Time `json:"from"`
+	To    time.Time `json:"to"`
+	Tick  int64     `json:"tick"`
 }

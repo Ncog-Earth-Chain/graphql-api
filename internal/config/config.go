@@ -24,9 +24,6 @@ type Config struct {
 	// Forest represents the node structure
 	Forest Forest `mapstructure:"node"`
 
-	// Database configuration
-	Db Database `mapstructure:"db"`
-
 	// PostgreSQL configuration -- the explorer's storage.
 	Pg Postgres `mapstructure:"pg"`
 
@@ -112,12 +109,6 @@ type Log struct {
 // Forest represents the Forest node access configuration
 type Forest struct {
 	Url string `mapstructure:"url"`
-}
-
-// Database represents the database access configuration.
-type Database struct {
-	Url    string `mapstructure:"url"`
-	DbName string `mapstructure:"db"`
 }
 
 // Postgres represents the PostgreSQL connection configuration.

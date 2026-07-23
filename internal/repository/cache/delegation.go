@@ -2,6 +2,7 @@
 package cache
 
 import (
+	"encoding/json"
 	"ncogearthchain-api-graphql/internal/types"
 	"strings"
 
@@ -10,6 +11,17 @@ import (
 )
 
 // delegationCacheKey generates cache key for the given delegation.
+// The in-memory cache serialises with encoding/json.
+//
+// It previously used BSON, which came from the MongoDB driver -- a dependency this
+// explorer no longer has. The cache only needs SOME self-describing form: entries are
+// written and read by this process alone, are Snappy-compressed on both sides, and are
+// discarded on restart. Nothing outside reads them, so the encoding is an internal detail
+// rather than a compatibility surface.
+//
+// The domain types already carry `json` tags for the API, so this reuses a mapping that is
+// exercised on every request rather than a second one exercised only here.
+
 func delegationCacheKey(adr common.Address, valID *hexutil.Big) string {
 	var key strings.Builder
 	key.WriteString("dlg")
@@ -30,7 +42,7 @@ func (b *MemBridge) PullDelegation(adr common.Address, valID *hexutil.Big) *type
 
 	// do we have the data?
 	dlg := new(types.Delegation)
-	if err := dlg.UnmarshalBSON(data); err != nil {
+	if err := json.Unmarshal(data, dlg); err != nil {
 		b.log.Criticalf("can not decode delegation data from in-memory cache; %s", err.Error())
 		return nil
 	}
@@ -45,7 +57,7 @@ func (b *MemBridge) PushDelegation(dlg *types.Delegation) {
 	}
 
 	// encode account
-	data, err := dlg.MarshalBSON()
+	data, err := json.Marshal(dlg)
 	if err != nil {
 		b.log.Criticalf("can not marshal delegation of %s to #%d; %s", dlg.Address.String(), dlg.ToStakerId.ToInt().Uint64(), err.Error())
 		return

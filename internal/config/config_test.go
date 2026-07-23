@@ -41,8 +41,6 @@ func TestDefaultsReachTheirStructFields(t *testing.T) {
 		got   func() interface{}
 	}{
 		{"Forest.Url", keyForestUrl, func() interface{} { return cfg.Forest.Url }},
-		{"Db.Url", keyMongoUrl, func() interface{} { return cfg.Db.Url }},
-		{"Db.DbName", keyMongoDatabase, func() interface{} { return cfg.Db.DbName }},
 		{"Server.BindAddress", keyBindAddress, func() interface{} { return cfg.Server.BindAddress }},
 		{"Server.DomainAddress", keyDomainAddress, func() interface{} { return cfg.Server.DomainAddress }},
 		{"AppName", keyAppName, func() interface{} { return cfg.AppName }},
@@ -111,8 +109,6 @@ func TestConfigKeysMatchStructPaths(t *testing.T) {
 		"keyLoggingLevel":          keyLoggingLevel,
 		"keyLoggingFormat":         keyLoggingFormat,
 		"keyForestUrl":             keyForestUrl,
-		"keyMongoUrl":              keyMongoUrl,
-		"keyMongoDatabase":         keyMongoDatabase,
 		"keyCacheEvictionTime":     keyCacheEvictionTime,
 		"keyCacheMaxSize":          keyCacheMaxSize,
 		"keySolCompilerPath":       keySolCompilerPath,

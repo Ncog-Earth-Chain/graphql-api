@@ -1,8 +1,6 @@
 // Package types implements different core types of the API.
 package types
 
-import "go.mongodb.org/mongo-driver/bson"
-
 // WithdrawRequestList represents a list of withdraw requests.
 type WithdrawRequestList struct {
 	// List keeps the actual Collection.
@@ -22,9 +20,6 @@ type WithdrawRequestList struct {
 
 	// IsEnd indicates there are no withdraw requests available below the list currently.
 	IsEnd bool
-
-	// Filter represents the base filter used for filtering the list
-	Filter bson.D
 }
 
 // Reverse reverses the order of delegations in the list.

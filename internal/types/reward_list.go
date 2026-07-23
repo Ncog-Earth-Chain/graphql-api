@@ -1,8 +1,6 @@
 // Package types implements different core types of the API.
 package types
 
-import "go.mongodb.org/mongo-driver/bson"
-
 // RewardClaimsList represents a list of reward claims.
 type RewardClaimsList struct {
 	// List keeps the actual Collection.
@@ -22,9 +20,6 @@ type RewardClaimsList struct {
 
 	// IsEnd indicates there are no reward claims available below the list currently.
 	IsEnd bool
-
-	// Filter represents the base filter used for filtering the list
-	Filter bson.D
 }
 
 // Reverse reverses the order of delegations in the list.

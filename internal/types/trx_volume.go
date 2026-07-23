@@ -7,11 +7,11 @@ import (
 
 // DailyTrxVolume represents a volume of daily transaction aggregation.
 type DailyTrxVolume struct {
-	Day            string    `bson:"_id"`
-	Stamp          time.Time `bson:"stamp"`
-	Counter        int64     `bson:"value"`
-	AmountAdjusted int64     `bson:"volume"`
-	Gas            int64     `bson:"gas"`
+	Day            string
+	Stamp          time.Time
+	Counter        int64
+	AmountAdjusted int64
+	Gas            int64
 
 	// Amount is the exact total value transferred on the day, in wei.
 	//
@@ -22,5 +22,5 @@ type DailyTrxVolume struct {
 	// Not persisted by the MongoDB bridge -- it has no source column there -- so it is
 	// nil on that path and callers must fall back to AmountAdjusted. The PostgreSQL
 	// store always sets it.
-	Amount *big.Int `bson:"-"`
+	Amount *big.Int
 }

@@ -1,8 +1,6 @@
 // Package types implements different core types of the API.
 package types
 
-import "go.mongodb.org/mongo-driver/bson"
-
 // TokenTransactionList represents a list of ERC20/ERC721/ERC1155 transactions.
 type TokenTransactionList struct {
 	// List keeps the actual Collection.
@@ -22,9 +20,6 @@ type TokenTransactionList struct {
 
 	// IsEnd indicates there are no ERC transactions available below the list currently.
 	IsEnd bool
-
-	// Filter represents the base filter used for filtering the list
-	Filter bson.D
 }
 
 // Reverse reverses the order of ERC transactions in the list.

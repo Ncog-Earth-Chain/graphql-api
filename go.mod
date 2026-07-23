@@ -15,7 +15,6 @@ require (
 	github.com/pressly/goose/v3 v3.27.3
 	github.com/rs/cors v1.8.2
 	github.com/spf13/viper v1.11.0
-	go.mongodb.org/mongo-driver v1.9.0
 	go.uber.org/atomic v1.9.0
 	golang.org/x/sync v0.22.0
 )
@@ -69,14 +68,9 @@ require (
 	github.com/status-im/keycard-go v0.0.0-20210831111044-2e0f5457d2c4 // indirect
 	github.com/subosito/gotenv v1.2.0 // indirect
 	github.com/syndtr/goleveldb v1.0.1-0.20210305035536-64b5b1c73954 // indirect
-	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.10 // indirect
 	github.com/tklauser/numcpus v0.4.0 // indirect
 	github.com/tyler-smith/go-bip39 v1.1.0 // indirect
-	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
-	github.com/xdg-go/scram v1.1.1 // indirect
-	github.com/xdg-go/stringprep v1.0.3 // indirect
-	github.com/youmark/pkcs8 v0.0.0-20201027041543-1326539a0a0a // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.54.0 // indirect

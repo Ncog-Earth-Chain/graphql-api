@@ -70,12 +70,6 @@ const (
 	// defForestUrl holds default Forest connection string
 	defForestUrl = "~/.ncogearthchain/ncogearthchain.ipc"
 
-	// defMongoUrl holds default MongoDB connection string
-	defMongoUrl = "mongodb://localhost:27017"
-
-	// defMongoDatabase holds the default name of the API persistent database
-	defMongoDatabase = "ncogearthchain"
-
 	// PostgreSQL defaults. No password in the default DSN -- an operator must supply a
 	// real connection string, and a default that happens to work against a local
 	// throwaway instance is how a deployment quietly points at the wrong database.
@@ -144,8 +138,6 @@ func applyDefaults(cfg *viper.Viper) {
 	cfg.SetDefault(keyLoggingLevel, defLoggingLevel)
 	cfg.SetDefault(keyLoggingFormat, defLoggingFormat)
 	cfg.SetDefault(keyForestUrl, defForestUrl)
-	cfg.SetDefault(keyMongoUrl, defMongoUrl)
-	cfg.SetDefault(keyMongoDatabase, defMongoDatabase)
 
 	// PostgreSQL
 	cfg.SetDefault(keyPgUrl, defPgUrl)

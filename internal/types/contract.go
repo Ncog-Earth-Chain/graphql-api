@@ -9,7 +9,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 // Contract represents an Ncogearthchain smart contract at the blockchain.
@@ -68,14 +67,14 @@ type Contract struct {
 	SourceCodeHash *common.Hash `json:"soh,omitempty"`
 
 	// ABI definition of the smart contract, if available.
-	Abi string `json:"abi,omitempty" bson:"abi,omitempty"`
+	Abi string `json:"abi,omitempty"`
 
 	// Metadata is the Solidity compiler metadata JSON string produced during compilation, if available.
 	Metadata string `json:"metadata,omitempty"`
 
 	// Validated represents the unix timestamp
 	//of the contract source validation against deployed byte code.
-	Validated *hexutil.Uint64 `json:"ok,omitempty" bson:"is_ok,omitempty"`
+	Validated *hexutil.Uint64 `json:"ok,omitempty"`
 
 	// CreationBytecode is the compiler-produced creation bytecode (hex), if available.
 	CreationBytecode string `json:"creationBytecode,omitempty"`
@@ -107,44 +106,8 @@ type Contract struct {
 
 // LinkReferenceRange represents a start/length pair within bytecode for linking/immutables.
 type LinkReferenceRange struct {
-	Start  int32 `json:"start" bson:"s"`
-	Length int32 `json:"length" bson:"l"`
-}
-
-// BsonContract represents the contract data structure for BSON formatting.
-type BsonContract struct {
-	Address   string               `bson:"_id"`
-	Type      string               `bson:"type"`
-	Name      string               `bson:"name"`
-	Ordinal   uint64               `bson:"orx"`
-	Trx       string               `bson:"trx"`
-	Created   uint64               `bson:"ts"`
-	Version   string               `bson:"ver"`
-	Support   string               `bson:"sup"`
-	License   string               `bson:"lic"`
-	Compiler  string               `bson:"sol"`
-	Evm       string               `bson:"evm"`
-	ViaIR     bool                 `bson:"vir"`
-	IsOpt     bool                 `bson:"is_opt"`
-	OptRuns   int32                `bson:"opt"`
-	Src       string               `bson:"src"`
-	Abi       string               `bson:"abi"`
-	Meta      string               `bson:"meta"`
-	Cb        string               `bson:"cb"`
-	Rb        string               `bson:"rb"`
-	ClRef     []LinkReferenceRange `bson:"clref"`
-	RlRef     []LinkReferenceRange `bson:"rlref"`
-	RiRef     []LinkReferenceRange `bson:"riref"`
-	SrcHash   *string              `bson:"src_h"`
-	Validated *uint64              `bson:"val"`
-
-	// Proxy metadata
-	IsProxy   bool   `bson:"proxy"`
-	ProxyType string `bson:"ptype"`
-	Impl      string `bson:"impl"`
-
-	// DDB metadata
-	IsDDB bool `bson:"is_ddb"`
+	Start  int32 `json:"start"`
+	Length int32 `json:"length"`
 }
 
 // UnmarshalContract parses the JSON-encoded smart contract data.
@@ -236,109 +199,4 @@ func NewStiContract(addr *common.Address, block *Block, trx *Transaction) *Contr
 	con.SourceCode = "https://github.com/Ncog-Earth-Chain/ncogearthchain-staker-info"
 	con.Abi = contracts.StakerInfoContractABI
 	return con
-}
-
-// MarshalBSON creates a BSON representation of the Contract record.
-func (sc *Contract) MarshalBSON() ([]byte, error) {
-	// prep the row
-
-	row := BsonContract{
-		Address:  sc.Address.String(),
-		Type:     sc.Type,
-		Name:     sc.Name,
-		Ordinal:  sc.Uid(),
-		Trx:      sc.TransactionHash.String(),
-		Created:  uint64(sc.TimeStamp),
-		Version:  sc.Version,
-		Support:  sc.SupportContact,
-		License:  sc.License,
-		Compiler: sc.Compiler,
-		Evm:      sc.EvmVersion,
-		ViaIR:    sc.ViaIR,
-		IsOpt:    sc.IsOptimized,
-		OptRuns:  sc.OptimizeRuns,
-		Src:      sc.SourceCode,
-		Abi:      sc.Abi,
-		Meta:     sc.Metadata,
-		Cb:       sc.CreationBytecode,
-		Rb:       sc.RuntimeBytecode,
-		ClRef:    sc.CreationLinkReferences,
-		RlRef:    sc.RuntimeLinkReferences,
-		RiRef:    sc.RuntimeImmutableReferences,
-		// proxy metadata
-		IsProxy:   sc.IsProxy,
-		ProxyType: sc.ProxyType,
-		Impl:      sc.ImplementationAddress.String(),
-		// DDB metadata
-		IsDDB: sc.IsDDB,
-	}
-	// is validated?
-	if sc.Validated != nil {
-		row.Validated = (*uint64)(sc.Validated)
-	}
-	// do we have source code hash?
-	if sc.SourceCodeHash != nil {
-		val := sc.SourceCodeHash.String()
-		row.SrcHash = &val
-	}
-
-	if sc.CompilerVersion != "" {
-		row.Version = sc.CompilerVersion
-	}
-
-	return bson.Marshal(row)
-}
-
-// UnmarshalBSON updates the value from BSON source.
-func (sc *Contract) UnmarshalBSON(data []byte) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("can not decode stored contract")
-		}
-	}()
-
-	// try to decode the BSON data
-	var row BsonContract
-	if err = bson.Unmarshal(data, &row); err != nil {
-		return err
-	}
-
-	// transfer data
-	sc.Address = common.HexToAddress(row.Address)
-	sc.Type = row.Type
-	sc.Name = row.Name
-	sc.TransactionHash = common.HexToHash(row.Trx)
-	sc.TimeStamp = hexutil.Uint64(row.Created)
-	sc.Version = row.Version
-	sc.SupportContact = row.Support
-	sc.License = row.License
-	sc.Compiler = row.Compiler
-	sc.EvmVersion = row.Evm
-	sc.ViaIR = row.ViaIR
-	sc.IsOptimized = row.IsOpt
-	sc.OptimizeRuns = row.OptRuns
-	sc.SourceCode = row.Src
-	sc.Abi = row.Abi
-	sc.Metadata = row.Meta
-	sc.CreationBytecode = row.Cb
-	sc.RuntimeBytecode = row.Rb
-	sc.CreationLinkReferences = row.ClRef
-	sc.RuntimeLinkReferences = row.RlRef
-	sc.RuntimeImmutableReferences = row.RiRef
-	// proxy metadata
-	sc.IsProxy = row.IsProxy
-	sc.ProxyType = row.ProxyType
-	if len(row.Impl) > 0 {
-		sc.ImplementationAddress = common.HexToAddress(row.Impl)
-	}
-	// DDB metadata
-	sc.IsDDB = row.IsDDB
-	if row.Validated != nil {
-		sc.Validated = (*hexutil.Uint64)(row.Validated)
-	}
-	if row.SrcHash != nil {
-		val := common.HexToHash(*row.SrcHash)
-		sc.SourceCodeHash = &val
-	}
-	return nil
 }

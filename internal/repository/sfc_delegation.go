@@ -9,8 +9,9 @@ results. BigCache for in-memory object storage to speed up loading of frequently
 package repository
 
 import (
+	"errors"
 	"math/big"
-	"ncogearthchain-api-graphql/internal/repository/db"
+	"ncogearthchain-api-graphql/internal/repository/db/pg"
 	"ncogearthchain-api-graphql/internal/types"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -48,7 +49,7 @@ func (p *proxy) UpdateDelegationBalance(addr *common.Address, valID *hexutil.Big
 	}
 
 	// unknown delegation detected?
-	if err == db.ErrUnknownDelegation {
+	if errors.Is(err, pg.ErrUnknownDelegation) {
 		p.log.Debugf("delegation %s to #%d missing", addr.String(), valID.ToInt().Uint64())
 		return unknownDelegation(val)
 	}
