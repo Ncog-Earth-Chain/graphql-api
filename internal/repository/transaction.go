@@ -25,7 +25,10 @@ var ErrTransactionNotFound = errors.New("requested transaction can not be found 
 
 // StoreTransaction notifies a new incoming transaction from blockchain to the repository.
 func (p *proxy) StoreTransaction(block *types.Block, trx *types.Transaction) error {
-	return p.db.AddTransaction(block, trx)
+	// Writes the block header and the transaction atomically. The scanner still
+	// dispatches per transaction; moving it onto StoreBlock is what buys per-block
+	// completeness, and is tracked separately.
+	return p.pg.StoreTransaction(storeCtx(), block, trx)
 }
 
 // CacheTransaction puts a transaction to the internal ring cache.

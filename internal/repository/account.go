@@ -141,5 +141,13 @@ func (p *proxy) StoreAccount(acc *types.Account) error {
 
 // AccountMarkActivity marks the latest account activity in the repository.
 func (p *proxy) AccountMarkActivity(addr *common.Address, ts uint64) error {
-	return p.db.AccountMarkActivity(addr, ts)
+	// Deliberately a no-op. Under MongoDB this maintained two counters on the account
+	// document -- last activity and a transaction count -- incremented once per observed
+	// transaction. Maintained counters drift: a re-scan double-counts, a dropped write
+	// under-counts, and nothing detects either.
+	//
+	// Both values are now DERIVED by the account_stat materialized view from tx_account,
+	// so they are a function of the stored transactions and cannot disagree with them.
+	// Freshness comes from RefreshAccountStats rather than from per-transaction writes.
+	return nil
 }

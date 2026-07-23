@@ -443,3 +443,32 @@ func isDDBAddress(to *common.Address) bool {
 // ddbContractAddress is the DDB system contract every data-contract transaction is
 // addressed to.
 var ddbContractAddress = common.HexToAddress("0x0000000000000000000000000000000000000DDB")
+
+// StoreTransaction writes a single transaction with its block.
+//
+// This exists for the CURRENT scanner, which dispatches transactions individually rather
+// than assembling a block. It writes the block header and the transaction in ONE
+// database transaction, so the two can never be half-present -- already stronger than
+// MongoDB, which had no transaction larger than a single InsertOne.
+//
+// It is NOT the destination. StoreBlock is: a block's rows and its watermark commit
+// together there, and a transaction that fails to load fails the whole block instead of
+// being skipped. Per-transaction writes cannot give that, because the writer never knows
+// whether the block it is part of is complete.
+//
+// The watermark deliberately does NOT advance here. Advancing it per transaction is
+// exactly how MongoDB came to claim progress past a block whose contents had not all
+// landed; here it only moves in StoreBlock, where completeness is knowable.
+func (s *Store) StoreTransaction(ctx context.Context, blk *types.Block, trx *types.Transaction) error {
+	if blk == nil || trx == nil {
+		return fmt.Errorf("can not store a nil transaction or block")
+	}
+
+	return s.pool.InTx(ctx, func(ctx context.Context, tx Tx) error {
+		// The block row must exist first: tx.block_number references block(number).
+		if err := s.writeBlock(ctx, tx, blk, 0); err != nil {
+			return err
+		}
+		return s.writeTransaction(ctx, tx, trx)
+	})
+}

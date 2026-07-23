@@ -14,13 +14,13 @@ import (
 
 // StoreNecBurn stores the given native NEC burn per block record into the persistent storage.
 func (p *proxy) StoreNecBurn(burn *types.NecBurn) error {
-	p.cache.NecBurnUpdate(burn, p.db.BurnTotal)
+	p.cache.NecBurnUpdate(burn, p.burnTotal)
 	return p.pg.StoreBurn(storeCtx(), burn)
 }
 
 // NecBurnTotal provides the total amount of burned native NEC.
 func (p *proxy) NecBurnTotal() (int64, error) {
-	return p.cache.NecBurnTotal(p.db.BurnTotal)
+	return p.cache.NecBurnTotal(p.burnTotal)
 }
 
 // NecBurnList provides list of per-block burned native NEC tokens.

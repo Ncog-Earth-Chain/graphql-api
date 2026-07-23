@@ -15,21 +15,14 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 // IsDelegating returns if the given address is an SFC delegator.
 func (p *proxy) IsDelegating(addr *common.Address) (bool, error) {
 	// count only active delegations (with non-zero value)
-	count, err := p.db.DelegationsCountFiltered(&bson.D{
-		{Key: types.FiDelegationAddress, Value: addr.String()},
-		{Key: types.FiDelegationValue, Value: bson.D{{Key: "$gt", Value: 0}}},
-	})
-	if err != nil {
-		p.log.Errorf("can not check delegation by address; %s", addr.String())
-		return false, err
-	}
-	return 0 < count, nil
+	// IsDelegating asks the question directly rather than counting rows to compare
+	// against zero -- EXISTS stops at the first match.
+	return p.pg.IsDelegating(storeCtx(), addr)
 }
 
 // StoreDelegation stores the delegation in persistent database.
@@ -136,7 +129,7 @@ func (p *proxy) DelegationsByAddressAll(addr *common.Address) ([]*types.Delegati
 // DelegationsOfValidator extract a list of delegations for a given validator.
 func (p *proxy) DelegationsOfValidator(valID *hexutil.Big, cursor *string, count int32) (*types.DelegationList, error) {
 	p.log.Debugf("loading delegations of #%d", valID.ToInt().Uint64())
-	return p.db.Delegations(cursor, count, &bson.D{{Key: types.FiDelegationToValidator, Value: valID.String()}})
+	return p.pg.DelegationsByValidator(storeCtx(), valID, derefCursor(cursor), count)
 }
 
 // DelegationLock returns delegation lock information using SFC contract binding.

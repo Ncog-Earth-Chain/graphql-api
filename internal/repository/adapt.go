@@ -68,3 +68,36 @@ func abs32(v int32) int32 {
 
 // compile-time assurance that the store satisfies what the adapters assume.
 var _ = pg.TokenTxCriteria{}
+
+// burnTotal adapts the store's BurnTotal to the cache's expected signature, which
+// predates contexts.
+func (p *proxy) burnTotal() (int64, error) {
+	return p.pg.BurnTotal(storeCtx())
+}
+
+// buildContractList wraps a page of contracts with pagination state.
+//
+// The count is exact when filtered to verified contracts, because contract_verified_idx
+// is PARTIAL on that predicate and so touches only verified rows; unfiltered it is an
+// estimate, matching what the MongoDB path actually did.
+func buildContractList(rows []*types.Contract, total uint64, count int32) *types.ContractList {
+	list := &types.ContractList{
+		Collection:   rows,
+		Total:        total,
+		TotalIsExact: true,
+	}
+
+	if len(rows) == 0 {
+		list.IsStart = true
+		list.IsEnd = true
+		return list
+	}
+
+	short := len(rows) < int(abs32(count))
+	if count >= 0 {
+		list.IsEnd = short
+	} else {
+		list.IsStart = short
+	}
+	return list
+}

@@ -9,6 +9,11 @@ type ContractList struct {
 	// Total indicates total number of contracts in the whole collection.
 	Total uint64
 
+	// TotalIsExact reports whether Total is exact or an estimate. It is exact when the
+	// list is filtered to verified contracts, because that predicate has a partial index
+	// and so counts only matching rows; unfiltered it is a planner estimate.
+	TotalIsExact bool
+
 	// First is the index of the first item on the list
 	First uint64
 

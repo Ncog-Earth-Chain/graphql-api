@@ -53,7 +53,15 @@ func (p *proxy) Contract(addr *common.Address) (*types.Contract, error) {
 // Contracts returns list of smart contracts at Ncogearthchain blockchain.
 func (p *proxy) Contracts(validatedOnly bool, cursor *string, count int32) (*types.ContractList, error) {
 	// go to the database for the list of contracts searched
-	return p.db.Contracts(validatedOnly, cursor, count)
+	rows, err := p.pg.Contracts(storeCtx(), validatedOnly, derefCursor(cursor), count)
+	if err != nil {
+		return nil, err
+	}
+	total, err := p.pg.ContractCount(storeCtx(), validatedOnly)
+	if err != nil {
+		return nil, err
+	}
+	return buildContractList(rows, total, count), nil
 }
 
 // cutCodeMetadata removes the IPFS/Swarm metadata information from the code
@@ -1109,7 +1117,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 				}
 				now := hexutil.Uint64(uint64(time.Now().Unix()))
 				sc.Validated = &now
-				if err := p.db.UpdateContract(sc); err != nil {
+				if err := p.pg.UpdateContractValidation(storeCtx(), sc); err != nil {
 					p.log.Errorf("contract validation (UUPS impl) failed due to db error; %s", err.Error())
 					return err
 				}
@@ -1198,7 +1206,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 							}
 							now := hexutil.Uint64(uint64(time.Now().Unix()))
 							sc.Validated = &now
-							if err := p.db.UpdateContract(sc); err != nil {
+							if err := p.pg.UpdateContractValidation(storeCtx(), sc); err != nil {
 								p.log.Errorf("contract validation (UUPS impl) failed due to db error; %s", err.Error())
 								return err
 							}
@@ -1266,7 +1274,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 			sc.Validated = &now
 
 			// write update to the database
-			if err := p.db.UpdateContract(sc); err != nil {
+			if err := p.pg.UpdateContractValidation(storeCtx(), sc); err != nil {
 				p.log.Errorf("contract validation failed due to db error; %s", err.Error())
 				return err
 			}
@@ -1363,7 +1371,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 					now := hexutil.Uint64(uint64(time.Now().Unix()))
 					sc.Validated = &now
 
-					if err := p.db.UpdateContract(sc); err != nil {
+					if err := p.pg.UpdateContractValidation(storeCtx(), sc); err != nil {
 						p.log.Errorf("contract validation (runtime) failed due to db error; %s", err.Error())
 						return err
 					}
@@ -1427,7 +1435,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 							}
 							now := hexutil.Uint64(uint64(time.Now().Unix()))
 							sc.Validated = &now
-							if err := p.db.UpdateContract(sc); err != nil {
+							if err := p.pg.UpdateContractValidation(storeCtx(), sc); err != nil {
 								p.log.Errorf("contract validation (EIP-1167 impl) failed due to db error; %s", err.Error())
 								return err
 							}
@@ -1491,7 +1499,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 							}
 							now := hexutil.Uint64(uint64(time.Now().Unix()))
 							sc.Validated = &now
-							if err := p.db.UpdateContract(sc); err != nil {
+							if err := p.pg.UpdateContractValidation(storeCtx(), sc); err != nil {
 								p.log.Errorf("contract validation (custom proxy impl) failed due to db error; %s", err.Error())
 								return err
 							}
@@ -1567,7 +1575,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 								}
 								now := hexutil.Uint64(uint64(time.Now().Unix()))
 								sc.Validated = &now
-								if err := p.db.UpdateContract(sc); err != nil {
+								if err := p.pg.UpdateContractValidation(storeCtx(), sc); err != nil {
 									p.log.Errorf("contract validation (proxy impl) failed due to db error; %s", err.Error())
 									return err
 								}
@@ -1626,7 +1634,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 								}
 								now := hexutil.Uint64(uint64(time.Now().Unix()))
 								sc.Validated = &now
-								if err := p.db.UpdateContract(sc); err != nil {
+								if err := p.pg.UpdateContractValidation(storeCtx(), sc); err != nil {
 									p.log.Errorf("contract validation (proxy impl) failed due to db error; %s", err.Error())
 									return err
 								}
@@ -1679,7 +1687,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 															}
 															now := hexutil.Uint64(uint64(time.Now().Unix()))
 															sc.Validated = &now
-															if err := p.db.UpdateContract(sc); err != nil {
+															if err := p.pg.UpdateContractValidation(storeCtx(), sc); err != nil {
 																p.log.Errorf("contract validation (beacon impl) failed due to db error; %s", err.Error())
 																return err
 															}
@@ -1790,7 +1798,7 @@ func (p *proxy) ValidateContract(sc *types.Contract) error {
 
 										now := hexutil.Uint64(uint64(time.Now().Unix()))
 										sc.Validated = &now
-										if err := p.db.UpdateContract(sc); err != nil {
+										if err := p.pg.UpdateContractValidation(storeCtx(), sc); err != nil {
 											p.log.Errorf("contract validation (proxy impl alt) failed due to db error; %s", err.Error())
 											return err
 										}
@@ -1913,7 +1921,7 @@ func (p *proxy) VerifyProxyContract(addr *common.Address) (*types.Contract, *com
 
 	now := hexutil.Uint64(uint64(time.Now().Unix()))
 	con.Validated = &now
-	if err := p.db.UpdateContract(con); err != nil {
+	if err := p.pg.UpdateContractValidation(storeCtx(), con); err != nil {
 		return con, &implAddr, false, "failed to update proxy contract", err
 	}
 	p.cache.EvictContract(&con.Address)

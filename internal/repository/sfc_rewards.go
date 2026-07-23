@@ -11,11 +11,8 @@ package repository
 import (
 	"math/big"
 	"ncogearthchain-api-graphql/internal/types"
-	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 // StoreRewardClaim stores reward claim record in the persistent repository.
@@ -32,39 +29,7 @@ func (p *proxy) RewardClaims(adr *common.Address, valID *big.Int, cursor *string
 
 // RewardsClaimed returns sum of all claimed rewards for the given delegator address and validator ID.
 func (p *proxy) RewardsClaimed(adr *common.Address, valId *big.Int, since *int64, until *int64) (*big.Int, error) {
-	// prep the filter
-	fi := bson.D{}
-
-	// filter by delegator address
-	if adr != nil {
-		fi = append(fi, bson.E{
-			Key:   types.FiRewardClaimAddress,
-			Value: adr.String(),
-		})
-	}
-
-	// filter by validator ID
-	if valId != nil {
-		fi = append(fi, bson.E{
-			Key:   types.FiRewardClaimToValidator,
-			Value: (*hexutil.Big)(valId).String(),
-		})
-	}
-
-	// starting time stamp provided
-	if since != nil {
-		fi = append(fi, bson.E{
-			Key:   types.FiRewardClaimedTimeStamp,
-			Value: bson.D{{Key: "$gte", Value: time.Unix(*since, 0)}},
-		})
-	}
-
-	// ending time stamp provided
-	if until != nil {
-		fi = append(fi, bson.E{
-			Key:   types.FiRewardClaimedTimeStamp,
-			Value: bson.D{{Key: "$lte", Value: time.Unix(*until, 0)}},
-		})
-	}
-	return p.db.RewardsSumValue(&fi)
+	// All four filters are optional typed arguments now; the store renders them to bound
+	// predicates. This replaces a bson.D assembled above the storage seam.
+	return p.pg.RewardsClaimed(storeCtx(), adr, valId, since, until)
 }
