@@ -68,22 +68,6 @@ var expectedContent = []bundleContentTest{
 		msg: "DeFi settings detail type must exists",
 	},
 	{
-		re:  "(?m)^type\\s+DefiUniswapVolume\\s+{",
-		msg: "DeFi Uniswap Volume detail type must exists",
-	},
-	{
-		re:  "(?m)^type\\s+DefiTimeVolume\\s+{",
-		msg: "DeFi Time Volume detail type must exists",
-	},
-	{
-		re:  "(?m)^type\\s+DefiTimePrice\\s+{",
-		msg: "DeFi Time Price detail type must exists",
-	},
-	{
-		re:  "(?m)^type\\s+UniswapActionList\\s+{",
-		msg: "DeFi Uniswap Action List type must exists",
-	},
-	{
 		re:  "(?m)^type\\s+GovernanceContract\\s+{",
 		msg: "governance contract type must exists",
 	},

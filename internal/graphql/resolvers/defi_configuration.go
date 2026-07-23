@@ -31,18 +31,6 @@ func (rs *rootResolver) DefiConfiguration() (*DefiConfiguration, error) {
 	return NewDefiConfiguration(st), nil
 }
 
-// UniswapCoreFactory returns the address of the Uniswap factory contract
-// from the app configuration.
-func (dfc *DefiConfiguration) UniswapCoreFactory() common.Address {
-	return cfg.DeFi.Uniswap.Core
-}
-
-// UniswapRouter returns the address of the Uniswap router contract
-// from the app configuration.
-func (dfc *DefiConfiguration) UniswapRouter() common.Address {
-	return cfg.DeFi.Uniswap.Router
-}
-
 // StakeTokenizerContract returns the address of the Stake Tokenizer contract
 // from the app configuration.
 func (dfc *DefiConfiguration) StakeTokenizerContract() common.Address {

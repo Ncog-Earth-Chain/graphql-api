@@ -151,30 +151,6 @@ type ApiResolver interface {
 	// DefiTokens resolves list of DeFi tokens available for the DeFi functions.
 	DefiTokens() ([]*DefiToken, error)
 
-	// DefiUniswapPairs resolves a list of all pairs managed by the Uniswap core.
-	DefiUniswapPairs() []*UniswapPair
-
-	// DefiUniswapAmountsOut resolves a list of output amounts for the given
-	// input amount and a list of tokens to be used to make the swap operation.
-	DefiUniswapAmountsOut(*struct {
-		AmountIn hexutil.Big
-		Tokens   []common.Address
-	}) ([]hexutil.Big, error)
-
-	// DefiUniswapAmountsIn resolves a list of input amounts for the given
-	// output amount and a list of tokens to be used to make the swap operation.
-	DefiUniswapAmountsIn(*struct {
-		AmountOut hexutil.Big
-		Tokens    []common.Address
-	}) ([]hexutil.Big, error)
-
-	// DefiUniswapQuoteLiquidity resolves a list of optimal amounts of tokens
-	// to be added to both sides of a pair on addLiquidity call.
-	DefiUniswapQuoteLiquidity(*struct {
-		Tokens    []common.Address
-		AmountsIn []hexutil.Big
-	}) ([]hexutil.Big, error)
-
 	// FMintAccount resolves details of a specified DeFi account.
 	FMintAccount(*struct{ Owner common.Address }) (*FMintAccount, error)
 

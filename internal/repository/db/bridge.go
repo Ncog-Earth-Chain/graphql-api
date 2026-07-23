@@ -166,7 +166,6 @@ func (db *MongoDbBridge) EnsureIndexes() {
 	db.initAccountsCollection(d.Collection(coAccounts))
 	db.initTransactionsCollection(d.Collection(coTransactions))
 	db.initContractsCollection(d.Collection(coContract))
-	db.initUniswapCollection(d.Collection(coUniswap))
 	db.initDelegationCollection(d.Collection(colDelegations))
 	db.initWithdrawalsCollection(d.Collection(colWithdrawals))
 	db.initRewardsCollection(d.Collection(colRewards))

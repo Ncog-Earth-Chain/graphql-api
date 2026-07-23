@@ -190,7 +190,7 @@ func (rs *rootResolver) Version() string {
 func (rs *rootResolver) AvailableCompilerVersions() ([]string, error) {
 	// get the repository instance
 	repo := repository.R()
-	
+
 	// get available compiler versions
 	return repo.GetAvailableCompilerVersions(), nil
 }
@@ -199,12 +199,12 @@ func (rs *rootResolver) AvailableCompilerVersions() ([]string, error) {
 func (rs *rootResolver) PreDownloadCompilerVersion(args *struct{ Version string }) (bool, error) {
 	// get the repository instance
 	repo := repository.R()
-	
+
 	// pre-download the compiler version
 	err := repo.PreDownloadCompilerVersion(args.Version)
 	if err != nil {
 		return false, err
 	}
-	
+
 	return true, nil
 }

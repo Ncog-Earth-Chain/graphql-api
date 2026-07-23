@@ -589,6 +589,10 @@ func fetchImport(key string) (string, error) {
 				"https://raw.githubusercontent.com/smartcontractkit/chainlink/master/contracts/",
 				"https://raw.githubusercontent.com/smartcontractkit/chainlink/v2.5.0/contracts/",
 			},
+			// Source URLs for resolving Solidity IMPORTS during contract verification.
+			// Unrelated to the Uniswap DeFi module that was removed from this explorer:
+			// a user can verify a contract importing Uniswap interfaces whether or not
+			// this chain runs Uniswap.
 			"uniswap": {
 				"https://raw.githubusercontent.com/Uniswap/v3-core/main/contracts/",
 				"https://raw.githubusercontent.com/Uniswap/v2-core/master/contracts/",

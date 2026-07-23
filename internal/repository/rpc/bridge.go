@@ -42,9 +42,8 @@ type NecBridge struct {
 	cg  *singleflight.Group
 
 	// fMintCfg represents the configuration of the fMint protocol
-	sigConfig     *config.ServerSignature
-	sfcConfig     *config.Staking
-	uniswapConfig *config.DeFiUniswap
+	sigConfig *config.ServerSignature
+	sfcConfig *config.Staking
 
 	// extended minter config
 	fMintCfg fMintConfig
@@ -76,9 +75,8 @@ func New(cfg *config.Config, log logger.Logger) (*NecBridge, error) {
 		cg:  new(singleflight.Group),
 
 		// special configuration options below this line
-		sigConfig:     &cfg.MySignature,
-		sfcConfig:     &cfg.Staking,
-		uniswapConfig: &cfg.DeFi.Uniswap,
+		sigConfig: &cfg.MySignature,
+		sfcConfig: &cfg.Staking,
 		fMintCfg: fMintConfig{
 			addressProvider: cfg.DeFi.FMint.AddressProvider,
 		},

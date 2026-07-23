@@ -8,7 +8,9 @@
     "bind": "127.0.0.1:3000",
     "peers": [],
     "origin": "https://xapi.ncogchain.earth",
-    "cors_origins": ["*"],
+    "cors_origins": [
+      "*"
+    ],
     "write_timeout": 30,
     "resolver_timeout": 240
   },
@@ -38,13 +40,6 @@
   "defi": {
     "fmint": {
       "address_provider": "0xcb20a1a22976764b882c2f03f0c8523f3df54b10"
-    },
-    "uniswap": {
-      "core": "0xbfd1ce8e6d85e911e80c169293d5c1f5c950fe03",
-      "router": "0x67a937ea41cd05ec8c832a044afc0100f30aa4b5",
-      "whitelist": [
-        "0x34bf23e2f08bfe00cae2adc15d4b47cf8b9ee7bf"
-      ]
     },
     "symbols": [
       "USD",

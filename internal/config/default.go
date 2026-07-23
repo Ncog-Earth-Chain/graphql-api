@@ -15,7 +15,7 @@ const (
 	// defSelfAddress is a default address used as a placeholder
 	// for actual API server identification.
 	// Please make sure to configure your real key for your API server on the wild.
-	defSelfAddress    = "0xfafe48d3498a97cb6aba4a064f1fb1816ab95684"
+	defSelfAddress = "0xfafe48d3498a97cb6aba4a064f1fb1816ab95684"
 
 	// EmptyAddress defines an empty address
 	EmptyAddress = "0x0000000000000000000000000000000000000000"
@@ -110,10 +110,8 @@ const (
 	//defDefiFMintAddressProvider = EmptyAddress
 
 	// defDefiFMintAddressProvider represents the address of the fMintAddressProvider
-	//defDefiUniswapCore = EmptyAddress
 
 	// defDefiFMintAddressProvider represents the address of the fMintAddressProvider
-	//defDefiUniswapRouter = EmptyAddress
 
 	// defTokenLogoFilePath represents the default path to the tokens map file
 	defTokenLogoFilePath = "tokens.json"
@@ -194,6 +192,4 @@ func applyDefaults(cfg *viper.Viper) {
 
 	// DeFi configuration
 	//cfg.SetDefault(keyDefiFMintAddressProvider, defDefiFMintAddressProvider)
-	//cfg.SetDefault(keyDefiUniswapCore, defDefiUniswapCore)
-	//cfg.SetDefault(keyDefiUniswapRouter, defDefiUniswapRouter)
 }

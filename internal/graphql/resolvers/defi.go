@@ -38,16 +38,6 @@ func (rs *rootResolver) DefiTokens() ([]*DefiToken, error) {
 	return list, nil
 }
 
-// DefiNativeToken resolves the native NEC wrapper token.
-func (rs *rootResolver) DefiNativeToken() *ERC20Token {
-	// get the token address
-	adr, err := repository.R().NativeTokenAddress()
-	if err != nil {
-		return nil
-	}
-	return NewErc20Token(adr)
-}
-
 // Price resolves the value of the token in ref. denomination
 // using on-chain price oracle.
 func (dt *DefiToken) Price() (hexutil.Big, error) {

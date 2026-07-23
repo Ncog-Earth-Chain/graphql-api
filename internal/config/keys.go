@@ -72,7 +72,7 @@ const (
 	keyCacheMaxSize      = "cache.size"
 
 	// contract validation related
-	keySolCompilerPath = "compiler.sol"
+	keySolCompilerPath  = "compiler.sol"
 	keyCompilerTempPath = "compiler.temp"
 
 	// utility options
@@ -88,6 +88,4 @@ const (
 
 	// defi related configs
 	//keyDefiFMintAddressProvider = "defi.fmint.address_provider"
-	//keyDefiUniswapCore          = "defi.uniswap.core"
-	//keyDefiUniswapRouter        = "defi.uniswap.router"
 )

@@ -179,22 +179,14 @@ type Staking struct {
 
 // DeFi represents the DeFi and financial contracts configuration.
 type DeFi struct {
-	FMint        DeFiFMint   `mapstructure:"fmint"`
-	Uniswap      DeFiUniswap `mapstructure:"uniswap"`
-	FLend        DeFiFLend   `mapstructure:"flend"`
-	PriceSymbols []string    `mapstructure:"symbols"`
+	FMint        DeFiFMint `mapstructure:"fmint"`
+	FLend        DeFiFLend `mapstructure:"flend"`
+	PriceSymbols []string  `mapstructure:"symbols"`
 }
 
 // DeFiFMint represents the fMint DeFi module configuration.
 type DeFiFMint struct {
 	AddressProvider common.Address `mapstructure:"address_provider"`
-}
-
-// DeFiUniswap represents the Uniswap protocol DeFi module configuration.
-type DeFiUniswap struct {
-	Core           common.Address   `mapstructure:"core"`
-	Router         common.Address   `mapstructure:"router"`
-	PairsWhiteList []common.Address `mapstructure:"whitelist"`
 }
 
 // Governance represents the governance module configuration.
