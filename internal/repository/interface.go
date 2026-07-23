@@ -12,6 +12,7 @@ import (
 	"context"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/config"
+	"ncogearthchain-api-graphql/internal/repository/db/pg"
 	"ncogearthchain-api-graphql/internal/types"
 	"time"
 
@@ -452,6 +453,16 @@ type Repository interface {
 	// GovernanceTotalWeight provides the total weight of all available votes
 	// in the governance contract identified by the address.
 	GovernanceTotalWeight(*common.Address) (hexutil.Big, error)
+
+	// Logs returns event logs matching the criteria, newest first.
+	//
+	// MongoDB stored logs inside the transaction document and indexed nothing about them,
+	// so no log query was possible at all. Every filter combination the criteria can
+	// express is served by an index.
+	Logs(ctx context.Context, c pg.LogCriteria, cursor *string, count int32) ([]*types.Log, error)
+
+	// LogsByTransaction returns every log a transaction emitted, in emission order.
+	LogsByTransaction(ctx context.Context, txHash *common.Hash) ([]*types.Log, error)
 
 	// RawTransaction fetches a transaction's canonical RLP encoding from the node.
 	//

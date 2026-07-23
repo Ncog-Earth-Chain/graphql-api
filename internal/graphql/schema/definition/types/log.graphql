@@ -1,0 +1,58 @@
+# Log is an EVM event log emitted by a contract.
+#
+# Logs were persisted before this but indexed by nothing, so no log query was possible at
+# all -- not by contract, not by event signature. They are now a first-class table with
+# indexes on the columns real queries filter by.
+type Log {
+    # address is the contract that emitted the event.
+    address: Address!
+
+    # topics are the indexed event parameters.
+    #
+    # topics[0] is the event SIGNATURE -- keccak256 of the canonical declaration, e.g.
+    # "Transfer(address,address,uint256)" -- for every event except an anonymous one,
+    # which has none. The list holds exactly what was emitted and is never padded.
+    topics: [Bytes32!]!
+
+    # data is the ABI-encoded non-indexed parameters.
+    data: Bytes!
+
+    # blockNumber is the block containing the emitting transaction.
+    blockNumber: Long!
+
+    # transactionHash identifies the emitting transaction.
+    transactionHash: Bytes32!
+
+    # transactionIndex is the transaction's position in its block.
+    transactionIndex: Long!
+
+    # logIndex is the log's position within the block. Together with blockNumber it
+    # totally orders every log on the chain, which is what makes pagination exact.
+    logIndex: Long!
+
+    # removed marks a log from a block that was reorged away.
+    removed: Boolean!
+
+    # timestamp is the emitting block's timestamp.
+    timestamp: Long!
+
+    # transaction resolves the transaction that emitted this log.
+    transaction: Transaction
+}
+
+# LogList is a page of logs.
+type LogList {
+    edges: [LogListEdge!]!
+
+    # totalCount is deliberately absent. Counting logs matching a filter means scanning
+    # every matching row on the largest table in the database, and no index can answer it
+    # cheaply -- so rather than offer a number that is either slow or a lie, this list
+    # reports only whether more pages exist.
+    pageInfo: ListPageInfo!
+}
+
+# LogListEdge is a single edge in a sequential list of logs.
+type LogListEdge {
+    cursor: Cursor!
+    log: Log!
+}

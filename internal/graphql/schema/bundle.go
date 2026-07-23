@@ -137,6 +137,27 @@ type Query {
     # defiTokens represents a list of all available DeFi tokens.
     defiTokens:[DefiToken!]!
 
+    # logs provides event logs matching the given filters, newest first.
+    #
+    # Every filter combination here is served by an index. address alone, address with
+    # topic0, and topic1/topic2 each have their own; a block range prunes partitions.
+    # There is deliberately no free-form filter, because on the largest table in the
+    # database an unindexed predicate is a denial of service with extra steps.
+    #
+    # The most useful shape is address + topic0: "every Transfer this token emitted".
+    # topic1 and topic2 are the indexed parameters -- on an ERC-20 Transfer, the sender
+    # and the recipient.
+    logs(
+        address: Address,
+        topic0: Bytes32,
+        topic1: Bytes32,
+        topic2: Bytes32,
+        fromBlock: Long,
+        toBlock: Long,
+        cursor: Cursor,
+        count: Int = 25
+    ): LogList!
+
     # erc20Token provides the information about an ERC20 token specified by it's
     # address, if available. The resolver returns NULL if the token does not exist.
     erc20Token(token: Address!):ERC20Token
@@ -1412,6 +1433,65 @@ type ListPageInfo {
     # HasNext specifies if there is another edge before the first one.
     hasPrevious: Boolean!
 }
+# Log is an EVM event log emitted by a contract.
+#
+# Logs were persisted before this but indexed by nothing, so no log query was possible at
+# all -- not by contract, not by event signature. They are now a first-class table with
+# indexes on the columns real queries filter by.
+type Log {
+    # address is the contract that emitted the event.
+    address: Address!
+
+    # topics are the indexed event parameters.
+    #
+    # topics[0] is the event SIGNATURE -- keccak256 of the canonical declaration, e.g.
+    # "Transfer(address,address,uint256)" -- for every event except an anonymous one,
+    # which has none. The list holds exactly what was emitted and is never padded.
+    topics: [Bytes32!]!
+
+    # data is the ABI-encoded non-indexed parameters.
+    data: Bytes!
+
+    # blockNumber is the block containing the emitting transaction.
+    blockNumber: Long!
+
+    # transactionHash identifies the emitting transaction.
+    transactionHash: Bytes32!
+
+    # transactionIndex is the transaction's position in its block.
+    transactionIndex: Long!
+
+    # logIndex is the log's position within the block. Together with blockNumber it
+    # totally orders every log on the chain, which is what makes pagination exact.
+    logIndex: Long!
+
+    # removed marks a log from a block that was reorged away.
+    removed: Boolean!
+
+    # timestamp is the emitting block's timestamp.
+    timestamp: Long!
+
+    # transaction resolves the transaction that emitted this log.
+    transaction: Transaction
+}
+
+# LogList is a page of logs.
+type LogList {
+    edges: [LogListEdge!]!
+
+    # totalCount is deliberately absent. Counting logs matching a filter means scanning
+    # every matching row on the largest table in the database, and no index can answer it
+    # cheaply -- so rather than offer a number that is either slow or a lie, this list
+    # reports only whether more pages exist.
+    pageInfo: ListPageInfo!
+}
+
+# LogListEdge is a single edge in a sequential list of logs.
+type LogListEdge {
+    cursor: Cursor!
+    log: Log!
+}
+
 # NecBlockBurn represents a native NEC tokens burn record per created block.
 type NecBlockBurn {
     # blockNumber represents the number of the block.
