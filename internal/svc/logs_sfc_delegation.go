@@ -42,10 +42,13 @@ func handleNewDelegation(lr *types.LogRecord, stakerID *big.Int, addr common.Add
 	}
 }
 
-// handleSfcCreatedDelegation handles a new delegation event from SFC v1 and SFC v2 contract
-// and also the new delegation event from SFC3 contract with the same structure.
-// (SFCv1, SFCv2) event CreatedDelegation(address indexed delegator, uint256 indexed toStakerID, uint256 amount)
+// handleSfcCreatedDelegation handles a new delegation event from the SFC contract.
+//
 // (SFCv3) event Delegated(address indexed delegator, uint256 indexed toValidatorID, uint256 amount)
+//
+// This handler was previously registered for the SFC1 CreatedDelegation topic as well,
+// which had the same argument structure. The SFC v1/v2 bindings and their topic
+// registrations are gone; only the SFC3 registration remains.
 func handleSfcCreatedDelegation(lr *types.LogRecord) {
 	handleNewDelegation(
 		lr,
@@ -53,22 +56,6 @@ func handleSfcCreatedDelegation(lr *types.LogRecord) {
 		common.BytesToAddress(lr.Topics[1].Bytes()),
 		new(big.Int).SetBytes(lr.Data),
 	)
-}
-
-// handleSfc1IncreasedDelegation handles delegation amount increase event in SFC v1 and SFC v2.
-// SFC1::IncreasedDelegation(address indexed delegator, uint256 indexed stakerID, uint256 newAmount, uint256 diff);
-// SFC1::PreparedToWithdrawDelegation(address indexed delegator, uint256 indexed stakerID)
-func handleSfc1IncreasedDelegation(lr *types.LogRecord) {
-	// get the validator ID
-	addr := common.BytesToAddress(lr.Topics[1].Bytes())
-	valID := new(big.Int).SetBytes(lr.Topics[2].Bytes())
-
-	// update the balance
-	if err := repo.UpdateDelegationBalance(&addr, (*hexutil.Big)(valID), func(amo *big.Int) error {
-		return makeAdHocDelegation(lr, &addr, (*hexutil.Big)(valID), amo)
-	}); err != nil {
-		log.Errorf("failed to update delegation; %s", err.Error())
-	}
 }
 
 // handleSfcUndelegated handles new withdrawal request from SFCv3 contract.
@@ -166,94 +153,6 @@ func handleFinishedWithdrawRequest(adr common.Address, valID *big.Int, reqID *bi
 	}
 }
 
-// handleSfc1DeactivatedDelegation handles SFC1 delegation deactivation request.
-// SFC1::DeactivatedDelegation(address indexed delegator, uint256 indexed stakerID)
-// SFC1::PreparedToWithdrawDelegation(address indexed delegator, uint256 indexed stakerID)
-func handleSfc1DeactivatedDelegation(lr *types.LogRecord) {
-	// sanity check for data
-	if len(lr.Data) != 0 {
-		log.Criticalf("%s lr invalid data length; expected 0 bytes, %d bytes given, %d topics given", lr.TxHash.String(), len(lr.Data), len(lr.Topics))
-		return
-	}
-
-	// create withdraw request
-	zero := new(big.Int)
-	handleNewWithdrawRequest(
-		types.WithdrawTypeDeactivatedDlg,
-		/* address */ common.BytesToAddress(lr.Topics[1].Bytes()),
-		/* valID */ new(big.Int).SetBytes(lr.Topics[2].Bytes()),
-		/* reqID*/ zero,
-		/* amount */ zero,
-		lr,
-	)
-}
-
-// handleSfc1CreatedWithdrawRequest handles withdraw request creation event in SFC1/2
-// CreatedWithdrawRequest(address indexed auth, address indexed receiver, uint256 indexed stakerID, uint256 wrID, bool delegation, uint256 amount)
-func handleSfc1CreatedWithdrawRequest(lr *types.LogRecord) {
-	// sanity check for data (2x uint256 + 1x bool = 96 bytes)
-	if len(lr.Data) != 96 {
-		log.Criticalf("%s lr invalid data length; expected 96 bytes, %d bytes given", lr.TxHash.String(), len(lr.Data))
-		return
-	}
-
-	// create withdraw request
-	handleNewWithdrawRequest(
-		types.WithdrawTypeWithdrawRequest,
-		/* address */ common.BytesToAddress(lr.Topics[1].Bytes()),
-		/* valID */ new(big.Int).SetBytes(lr.Topics[3].Bytes()),
-		/* reqID*/ new(big.Int).SetBytes(lr.Data[:32]),
-		/* amount */ new(big.Int).SetBytes(lr.Data[64:]),
-		lr,
-	)
-}
-
-// handleSfc1PartialWithdrawByRequest handles SFC1 withdraw finalization event.
-// PartialWithdrawnByRequest(address indexed auth, address indexed receiver, uint256 indexed stakerID, uint256 wrID, bool delegation, uint256 penalty)
-func handleSfc1PartialWithdrawByRequest(lr *types.LogRecord) {
-	// sanity check for data (2x uint256 + 1x bool = 96 bytes)
-	if len(lr.Data) != 96 {
-		log.Criticalf("%s lr invalid data length; expected 96 bytes, %d bytes given, %d topics given", lr.TxHash.String(), len(lr.Data), len(lr.Topics))
-		return
-	}
-
-	// finish the request
-	handleFinishedWithdrawRequest(
-		/* address */ common.BytesToAddress(lr.Topics[1].Bytes()),
-		/* valID */ new(big.Int).SetBytes(lr.Topics[3].Bytes()),
-		/* reqID*/ new(big.Int).SetBytes(lr.Data[:32]),
-		/* penalty */ new(big.Int).SetBytes(lr.Data[64:]),
-		lr,
-	)
-}
-
-// handleSfc1UpdatedDelegation handles delegation update event.
-// UpdatedDelegation(address indexed delegator, uint256 indexed oldStakerID, uint256 indexed newStakerID, uint256 amount)
-func handleSfc1UpdatedDelegation(lr *types.LogRecord) {
-	// sanity check for data (4x topic + 1x uint256 (value) = 32 bytes)
-	if len(lr.Topics) != 4 || len(lr.Data) != 32 {
-		log.Criticalf("%s not UpdatedDelegation; expected 32 bytes, %d bytes given; expected 4 topics, %d topics given", lr.TxHash.String(), len(lr.Data), len(lr.Topics))
-		return
-	}
-
-	// check active amount on the delegation
-	addr := common.BytesToAddress(lr.Topics[1].Bytes())
-	valID := (*hexutil.Big)(new(big.Int).SetBytes(lr.Topics[2].Bytes()))
-	if err := repo.UpdateDelegationBalance(&addr, valID, func(amo *big.Int) error {
-		return makeAdHocDelegation(lr, &addr, valID, amo)
-	}); err != nil {
-		log.Errorf("failed to update delegation; %s", err.Error())
-	}
-
-	// this should have created a new delegation
-	handleNewDelegation(
-		lr,
-		new(big.Int).SetBytes(lr.Topics[3].Bytes()),
-		addr,
-		new(big.Int).SetBytes(lr.Data[:]),
-	)
-}
-
 // handleSfcWithdrawn handles a withdrawal request finalization event.
 // event Withdrawn(address indexed delegator, uint256 indexed toValidatorID, uint256 indexed wrID, uint256 amount)
 func handleSfcWithdrawn(lr *types.LogRecord) {
@@ -271,24 +170,6 @@ func handleSfcWithdrawn(lr *types.LogRecord) {
 		new(big.Int),
 		lr,
 	)
-}
-
-// handleSfc1WithdrawnDelegation handles a withdrawal request finalization event from SFC1.
-// event WithdrawnDelegation(address indexed delegator, uint256 indexed stakerID, uint256 penalty)
-func handleSfc1WithdrawnDelegation(lr *types.LogRecord) {
-	// sanity check for data (3x topic + 1x + 1 x uint256 = 32 bytes)
-	if len(lr.Topics) != 3 || len(lr.Data) != 32 {
-		log.Criticalf("%s is not event Withdrawn; expected 32 bytes, %d bytes given; expected 3 topics, %d given", lr.TxHash.String(), len(lr.Data), len(lr.Topics))
-		return
-	}
-
-	// extract the basic info about the request
-	addr := common.BytesToAddress(lr.Topics[1].Bytes())
-	valID := new(big.Int).SetBytes(lr.Topics[2].Bytes())
-
-	// close the previous request
-	zero := new(big.Int)
-	handleFinishedWithdrawRequest(addr, valID, zero, zero, lr)
 }
 
 // makeAdHocDelegation creates a new delegation in case an expected existing delegation
