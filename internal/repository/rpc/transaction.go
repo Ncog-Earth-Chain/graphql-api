@@ -14,6 +14,8 @@ We strongly discourage opening Forest RPC interface for unrestricted Internet ac
 package rpc
 
 import (
+	"context"
+
 	"ncogearthchain-api-graphql/internal/types"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -109,4 +111,24 @@ func (nec *NecBridge) SendTransaction(tx hexutil.Bytes) (*common.Hash, error) {
 	// keep track of the operation
 	nec.log.Debugf("transaction has been accepted with hash %s", hash.String())
 	return &hash, nil
+}
+
+// RawTransaction fetches a transaction's canonical RLP encoding from the node.
+//
+// eth_getRawTransactionByHash returns tx.MarshalBinary(), which for a legacy transaction
+// on this chain is the RLP of the inner struct carrying Signature, PubKey, ChainID, From
+// and SigVer. That is what lets the explorer prove sender attribution without storing
+// ~2592-byte public keys: the blob is self-verifying, because keccak256 of it equals the
+// transaction hash exactly.
+//
+// An empty result is not an error. It means this node cannot answer -- the call needs
+// TxIndex enabled and full history -- and the caller renders that as NULL rather than as
+// a failed verification, which is a different claim.
+func (nec *NecBridge) RawTransaction(ctx context.Context, hash *common.Hash) ([]byte, error) {
+	var raw hexutil.Bytes
+	if err := nec.rpc.CallContext(ctx, &raw, "eth_getRawTransactionByHash", hash); err != nil {
+		nec.log.Debugf("raw transaction %s not available; %s", hash.String(), err.Error())
+		return nil, nil
+	}
+	return raw, nil
 }

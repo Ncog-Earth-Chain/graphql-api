@@ -453,6 +453,17 @@ type Repository interface {
 	// in the governance contract identified by the address.
 	GovernanceTotalWeight(*common.Address) (hexutil.Big, error)
 
+	// RawTransaction fetches a transaction's canonical RLP encoding from the node.
+	//
+	// This is what makes storing ML-DSA public keys unnecessary: the encoding carries the
+	// signature and public key, and keccak256 of it equals the transaction hash, so the
+	// credentials are verifiable against a value this explorer already holds.
+	RawTransaction(ctx context.Context, hash *common.Hash) ([]byte, error)
+
+	// DecodeRawTransaction extracts the signature, public key and claimed sender from a
+	// raw transaction encoding.
+	DecodeRawTransaction(ctx context.Context, raw []byte) ([]byte, []byte, common.Address, error)
+
 	// TraceBlockByNumber traces a block by its number.
 	TraceBlockByNumber(ctx context.Context, number hexutil.Uint64, params map[string]interface{}) (interface{}, error)
 

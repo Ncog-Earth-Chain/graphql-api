@@ -1835,6 +1835,73 @@ type Transaction {
     # internalTransactions provides a list of internal transactions (calls, creates, etc.)
     # executed as part of this transaction.
     internalTransactions: [InternalTransaction!]!
+
+    # chainId is the chain this transaction was signed for.
+    #
+    # Mandatory on this chain: it is folded into the ML-DSA signing digest and the node
+    # rejects a mismatch, so it is what prevents a transaction being replayed onto another
+    # network. NULL only for transactions indexed before the node reported it.
+    chainId: BigInt
+
+    # sigVersion is the signature-scheme version: 2 = ML-DSA-87, 3 = ML-DSA-87 after key
+    # rotation.
+    #
+    # Under rotation the signing key no longer hashes to the account address, so a client
+    # that assumes address == keccak256(pubKey)[12:] would misreport key ownership.
+    sigVersion: Int
+
+    # signer resolves the cryptographic attribution of this transaction.
+    #
+    # ML-DSA has NO KEY RECOVERY. On an ECDSA chain anyone can ecrecover a transaction and
+    # prove independently who sent it; here the public key is the only way, and this
+    # explorer deliberately does not store public keys -- at ~2592 bytes each they would be
+    # most of the database.
+    #
+    # So this field fetches the raw transaction from the node ON DEMAND and verifies it.
+    # That is safe against a lying node because the verification is self-checking:
+    # keccak256(rawTransaction) equals the transaction hash exactly, since the hash IS the
+    # RLP hash of the same inner structure that carries the signature and public key. One
+    # keccak proves the returned credentials belong to the transaction this explorer
+    # already indexed.
+    #
+    # Returns NULL if the node cannot supply the raw transaction -- which requires a
+    # full-history node with TxIndex enabled.
+    signer: TransactionSigner
+}
+
+# TransactionSigner is the cryptographically verified attribution of a transaction.
+#
+# It exists because ML-DSA has no key recovery. On an ECDSA chain, sender attribution is
+# derivable from the signature alone by anyone; on this chain it requires the public key,
+# so an explorer that shows only 'from' is reporting a CLAIM rather than a proof.
+type TransactionSigner {
+    # pubKey is the signer's raw ML-DSA-87 public key, as fetched from the node.
+    pubKey: Bytes!
+
+    # signature is the ML-DSA-87 signature over the transaction's signing digest.
+    signature: Bytes!
+
+    # derivedAddress is keccak256(pubKey)[12:] -- the address this public key produces.
+    derivedAddress: Address!
+
+    # claimedAddress is the 'from' the transaction itself carries.
+    claimedAddress: Address!
+
+    # matches reports whether derivedAddress equals claimedAddress.
+    #
+    # FALSE is not necessarily fraud: under key rotation (sigVersion 3) the account keeps
+    # its address while the signing key changes, so a rotated account legitimately signs
+    # with a key that hashes elsewhere. It IS the signal that address and key have parted
+    # company, which a client showing only 'from' could never surface.
+    matches: Boolean!
+
+    # verified reports whether the credentials provably belong to this transaction:
+    # keccak256(rawTransaction) == transaction hash.
+    #
+    # This is what makes the on-demand fetch trustworthy without storing anything. If it is
+    # false, the node returned a blob that is not this transaction, and nothing else in
+    # this type should be believed.
+    verified: Boolean!
 }
 
 # TransactionList is a list of transaction edges provided by sequential access request.

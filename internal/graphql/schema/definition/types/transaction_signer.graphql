@@ -1,0 +1,34 @@
+# TransactionSigner is the cryptographically verified attribution of a transaction.
+#
+# It exists because ML-DSA has no key recovery. On an ECDSA chain, sender attribution is
+# derivable from the signature alone by anyone; on this chain it requires the public key,
+# so an explorer that shows only 'from' is reporting a CLAIM rather than a proof.
+type TransactionSigner {
+    # pubKey is the signer's raw ML-DSA-87 public key, as fetched from the node.
+    pubKey: Bytes!
+
+    # signature is the ML-DSA-87 signature over the transaction's signing digest.
+    signature: Bytes!
+
+    # derivedAddress is keccak256(pubKey)[12:] -- the address this public key produces.
+    derivedAddress: Address!
+
+    # claimedAddress is the 'from' the transaction itself carries.
+    claimedAddress: Address!
+
+    # matches reports whether derivedAddress equals claimedAddress.
+    #
+    # FALSE is not necessarily fraud: under key rotation (sigVersion 3) the account keeps
+    # its address while the signing key changes, so a rotated account legitimately signs
+    # with a key that hashes elsewhere. It IS the signal that address and key have parted
+    # company, which a client showing only 'from' could never surface.
+    matches: Boolean!
+
+    # verified reports whether the credentials provably belong to this transaction:
+    # keccak256(rawTransaction) == transaction hash.
+    #
+    # This is what makes the on-demand fetch trustworthy without storing anything. If it is
+    # false, the node returned a blob that is not this transaction, and nothing else in
+    # this type should be believed.
+    verified: Boolean!
+}

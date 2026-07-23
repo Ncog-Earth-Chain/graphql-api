@@ -226,8 +226,8 @@ func (s *Store) writeTransaction(ctx context.Context, q Querier, t *types.Transa
 		gasPrice,
 		[]byte(t.InputData),
 		0,
-		nil, // chain_id: populated once the node exposes it on RPCTransaction
-		nil, // sig_version: likewise
+		nullableBig(t.ChainID),
+		nullableUint16(t.SigVersion),
 		txStatus(t.Status),
 		Addr(t.ContractAddress),
 		t.TimeStamp.UTC(),
@@ -403,6 +403,26 @@ func (s *Store) MissingBlocks(ctx context.Context, from, to uint64, limit int) (
 		out = append(out, uint64(n))
 	}
 	return out, rows.Err()
+}
+
+// nullableBig converts an optional chain id for storage, preserving NULL.
+//
+// NULL means "the node did not report one", which is different from chain 0 -- a
+// transaction genuinely signed for chain 0 would carry no replay protection at all, so
+// the two must not collapse.
+func nullableBig(v *hexutil.Big) any {
+	if v == nil {
+		return nil
+	}
+	return v.ToInt().Int64()
+}
+
+// nullableUint16 converts an optional signature version for the SMALLINT column.
+func nullableUint16(v *hexutil.Uint64) any {
+	if v == nil {
+		return nil
+	}
+	return int16(*v)
 }
 
 // nullableInt64 converts an optional hex quantity for storage, preserving NULL.

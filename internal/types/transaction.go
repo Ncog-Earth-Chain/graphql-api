@@ -81,6 +81,25 @@ type Transaction struct {
 
 	// Logs represents a list of log records created along with the transaction
 	Logs []retypes.Log `json:"logs"`
+
+	// ChainID identifies the chain this transaction was signed for. Mandatory on this
+	// chain: it is folded into the ML-DSA signing digest and Sender() rejects a mismatch,
+	// so it is what makes a transaction non-replayable onto another network.
+	ChainID *hexutil.Big `json:"chainId,omitempty"`
+
+	// SigVersion is the signature-scheme version: 2 = ML-DSA-87 unrotated, 3 = rotated.
+	//
+	// Under rotation the signing key no longer hashes to the account address, so a client
+	// that assumes address == keccak256(pubKey)[12:] would misreport key ownership
+	// without this.
+	SigVersion *hexutil.Uint64 `json:"sigVersion,omitempty"`
+
+	// PubKey is the raw ML-DSA-87 public key of the signer (~2592 bytes).
+	//
+	// NOT persisted -- see the schema note in 00002_block_tx.sql. It is read from the node
+	// on demand because ML-DSA has no key recovery, which makes this the only way to prove
+	// attribution, and storing it per transaction would be ~70% of the database.
+	PubKey hexutil.Bytes `json:"pubKey,omitempty"`
 }
 
 type DDBInput struct {

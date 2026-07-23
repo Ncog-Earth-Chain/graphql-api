@@ -85,4 +85,36 @@ type Transaction {
     # internalTransactions provides a list of internal transactions (calls, creates, etc.)
     # executed as part of this transaction.
     internalTransactions: [InternalTransaction!]!
+
+    # chainId is the chain this transaction was signed for.
+    #
+    # Mandatory on this chain: it is folded into the ML-DSA signing digest and the node
+    # rejects a mismatch, so it is what prevents a transaction being replayed onto another
+    # network. NULL only for transactions indexed before the node reported it.
+    chainId: BigInt
+
+    # sigVersion is the signature-scheme version: 2 = ML-DSA-87, 3 = ML-DSA-87 after key
+    # rotation.
+    #
+    # Under rotation the signing key no longer hashes to the account address, so a client
+    # that assumes address == keccak256(pubKey)[12:] would misreport key ownership.
+    sigVersion: Int
+
+    # signer resolves the cryptographic attribution of this transaction.
+    #
+    # ML-DSA has NO KEY RECOVERY. On an ECDSA chain anyone can ecrecover a transaction and
+    # prove independently who sent it; here the public key is the only way, and this
+    # explorer deliberately does not store public keys -- at ~2592 bytes each they would be
+    # most of the database.
+    #
+    # So this field fetches the raw transaction from the node ON DEMAND and verifies it.
+    # That is safe against a lying node because the verification is self-checking:
+    # keccak256(rawTransaction) equals the transaction hash exactly, since the hash IS the
+    # RLP hash of the same inner structure that carries the signature and public key. One
+    # keccak proves the returned credentials belong to the transaction this explorer
+    # already indexed.
+    #
+    # Returns NULL if the node cannot supply the raw transaction -- which requires a
+    # full-history node with TxIndex enabled.
+    signer: TransactionSigner
 }

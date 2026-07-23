@@ -15,7 +15,6 @@ require (
 	github.com/pressly/goose/v3 v3.27.3
 	github.com/rs/cors v1.8.2
 	github.com/spf13/viper v1.11.0
-	go.uber.org/atomic v1.9.0
 	golang.org/x/sync v0.22.0
 )
 
@@ -84,6 +83,11 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/ethereum/go-ethereum => github.com/Ncog-Earth-Chain/ncog-evm v1.1.2
+// Points at the LOCAL post-wire-break EVM tree, the same one the node builds against
+// (ncogearthchain/go.mod does the identical replace). The previous pin was
+// ncog-evm v1.1.2 -- a PRE-wire-break release whose LegacyTx has no ChainID, From or
+// SigVer and whose PubKey is a hex string, so the explorer could not decode a raw
+// transaction from this chain at all.
+replace github.com/ethereum/go-ethereum => ../ncog-evm
 
 //replace github.com/ethereum/go-ethereum => /home/vboxuser/ncog-evm

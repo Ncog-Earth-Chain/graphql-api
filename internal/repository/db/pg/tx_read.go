@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"ncogearthchain-api-graphql/internal/types"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -270,6 +271,15 @@ func scanTransaction(row rowScanner) (*types.Transaction, error) {
 		// ContractAddress is the contract this transaction CREATED, which is why it is
 		// read from created_contract rather than from `to`.
 		ContractAddress: created,
+	}
+
+	if chainID != nil {
+		v := (hexutil.Big)(*new(big.Int).SetInt64(*chainID))
+		trx.ChainID = &v
+	}
+	if sigVersion != nil {
+		v := hexutil.Uint64(*sigVersion)
+		trx.SigVersion = &v
 	}
 
 	if gasUsed != nil {
