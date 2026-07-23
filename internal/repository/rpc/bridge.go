@@ -47,7 +47,6 @@ type NecBridge struct {
 
 	// extended minter config
 	fMintCfg fMintConfig
-	fLendCfg fLendConfig
 
 	// common contracts
 	sfcAbi      *abi.ABI
@@ -80,7 +79,6 @@ func New(cfg *config.Config, log logger.Logger) (*NecBridge, error) {
 		fMintCfg: fMintConfig{
 			addressProvider: cfg.DeFi.FMint.AddressProvider,
 		},
-		fLendCfg: fLendConfig{lendigPoolAddress: cfg.DeFi.FLend.LendingPool},
 
 		// configure block observation loop
 		wg:       new(sync.WaitGroup),

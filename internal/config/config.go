@@ -171,7 +171,6 @@ type Staking struct {
 // DeFi represents the DeFi and financial contracts configuration.
 type DeFi struct {
 	FMint        DeFiFMint `mapstructure:"fmint"`
-	FLend        DeFiFLend `mapstructure:"flend"`
 	PriceSymbols []string  `mapstructure:"symbols"`
 }
 
