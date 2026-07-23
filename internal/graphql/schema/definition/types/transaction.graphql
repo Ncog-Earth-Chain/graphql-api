@@ -117,4 +117,11 @@ type Transaction {
     # Returns NULL if the node cannot supply the raw transaction -- which requires a
     # full-history node with TxIndex enabled.
     signer: TransactionSigner
+
+    # ddb resolves the DDB operation this transaction committed, if it is a DDB commit.
+    #
+    # Without this a DDB commit transaction is indistinguishable from a plain transfer to
+    # the DDB system address -- which is exactly how it looked before, and why data-contract
+    # activity was invisible in the explorer.
+    ddb: DdbOperation
 }

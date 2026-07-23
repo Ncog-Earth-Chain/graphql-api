@@ -243,6 +243,23 @@ type Query {
     # Trace a transaction.
     traceTransaction(hash: Bytes32!, params: JSONAny): JSONAny!
 
+    # ddbOperations provides the on-chain DDB operation history, newest first.
+    #
+    # The node serves NO DDB history RPC, so this is the only place it exists. Every filter
+    # combination here is index-served: by contract, by schema name, by requester, by
+    # operation type.
+    ddbOperations(
+        contractAddress: Address,
+        schemaName: String,
+        requester: Address,
+        opType: DdbOperationType,
+        cursor: Cursor,
+        count: Int = 25
+    ): DdbOperationList!
+
+    # ddbContracts provides the known data contracts, most recently active first.
+    ddbContracts(count: Int = 25): [DdbContract!]!
+
     # === DDB (Decentralized DataBase) ===
 
     # The current DDB validator committee + BFT threshold.

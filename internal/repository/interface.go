@@ -454,6 +454,17 @@ type Repository interface {
 	// in the governance contract identified by the address.
 	GovernanceTotalWeight(*common.Address) (hexutil.Big, error)
 
+	// DdbOperations returns the on-chain DDB operation history.
+	//
+	// The node serves NO DDB history RPC, so this is the only place it exists.
+	DdbOperations(ctx context.Context, c pg.DdbOpCriteria, cursor *string, count int32) ([]*types.DdbOperation, error)
+
+	// DdbOperationAt returns the DDB operation committed at a block position.
+	DdbOperationAt(ctx context.Context, blockNumber, txIndex uint64) (*types.DdbOperation, error)
+
+	// DdbContracts returns the known data contracts, most recently active first.
+	DdbContracts(ctx context.Context, count int32) ([]*types.DdbContract, error)
+
 	// Logs returns event logs matching the criteria, newest first.
 	//
 	// MongoDB stored logs inside the transaction document and indexed nothing about them,

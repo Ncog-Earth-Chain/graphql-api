@@ -247,6 +247,23 @@ type Query {
     # Trace a transaction.
     traceTransaction(hash: Bytes32!, params: JSONAny): JSONAny!
 
+    # ddbOperations provides the on-chain DDB operation history, newest first.
+    #
+    # The node serves NO DDB history RPC, so this is the only place it exists. Every filter
+    # combination here is index-served: by contract, by schema name, by requester, by
+    # operation type.
+    ddbOperations(
+        contractAddress: Address,
+        schemaName: String,
+        requester: Address,
+        opType: DdbOperationType,
+        cursor: Cursor,
+        count: Int = 25
+    ): DdbOperationList!
+
+    # ddbContracts provides the known data contracts, most recently active first.
+    ddbContracts(count: Int = 25): [DdbContract!]!
+
     # === DDB (Decentralized DataBase) ===
 
     # The current DDB validator committee + BFT threshold.
@@ -581,6 +598,151 @@ type CurrentState {
     # sfcLockingEnabled indicates if the SFC locking feature is enabled.
     sfcLockingEnabled: Boolean!
 }
+# DdbOperationType is the kind of DDB operation.
+#
+# The numeric codes behind these names are the ones the wire carries, so the order is part
+# of the chain format and does not change.
+enum DdbOperationType {
+    CREATE_SCHEMA
+    UPDATE_SCHEMA
+    DELETE_SCHEMA
+    CREATE_TABLE
+    INSERT_DATA
+    UPDATE_DATA
+    DELETE_DATA
+    CALL_PROCEDURE
+    GRANT_ROLE
+    REVOKE_ROLE
+
+    # A code this build of the explorer does not recognise. The chain can introduce an
+    # operation type before the explorer knows about it, and refusing to display an
+    # otherwise-valid operation over one unfamiliar enum would be the wrong trade.
+    UNKNOWN
+}
+
+# DdbOperation is a DDB operation committed on chain, with the quorum proof that
+# authorised it.
+#
+# This is history the NODE CANNOT SERVE. It exposes no DDB history RPC at all --
+# ddbEndorsementStatus and ddbConsensusStats are in-memory and reset on restart, and
+# ddbSchema returns only current state -- so these records exist solely because the
+# explorer captured them from the commit-transaction stream at ingest.
+type DdbOperation {
+    blockNumber: Long!
+    txIndex: Long!
+    txHash: Bytes32!
+
+    # requestId is the operation's identity in the endorsement protocol.
+    requestId: Bytes32!
+
+    # requester submitted the operation for endorsement. Distinct from author, which is
+    # what the operation payload itself declares.
+    requester: Address!
+
+    opType: DdbOperationType!
+
+    schemaName: String
+    contractAddress: Address
+    contractName: String
+
+    # version is a STRING on the wire -- "1", "1.2.0" -- not a number.
+    version: String
+
+    author: Address
+
+    # payload is the operation JSON verbatim.
+    #
+    # This one stays dynamic ON PURPOSE, and it is the distinction worth drawing: the
+    # operation's shape is USER-DEFINED (a CreateSchema carries table and column
+    # definitions, an InsertData carries rows), so a fixed type would be a lie. Consensus
+    # metadata has a fixed shape and is typed above; row data does not and is not.
+    payload: JSONAny!
+
+    timestamp: Long!
+
+    # endorsement is the validator quorum proof.
+    endorsement: DdbEndorsement
+
+    # transaction resolves the commit transaction that carried this operation.
+    transaction: Transaction
+}
+
+# DdbEndorsement is the validator quorum proof that authorised an operation.
+#
+# The dual-consensus record the explorer previously could not show at all: it was decoded
+# on every DDB transaction and discarded.
+type DdbEndorsement {
+    operationHash: Bytes32!
+    dataHash: Bytes32!
+
+    # stateHash is the PRIOR per-contract state hash the quorum signed against. Every
+    # validator signature commits to it, which is what makes the per-contract hash chain
+    # verifiable rather than merely asserted.
+    stateHash: Bytes32!
+
+    # The per-contract state-hash chain links.
+    #
+    # NULL for a contract's FIRST operation and for operations not scoped to a contract.
+    # They are variable-length rather than fixed hashes precisely so that "no prior state"
+    # is representable -- a fixed 32-byte type cannot express it, and declaring them
+    # non-null would have made creating any data contract fail to index.
+    priorPostStateHash: Bytes
+    postStateHash: Bytes
+
+    # epoch is the endorsing committee's epoch, used for the rotation grace window.
+    epoch: Long!
+
+    # validatorCount is the committee size; signatureCount is how many actually signed.
+    # The ratio is the interesting number: a quorum that barely cleared threshold reads
+    # very differently from a unanimous one.
+    validatorCount: Int!
+    signatureCount: Int!
+
+    validatorSet: [Address!]!
+}
+
+# DdbContract is the current view of a data contract, folded from its operations.
+type DdbContract {
+    address: Address!
+
+    # dbName is the contract's actual PostgreSQL schema name on the node.
+    #
+    # DERIVED, not carried on chain: lower(contractName) plus the last six hex characters
+    # of the address. Surfaced because it is what an operator needs to find the data.
+    dbName: String
+
+    contractName: String
+
+    # author, not owner. There is no owner field anywhere in the operation payload -- the
+    # node's local metadata has one, but it is not chain-derived, so this explorer does not
+    # claim it.
+    author: Address
+
+    latestVersion: String
+
+    firstBlock: Long!
+    lastBlock: Long!
+    operationCount: Long!
+
+    createdAt: Long!
+    updatedAt: Long!
+
+    # operations resolves this contract's operation history, newest first.
+    operations(cursor: Cursor, count: Int = 25): [DdbOperation!]!
+}
+
+# DdbOperationList is a page of DDB operations.
+type DdbOperationList {
+    edges: [DdbOperationListEdge!]!
+    pageInfo: ListPageInfo!
+}
+
+# DdbOperationListEdge is a single edge in a sequential list of DDB operations.
+type DdbOperationListEdge {
+    cursor: Cursor!
+    operation: DdbOperation!
+}
+
 # DefiSettings represents the set of current settings and limits
 # applied to DeFi operations.
 type DefiSettings {
@@ -1947,6 +2109,13 @@ type Transaction {
     # Returns NULL if the node cannot supply the raw transaction -- which requires a
     # full-history node with TxIndex enabled.
     signer: TransactionSigner
+
+    # ddb resolves the DDB operation this transaction committed, if it is a DDB commit.
+    #
+    # Without this a DDB commit transaction is indistinguishable from a plain transfer to
+    # the DDB system address -- which is exactly how it looked before, and why data-contract
+    # activity was invisible in the explorer.
+    ddb: DdbOperation
 }
 
 # TransactionSigner is the cryptographically verified attribution of a transaction.
