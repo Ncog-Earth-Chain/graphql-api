@@ -32,20 +32,6 @@ func (rs *rootResolver) Erc20Token(args *struct{ Token common.Address }) *ERC20T
 	return NewErc20Token(&args.Token)
 }
 
-// FMintTokenAllowance resolves the amount of ERC20 tokens unlocked
-// by the token owner for DeFi operations.
-func (rs *rootResolver) FMintTokenAllowance(args *struct {
-	Owner common.Address
-	Token common.Address
-}) hexutil.Big {
-	a, err := repository.R().Erc20Allowance(&args.Token, &args.Owner, nil)
-	if err != nil {
-		log.Errorf("allowance of %s for %s not known; %s", args.Token.String(), args.Owner.String(), err.Error())
-		return hexutil.Big{}
-	}
-	return a
-}
-
 // ErcTotalSupply resolves the current total supply of the specified token.
 func (rs *rootResolver) ErcTotalSupply(args *struct{ Token common.Address }) hexutil.Big {
 	s, err := repository.R().Erc20TotalSupply(&args.Token)
@@ -121,24 +107,4 @@ func (token *ERC20Token) Allowance(args *struct {
 // LogoURL resolves an URL of the token logo.
 func (token *ERC20Token) LogoURL() string {
 	return repository.R().Erc20LogoURL(&token.Address)
-}
-
-// TotalDeposit represents the total amount of tokens deposited to fMint as collateral.
-func (token *ERC20Token) TotalDeposit() hexutil.Big {
-	d, err := repository.R().FMintTokenTotalBalance(&token.Address, types.DefiTokenTypeCollateral)
-	if err != nil {
-		log.Errorf("unknown deposit of %s; %s", token.Address.String(), err.Error())
-		return hexutil.Big{}
-	}
-	return d
-}
-
-// TotalDebt represents the total amount of tokens borrowed/minted on fMint.
-func (token *ERC20Token) TotalDebt() hexutil.Big {
-	d, err := repository.R().FMintTokenTotalBalance(&token.Address, types.DefiTokenTypeDebt)
-	if err != nil {
-		log.Errorf("unknown debt of %s; %s", token.Address.String(), err.Error())
-		return hexutil.Big{}
-	}
-	return d
 }

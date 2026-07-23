@@ -57,23 +57,6 @@ func (lgd *logDispatcher) init() {
 
 		/* ERC1155::TransferBatch(address indexed operator, address indexed from, address indexed to, uint256[] ids, uint256[] values) */
 		common.HexToHash("0x4a39dc06d4c0dbc64b70af90fd698a233a518aa5d07e595d983b8c0526c8f7fb"): handleErc1155TransferBatch,
-
-		/* ---------------------- fMint contract related event hooks below this line ----------------------- */
-
-		/* NcogearthchainMintCollateral::Deposited(address indexed token, address indexed user, uint256 amount) */
-		common.HexToHash("0x8752a472e571a816aea92eec8dae9baf628e840f4929fbcc2d155e6233ff68a7"): handleFMintDeposit,
-
-		/* NcogearthchainMintCollateral::Withdrawn(address indexed token, address indexed user, uint256 amount) */
-		common.HexToHash("0xd1c19fbcd4551a5edfb66d43d2e337c04837afda3482b42bdf569a8fccdae5fb"): handleFMintWithdraw,
-
-		/* NcogearthchainMintDebt::Minted(address indexed token, address indexed user, uint256 amount, uint256 fee) */
-		common.HexToHash("0x03f17d66ad3bf18e9412eb06582908831508cdb9b8da9cddb1431f645a5b8632"): handleFMintMint,
-
-		/* NcogearthchainMintDebt::Repaid(address indexed token, address indexed user, uint256 amount) */
-		common.HexToHash("0x0a3fbbea70e93f2daafa3102f5c9a1b8315e6d7a1e43e4bc020bc1162327470a"): handleFMintRepay,
-
-		/* NcogearthchainMintRewardManager::RewardPaid(address indexed user, uint256 reward) */
-		common.HexToHash("0xe2403640ba68fed3a2f88b7557551d1993f84b99bb10ff833f0cf8db0c5e0486"): handleFMintReward,
 	}
 }
 

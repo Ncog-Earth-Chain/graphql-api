@@ -330,45 +330,6 @@ type Repository interface {
 	// from on-chain price oracle.
 	DefiTokenPrice(*common.Address) (hexutil.Big, error)
 
-	// FMintAccount loads details of a DeFi/fMint account identified by the owner address.
-	FMintAccount(common.Address) (*types.FMintAccount, error)
-
-	// FMintTokenBalance loads balance of a single DeFi token by it's address.
-	FMintTokenBalance(*common.Address, *common.Address, types.DefiTokenType) (hexutil.Big, error)
-
-	// FMintTokenTotalBalance loads total balance of a single DeFi token by it's address.
-	FMintTokenTotalBalance(*common.Address, types.DefiTokenType) (hexutil.Big, error)
-
-	// FMintTokenValue loads value of a single DeFi token by it's address in fUSD.
-	FMintTokenValue(*common.Address, *common.Address, types.DefiTokenType) (hexutil.Big, error)
-
-	// FMintRewardsEarned resolves the total amount of rewards
-	// accumulated on the account for the excessive collateral deposits.
-	FMintRewardsEarned(*common.Address) (hexutil.Big, error)
-
-	// FMintRewardsStashed represents the total amount of rewards
-	// accumulated on the account in stash.
-	FMintRewardsStashed(*common.Address) (hexutil.Big, error)
-
-	// FMintCanClaimRewards resolves the fMint account flag for being allowed
-	// to claim earned rewards.
-	FMintCanClaimRewards(*common.Address) (bool, error)
-
-	// FMintCanReceiveRewards resolves the fMint account flag for being eligible
-	// to receive earned rewards. If the collateral to debt ration drop below
-	// certain value, earned rewards are burned.
-	FMintCanReceiveRewards(*common.Address) (bool, error)
-
-	// FMintCanPushRewards signals if there are any rewards unlocked
-	// on the rewards' distribution contract and can be pushed to account.
-	FMintCanPushRewards() (bool, error)
-
-	// FMintUsers loads the list of fMint users and their associated tokens used for a specified purpose.
-	FMintUsers(int32) ([]*types.FMintUserTokens, error)
-
-	// AddFMintTransaction adds the specified fMint transaction to persistent storage.
-	AddFMintTransaction(*types.FMintTransaction) error
-
 	// TokenTransactions provides list of ERC20/ERC721/ERC1155 transactions based on given filters.
 	TokenTransactions(tokenType string, token *common.Address, tokenId *big.Int, acc *common.Address, txType []int32, cursor *string, count int32) (*types.TokenTransactionList, error)
 

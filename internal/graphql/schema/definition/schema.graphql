@@ -133,17 +133,6 @@ type Query {
     # defiTokens represents a list of all available DeFi tokens.
     defiTokens:[DefiToken!]!
 
-    # fMintAccount provides DeFi/fMint information about an account on fMint protocol.
-    fMintAccount(owner: Address!):FMintAccount!
-
-    # fMintTokenAllowance resolves the amount of ERC20 tokens unlocked
-    # by the token owner for DeFi/fMint operations.
-    fMintTokenAllowance(owner: Address!, token: Address!):BigInt!
-
-    # fMintUserTokens resolves a list of pairs of fMint users and their tokens
-    # used for a specified purpose.
-    fMintUserTokens(purpose:FMintUserTokenPurpose=FMINT_COLLATERAL):[FMintUserToken!]!
-
     # erc20Token provides the information about an ERC20 token specified by it's
     # address, if available. The resolver returns NULL if the token does not exist.
     erc20Token(token: Address!):ERC20Token

@@ -66,13 +66,3 @@ func (dt *DefiToken) CanWrapNEC() bool {
 func (dt *DefiToken) TotalSupply() (hexutil.Big, error) {
 	return repository.R().Erc20TotalSupply(&dt.Address)
 }
-
-// TotalDeposit represents the total amount of tokens deposited to fMint as collateral.
-func (dt *DefiToken) TotalDeposit() (hexutil.Big, error) {
-	return repository.R().FMintTokenTotalBalance(&dt.Address, types.DefiTokenTypeCollateral)
-}
-
-// TotalDebt represents the total amount of tokens borrowed/minted on fMint.
-func (dt *DefiToken) TotalDebt() (hexutil.Big, error) {
-	return repository.R().FMintTokenTotalBalance(&dt.Address, types.DefiTokenTypeDebt)
-}

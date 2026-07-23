@@ -137,17 +137,6 @@ type Query {
     # defiTokens represents a list of all available DeFi tokens.
     defiTokens:[DefiToken!]!
 
-    # fMintAccount provides DeFi/fMint information about an account on fMint protocol.
-    fMintAccount(owner: Address!):FMintAccount!
-
-    # fMintTokenAllowance resolves the amount of ERC20 tokens unlocked
-    # by the token owner for DeFi/fMint operations.
-    fMintTokenAllowance(owner: Address!, token: Address!):BigInt!
-
-    # fMintUserTokens resolves a list of pairs of fMint users and their tokens
-    # used for a specified purpose.
-    fMintUserTokens(purpose:FMintUserTokenPurpose=FMINT_COLLATERAL):[FMintUserToken!]!
-
     # erc20Token provides the information about an ERC20 token specified by it's
     # address, if available. The resolver returns NULL if the token does not exist.
     erc20Token(token: Address!):ERC20Token
@@ -230,8 +219,6 @@ type Query {
     # necLatestBlockBurnList provides a list of latest burned native NEC tokens per-block.
     necLatestBlockBurnList(count: Int = 25): [NecBlockBurn!]!
 	
-    # Trace a block and return the raw trace.
-
     # Trace a block by its number.
     traceBlockByNumber(number: Long!, params: JSONAny): JSONAny!
 
@@ -578,29 +565,6 @@ type CurrentState {
 # DefiSettings represents the set of current settings and limits
 # applied to DeFi operations.
 type DefiSettings {
-    # mintFee4 is the current fee applied to all minting operations on fMint protocol.
-    # Value is represented in 4 digits, e.g. value 25 = 0.0025 => 0.25% fee.
-    mintFee4: BigInt!
-
-    # minCollateralRatio4 is the minimal allowed ratio between
-    # collateral and debt values in ref. denomination (fUSD)
-    # on which the borrow trade is allowed.
-    # Value is represented in 4 digits,
-    # e.g. value 25000 = 3.0x => (debt x 3.0 <= collateral)
-    minCollateralRatio4: BigInt!
-
-    # rewardCollateralRatio4 is the minimal ratio between
-    # collateral and debt values in ref. denomination (fUSD)
-    # on which the account is eligible for rewards distribution.
-    # Collateral below this ratio means all the pending rewards
-    # will be burnt and lost.
-    rewardCollateralRatio4: BigInt!
-
-    # decimals represents the decimals / digits correction
-    # applied to the fees and ratios internally to correctly represent
-    # fraction numbers. E.g. correction value 4 => ratio/fee x 10000.
-    decimals: Int!
-
     # priceOracleAggregate is the address of the current price oracle
     # aggregate used by the DeFi to obtain USD price of tokens managed.
     priceOracleAggregate: Address!
@@ -610,25 +574,6 @@ type DefiSettings {
 
     # StakeTokenizedERC20Token is the address of the Tokenized Stake ERC20 contract.
     StakeTokenizedERC20Token: Address!
-
-    # fMintAddress is the address of the fMint contract.
-    fMintContract: Address!
-
-	# fMintAddressProvider represents the address of the fMint address provider.
-	fMintAddressProvider: Address!
-
-    # tokenRegistryContract is the address of the fMint token registry.
-    fMintTokenRegistry: Address!
-
-    # fMintRewardDistribution is the address of the DeFi fMint
-    # reward distribution contract.
-    fMintRewardDistribution: Address!
-
-    # fMintCollateralPool is the address of the fMint collateral pool.
-    fMintCollateralPool: Address!
-
-    # fMintDebtPool is the address of the fMint debt pool.
-    fMintDebtPool: Address!
 
 }
 
@@ -769,81 +714,6 @@ type FLendBorrow {
     # time of deposit
     timestamp: Long!
 }
-# FMintAccount represents an informastion about account details
-# in DeFi/fMint protocol.
-type FMintAccount {
-    # address of the DeFi account.
-    address: Address!
-
-    # collateralList represents a list of all collateral tokens
-    # linked with the account.
-    collateralList: [Address!]!
-
-    # collaterals represents a list of all collateral assets.
-    collateral: [FMintTokenBalance!]!
-
-    # collateralValue represents the current collateral value
-    # in ref. denomination (fUSD).
-    collateralValue: BigInt!
-
-    # debtList represents a list of all debt tokens linked with the account.
-    debtList: [Address!]!
-
-    # debts represents the list of all the current borrowed tokens.
-    debt: [FMintTokenBalance!]!
-
-    # debtValue represents the current debt value
-    # in ref. denomination (fUSD).
-    debtValue: BigInt!
-
-    # rewardsEarned represents accumulated rewards
-    # earned on the DeFi / fMint account for the excessive
-    # collateral value. Please note that the rewards could still
-    # be burned, if the account is not eligible to claim the reward.
-    rewardsEarned: BigInt!
-
-    # rewardsStashed represents accumulated rewards
-    # earned on the DeFi / fMint account for the excessive
-    # collateral value and stored into the stash for future
-    # claim.
-    rewardsStashed: BigInt!
-
-    # canClaimRewards informs if the fMint account collateral
-    # to debt is high enough to allow earned rewards claiming.
-    canClaimRewards: Boolean!
-
-    # canReceiveRewards informs if the fMint account collateral
-    # to debt is high enough to receive earned rewards. If the ratio
-    # is below configured one, earned rewards are burned.
-    canReceiveRewards: Boolean!
-
-    # canPushNewRewards indicates if new rewards are unlocked
-    # inside the reward distribution and can be pushed into
-    # the system to distribute them among eligible accounts.
-    canPushNewRewards: Boolean!
-}
-
-# FMintTokenBalance represents a balance of a specific DeFi token
-# on an fMint protocol account.
-# The balance is used for both collateral deposits and minting debt.
-type FMintTokenBalance {
-    # type represents the type of the balance record.
-    type: DefiTokenBalanceType!
-
-    # tokenAddress represents unique identifier of the token.
-    tokenAddress: Address!
-
-    # token represents the detail of the token
-    token: DefiToken!
-
-    # current balance of the token on the account.
-    balance: BigInt!
-
-    # value of the current balance of the token on the account
-    # in ref. denomination (fUSD).
-    value: BigInt!
-}
-
 # DefiToken represents a token available for DeFi operations.
 type DefiToken {
     # address of the token is used as the token's unique identifier.
@@ -911,18 +781,8 @@ type DefiToken {
     # totalSupply represents total amount of tokens across all accounts
     totalSupply: BigInt!
 
-    # totalDeposited represents total amount of deposited tokens collateral on fMint.
-    totalDeposit: BigInt!
-
-    # totalDebt represents total amount of borrowed/minted tokens on fMint.
-    totalDebt: BigInt!
 }
 
-# DefiTokenBalanceType represents the type of DeFi token balance record.
-enum DefiTokenBalanceType {
-    COLLATERAL
-    DEBT
-}
 
 # Delegation represents a delegation on Ncogearthchain block chain.
 type Delegation {
@@ -1190,11 +1050,6 @@ type ERC20Token {
     # by the owner / token holder to be accessible for the given spender.
     allowance(owner: Address!, spender: Address!): BigInt!
 
-    # totalDeposited represents total amount of deposited tokens collateral on fMint.
-    totalDeposit: BigInt!
-
-    # totalDebt represents total amount of borrowed/minted tokens on fMint.
-    totalDebt: BigInt!
 }
 
 # TokenTransactionType represents a type of ERC-20/ERC-721/ERC-1155 transaction.
@@ -1395,31 +1250,6 @@ type EstimatedRewards {
     lastEpoch: Epoch!
 }
 
-# FMintUserToken represents a pair of fMint protocol user
-# and a token used by the user for a specific operation
-# as reported by fMint users listings.
-type FMintUserToken {
-    # purpose represents the type of usage of the token by the user.
-    purpose: FMintUserTokenPurpose!
-
-    # userAddress represents the address of the user account.
-    userAddress: Address!
-
-    # account represents the full record of the fMint account
-    account: FMintAccount!
-
-    # tokenAddress represents the address of the associated token.
-    tokenAddress: Address!
-
-    # token represents the detail of the token associated.
-    token: ERC20Token!
-}
-
-# FMintUserTokenPurpose represents the purpose of the fMint user token pair.
-enum FMintUserTokenPurpose {
-    FMINT_COLLATERAL
-    FMINT_DEBT
-}
 # GasPriceTick represents a collected gas price tick.
 type GasPriceTick {
     # fromTime is the time of the tick measurement start

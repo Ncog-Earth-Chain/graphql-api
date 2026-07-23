@@ -151,16 +151,6 @@ type ApiResolver interface {
 	// DefiTokens resolves list of DeFi tokens available for the DeFi functions.
 	DefiTokens() ([]*DefiToken, error)
 
-	// FMintAccount resolves details of a specified DeFi account.
-	FMintAccount(*struct{ Owner common.Address }) (*FMintAccount, error)
-
-	// FMintTokenAllowance resolves the amount of ERC20 tokens unlocked
-	// by the token owner for DeFi/fMint protocol operations.
-	FMintTokenAllowance(args *struct {
-		Owner common.Address
-		Token common.Address
-	}) hexutil.Big
-
 	// Erc20Token resolves an instance of ERC20 token if available.
 	Erc20Token(*struct{ Token common.Address }) *ERC20Token
 
