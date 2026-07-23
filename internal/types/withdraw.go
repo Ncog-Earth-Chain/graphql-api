@@ -46,6 +46,21 @@ type WithdrawRequest struct {
 	Amount            *hexutil.Big
 	Type              string
 
+	// BlockNumber and TxIndex locate the request-creating transaction in the chain.
+	//
+	// The MongoDB schema had no such position; it ordered withdrawals by a packed
+	// `orx` ordinal that aliases validator IDs above 4095 and discriminates
+	// transactions on 12 bits, so it is neither unique nor monotonic. The PostgreSQL
+	// schema orders and paginates on the real position instead, and its columns are
+	// NOT NULL -- so the position has to travel on this struct from the log handler
+	// that already has it (types.LogRecord embeds retypes.Log).
+	//
+	// Pointers, not values: block 0 and transaction index 0 are both legitimate, so a
+	// zero value must not be able to masquerade as "not set". A nil here is a bug in
+	// the caller and the store rejects it rather than inventing a position.
+	BlockNumber *hexutil.Uint64
+	TxIndex     *hexutil.Uint64
+
 	// struct members for finalized withdraw
 	WithdrawTrx  *common.Hash
 	WithdrawTime *hexutil.Uint64

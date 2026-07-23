@@ -119,6 +119,14 @@ func trxVolumeRange(args struct {
 
 // Amount resolves the amount of native tokens transferred.
 func (dtv *DailyTrxVolume) Amount() hexutil.Big {
+	// The exact wei total, when the store provides one. The correction below exists only
+	// because the MongoDB schema summed a gwei-truncated copy of the value and the sum
+	// had to be scaled back up; that round trip is lossy, so it is used only as a
+	// fallback for the storage layer that still has nothing better.
+	if dtv.DailyTrxVolume.Amount != nil {
+		return hexutil.Big(*dtv.DailyTrxVolume.Amount)
+	}
+
 	val := new(big.Int).Mul(new(big.Int).SetInt64(dtv.DailyTrxVolume.AmountAdjusted), types.TransactionDecimalsCorrection)
 	return hexutil.Big(*val)
 }

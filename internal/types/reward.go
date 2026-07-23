@@ -35,6 +35,20 @@ type RewardClaim struct {
 	ClaimTrx      common.Hash
 	Amount        hexutil.Big
 	IsDelegated   bool
+
+	// BlockNumber, LogIndex and TxIndex locate the emitting log on chain.
+	//
+	// They exist because the claim is identified by its log position, not by its
+	// transaction hash. Keying on the hash - which is what Pk() does - drops the second
+	// claim whenever one transaction emits two reward logs, which two different SFC
+	// handlers and any batching contract both do. All three values are available at the
+	// only construction site (svc/logs_sfc_reward.go, from the LogRecord) and are
+	// required by the PostgreSQL reward_claim table.
+	//
+	// The BSON codec below ignores them, so the MongoDB representation is unchanged.
+	BlockNumber uint64
+	LogIndex    uint
+	TxIndex     uint
 }
 
 // BsonRewardClaim represents BSON rew structure of the reward claim.

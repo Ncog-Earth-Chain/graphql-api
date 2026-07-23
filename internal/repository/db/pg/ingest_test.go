@@ -362,3 +362,105 @@ func TestLogsAreStoredAndQueryable(t *testing.T) {
 		t.Errorf("topic_count = %d, want 3", topicCount)
 	}
 }
+
+// TestPurgeCoversEveryBlockKeyedTable is a structural guard, not a behavioural one.
+//
+// purgeBlockRows must delete from every table keyed by block_number. A table left out
+// survives a reorg at its old position, and because re-ingest is ON CONFLICT DO NOTHING
+// those rows are never overwritten -- producing phantom transfers and permanently wrong
+// reward totals. That is exactly the failure the purge exists to prevent, and it
+// reappears one table at a time as new tables are added.
+//
+// This asks the database which tables have a block_number column and fails if the purge
+// does not mention one, so adding a table without updating the purge breaks a test rather
+// than corrupting data after the next reorg.
+func TestPurgeCoversEveryBlockKeyedTable(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT c.relname
+		FROM   information_schema.columns col
+		JOIN   pg_class c ON c.relname = col.table_name
+		WHERE  col.table_schema = 'public'
+		  AND  col.column_name = 'block_number'
+		  AND  c.relkind = 'r'
+		  AND  c.relispartition = false
+		GROUP  BY c.relname
+		ORDER  BY c.relname`)
+	if err != nil {
+		t.Fatalf("introspect: %v", err)
+	}
+	defer rows.Close()
+
+	var tables []string
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		tables = append(tables, n)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows: %v", err)
+	}
+	if len(tables) == 0 {
+		t.Fatal("no block-keyed tables found; the introspection query is wrong")
+	}
+
+	// Tables the purge deliberately does not touch. Each entry is a decision, not an
+	// oversight -- adding one of these to the purge would DELETE VALID DATA.
+	exempt := map[string]string{
+		// Upserted by writeBlock. Deleting it would cascade to everything else
+		// mid-transaction.
+		"block": "upserted by writeBlock, not deleted",
+
+		// Accumulated per block with its own reconciliation, and burn_tx is a child of
+		// burn rather than of a block's logs.
+		"burn":    "accumulated separately",
+		"burn_tx": "child of burn, not of a block's logs",
+
+		// Partition bookkeeping, not chain data.
+		"partition_registry": "partition metadata",
+
+		// Keyed by ADDRESS, not by block position, and contract_verification hangs off
+		// it holding user-submitted source code and validation results -- data that is
+		// NOT derivable from the chain and cannot be rebuilt by re-scanning. Purging a
+		// contract on reorg would destroy it permanently. block_number here records
+		// where the contract was deployed; it is not an ownership key.
+		"contract": "address-keyed; holds non-rebuildable user-submitted verification",
+
+		// Uniswap, scheduled for removal (see doc/defi-removal-notes.md).
+		"swap": "part of the Uniswap module being removed",
+
+		// DOMAIN-KEYED, and this is a known limitation rather than a clean exemption.
+		//
+		// delegation is keyed (delegator, validator_id) and withdrawal is keyed
+		// (delegator, validator_id, request_id, request_tx). Their block_number records
+		// the LAST event that touched the row, not the row's identity. Deleting by block
+		// would remove a delegation that is still live merely because its most recent
+		// update happened in the reorged block.
+		//
+		// Rolling these back correctly needs the prior state, which is not stored --
+		// they are current-state rows built by applying events, with no event log to
+		// replay. So a reorg that removes an SFC event can leave these slightly stale
+		// until the next event for the same key overwrites them.
+		//
+		// Recorded here rather than papered over: the fix is to make them event-sourced,
+		// which is a schema change and a separate decision.
+		"delegation": "domain-keyed; needs event-sourced rollback (known limitation)",
+		"withdrawal": "domain-keyed; needs event-sourced rollback (known limitation)",
+	}
+
+	purged := purgedTables()
+
+	for _, tbl := range tables {
+		if _, ok := exempt[tbl]; ok {
+			continue
+		}
+		if !purged[tbl] {
+			t.Errorf("table %q has a block_number column but purgeBlockRows does not delete from it; "+
+				"a reorg would leave its rows behind at the old block position", tbl)
+		}
+	}
+}

@@ -136,16 +136,45 @@ func blockEpoch(h common.Hash) int64 {
 // on block_number rather than on a transaction hash, so a transaction that disappears in
 // a reorg would otherwise leave its logs and edges behind, attached to nothing.
 func (s *Store) purgeBlockRows(ctx context.Context, q Querier, number uint64) error {
-	for _, stmt := range []string{
-		`DELETE FROM tx_log     WHERE block_number = $1`,
-		`DELETE FROM tx_account WHERE block_number = $1`,
-		`DELETE FROM tx         WHERE block_number = $1`,
-	} {
-		if _, err := q.Exec(ctx, stmt, int64(number)); err != nil {
-			return fmt.Errorf("can not purge block %d before re-ingest: %w", number, err)
+	// Every table keyed by block_number must be listed here. A table left out survives a
+	// reorg at its old (block_number, log_index) position: the discarded version's rows
+	// stay, and because re-ingest is ON CONFLICT DO NOTHING they are never overwritten.
+	// The result is phantom transfers and permanently wrong reward totals -- the exact
+	// failure this function exists to prevent, reappearing one table at a time.
+	//
+	// Order matters only where a foreign key would block the delete; tx goes last because
+	// other tables reference the block position.
+	for _, tbl := range purgeOrder {
+		if _, err := q.Exec(ctx,
+			`DELETE FROM `+tbl+` WHERE block_number = $1`, int64(number)); err != nil {
+			return fmt.Errorf("can not purge %s for block %d before re-ingest: %w", tbl, number, err)
 		}
 	}
 	return nil
+}
+
+// purgeOrder lists every table a block's rows must be removed from, in dependency order:
+// `tx` goes last because the others reference a block position.
+//
+// The names are a fixed list of identifiers, never caller input, so interpolating them is
+// safe -- DELETE cannot parameterise a table name. TestPurgeCoversEveryBlockKeyedTable
+// checks this list against the database's own catalog, so a new block-keyed table breaks
+// a test instead of quietly surviving the next reorg.
+var purgeOrder = []string{
+	"tx_log",
+	"tx_account",
+	"token_tx",
+	"reward_claim",
+	"tx",
+}
+
+// purgedTables exposes purgeOrder as a set, for the guard test.
+func purgedTables() map[string]bool {
+	out := make(map[string]bool, len(purgeOrder))
+	for _, t := range purgeOrder {
+		out[t] = true
+	}
+	return out
 }
 
 // writeTransaction stores one transaction, its logs and its account edges.
