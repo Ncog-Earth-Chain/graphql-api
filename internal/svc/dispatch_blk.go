@@ -138,6 +138,15 @@ func (bld *blockDispatcher) process(blk *types.Block) bool {
 	}
 
 	if len(txs) == 0 {
+		// A block with no transactions burns nothing. If this is a RE-INGEST of a block that
+		// previously had transactions -- a reorg reduced it to empty -- its old burn row and its
+		// contribution to burn_total_wei are still stored: the transaction fan-out below is the
+		// only path that corrects a burn, and it does not run for an empty block. Reconcile it
+		// here, driven by the block rather than by its (absent) transactions, so a reorg cannot
+		// leave a phantom burn behind. A block that never had a burn is a cheap no-op.
+		if err := repo.ClearNecBurn(bgCtx(), uint64(blk.Number)); err != nil {
+			log.Errorf("could not clear burn for empty block #%d; %s", blk.Number, err.Error())
+		}
 		log.Debugf("empty block #%d processed", blk.Number)
 		return true
 	}

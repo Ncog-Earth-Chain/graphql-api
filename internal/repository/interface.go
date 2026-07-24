@@ -541,6 +541,10 @@ type Repository interface {
 	// StoreNecBurn stores the given native NEC burn per block record into the persistent storage.
 	StoreNecBurn(ctx context.Context, burn *types.NecBurn) error
 
+	// ClearNecBurn removes any recorded native NEC burn for a block and reconciles the running
+	// total, for a block re-ingested with no burn-contributing transactions (a reorg emptied it).
+	ClearNecBurn(ctx context.Context, blockNumber uint64) error
+
 	// NecBurnTotal provides the total amount of burned native NEC.
 	NecBurnTotal(ctx context.Context) (int64, error)
 

@@ -10,6 +10,7 @@ package repository
 
 import (
 	"context"
+	"math/big"
 	"ncogearthchain-api-graphql/internal/types"
 )
 
@@ -17,6 +18,25 @@ import (
 func (p *proxy) StoreNecBurn(ctx context.Context, burn *types.NecBurn) error {
 	p.cache.NecBurnUpdate(burn, func() (int64, error) { return p.burnTotal(ctx) })
 	return p.pg.StoreBurn(ctx, burn)
+}
+
+// ClearNecBurn removes any recorded native NEC burn for a block and reconciles the running total.
+//
+// It is called when a block is re-ingested with no burn-contributing transactions -- a reorg
+// reduced it to zero transactions. The transaction-driven burn dispatcher never fires for an empty
+// block, so without this the block's old burn row and its contribution to burn_total_wei would
+// survive the reorg forever (see pg.ClearBurn). The store fixes the durable total; the cache is
+// adjusted by the same delta so a warm cache does not stay overstated until its next reload.
+func (p *proxy) ClearNecBurn(ctx context.Context, blockNumber uint64) error {
+	cleared, err := p.pg.ClearBurn(ctx, blockNumber)
+	if err != nil {
+		return err
+	}
+	if cleared != nil && cleared.Sign() != 0 {
+		delta := new(big.Int).Div(cleared, types.BurnDecimalsCorrection).Int64()
+		p.cache.NecBurnClear(delta)
+	}
+	return nil
 }
 
 // NecBurnTotal provides the total amount of burned native NEC.

@@ -53,6 +53,21 @@ func (b *MemBridge) NecBurnUpdate(burn *types.NecBurn, loader func() (int64, err
 	atomic.StoreInt64(&burnContainer.value, v+burn.Value())
 }
 
+// NecBurnClear reconciles the in-memory burned total after a block's recorded burn was removed
+// (a reorg re-ingested the block with no burn-contributing transactions).
+//
+// Unlike NecBurnUpdate, which only moves the total FORWARD and ignores any block at or below the
+// highest it has already seen, a clear usually targets an OLDER block below the current head -- so
+// the running value is adjusted directly, by the same delta the store applied, in the cache's
+// wei/BurnDecimalsCorrection unit. If no container is loaded yet there is nothing to do: the next
+// read loads the already-corrected total from the store.
+func (b *MemBridge) NecBurnClear(clearedValue int64) {
+	if burnContainer == nil || clearedValue == 0 {
+		return
+	}
+	atomic.AddInt64(&burnContainer.value, -clearedValue)
+}
+
 // NecBurnUpdate updates in-memory value of the burned NECs.
 func (b *MemBridge) refreshBurnUpdate(burn *types.NecBurn, loader func() (int64, error)) error {
 	if burn.BlockNumber == 0 {

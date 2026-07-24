@@ -137,6 +137,68 @@ func (s *Store) StoreBurn(ctx context.Context, burn *types.NecBurn) error {
 	})
 }
 
+// ClearBurn removes any recorded burn for a block and reconciles the running total, returning the
+// amount that was cleared (nil if the block had no burn recorded).
+//
+// StoreBurn is driven by the transaction fan-out and is called once per block when the block
+// boundary is crossed; it never fires for a block with no transactions. So when a reorg re-ingests
+// a block that previously had transactions (and thus a burn row and a contribution to
+// burn_total_wei) as a block with ZERO transactions, nothing corrects the old burn: it is not in
+// the reorg purge set (this package corrects burns in place, see the file header) and the
+// dispatcher never delivers the emptied block. This is the zero-transaction counterpart: it DELETEs
+// the block's burn row and moves the running total down by exactly that amount, in one transaction,
+// so the stale row and its inflated total do not survive the reorg.
+//
+// A block that never had a burn recorded is a no-op (nil, nil) -- we must not write a phantom
+// zero-amount row, which would show up in BurnList.
+func (s *Store) ClearBurn(ctx context.Context, blockNumber uint64) (*big.Int, error) {
+	bn := int64(blockNumber)
+
+	var cleared *big.Int
+	err := s.pool.InTx(ctx, func(ctx context.Context, tx Tx) error {
+		// Delete the burn row and read the amount it held in the same statement. No row means the
+		// block never burned anything -- nothing to reconcile, and no phantom row to create.
+		var old pgtype.Numeric
+		err := tx.QueryRow(ctx,
+			`DELETE FROM burn WHERE block_number = $1 RETURNING amount_wei`, bn).Scan(&old)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return burnWriteError(bn, err)
+		}
+
+		// A burn row existed; move the running total down by exactly what it contributed. The row
+		// and the counter move together or not at all -- this whole function is one transaction,
+		// mirroring StoreBurn.
+		ct, err := tx.Exec(ctx, `
+			UPDATE meta_counter
+			SET    value = value - $1::NUMERIC, updated_at = now()
+			WHERE  key = 'burn_total_wei'`, old)
+		if err != nil {
+			return burnWriteError(bn, err)
+		}
+		if ct.RowsAffected() == 0 {
+			return fmt.Errorf("burn total counter row is missing; burn at #%d not cleared", bn)
+		}
+
+		// Drop the recorded transaction set for the block as well; the block it belonged to lost.
+		if _, err := tx.Exec(ctx, `DELETE FROM burn_tx WHERE block_number = $1`, bn); err != nil {
+			return burnWriteError(bn, err)
+		}
+
+		cleared, err = FromWei(old)
+		if err != nil {
+			return fmt.Errorf("burn at #%d: %w", bn, err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return cleared, nil
+}
+
 // burnWriteError annotates a burn write failure, calling out the one failure mode that is
 // an ordering problem rather than a data problem.
 //

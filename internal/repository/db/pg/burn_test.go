@@ -214,3 +214,92 @@ func TestBurnTotalsAcrossBlocks(t *testing.T) {
 		t.Errorf("total after block 1 reorg = %s, want %s", got, want)
 	}
 }
+
+// burnRowExists reports whether a burn row is stored for a block.
+func burnRowExists(t *testing.T, s *Store, block uint64) bool {
+	t.Helper()
+	var exists bool
+	if err := s.pool.QueryRow(context.Background(),
+		`SELECT EXISTS(SELECT 1 FROM burn WHERE block_number = $1)`, int64(block)).Scan(&exists); err != nil {
+		t.Fatalf("check burn row for #%d: %v", block, err)
+	}
+	return exists
+}
+
+// TestClearBurnReconcilesEmptiedBlock covers the zero-transaction reorg path. StoreBurn is driven
+// by the transaction fan-out and never fires for a block with no transactions, so when a reorg
+// re-ingests a burn-contributing block as an EMPTY block, ClearBurn must remove the stale row and
+// take its amount back out of the running total. A block that never burned anything must stay a
+// no-op -- clearing it must not create a phantom zero-amount row (which would appear in BurnList).
+func TestClearBurnReconcilesEmptiedBlock(t *testing.T) {
+	s := testStore(t)
+	cleanBurn(t, s)
+	cleanDB(t, s)
+	ctx := context.Background()
+
+	for _, n := range []uint64{1, 2, 3} {
+		if err := s.StoreBlock(ctx, &BlockData{Block: mkBlock(n)}); err != nil {
+			t.Fatalf("store block %d: %v", n, err)
+		}
+	}
+
+	b1 := big.NewInt(2_000_000_000_000)
+	b2 := big.NewInt(5_000_000_000_000)
+	if err := s.StoreBurn(ctx, mkBurn(1, b1, mkHashes(0xA1, 2))); err != nil {
+		t.Fatalf("burn 1: %v", err)
+	}
+	if err := s.StoreBurn(ctx, mkBurn(2, b2, mkHashes(0xB2, 1))); err != nil {
+		t.Fatalf("burn 2: %v", err)
+	}
+	if got, want := burnTotalWei(t, s), new(big.Int).Add(b1, b2); got.Cmp(want) != 0 {
+		t.Fatalf("setup total = %s, want %s", got, want)
+	}
+
+	// Block 1 is re-ingested empty: its burn row and its share of the total must go.
+	cleared, err := s.ClearBurn(ctx, 1)
+	if err != nil {
+		t.Fatalf("clear burn 1: %v", err)
+	}
+	if cleared == nil || cleared.Cmp(b1) != 0 {
+		t.Fatalf("ClearBurn(1) returned %v, want the cleared amount %s", cleared, b1)
+	}
+	if burnRowExists(t, s, 1) {
+		t.Errorf("burn row for #1 still present after clear")
+	}
+	if n := burnTxCount(t, s, 1); n != 0 {
+		t.Errorf("burn_tx for #1 not cleared: %d rows", n)
+	}
+	if got := burnTotalWei(t, s); got.Cmp(b2) != 0 {
+		t.Errorf("total after clearing #1 = %s, want %s (only #2 remains)", got, b2)
+	}
+	if amt, _ := blockBurn(t, s, 2); amt.Cmp(b2) != 0 {
+		t.Errorf("clearing #1 disturbed #2: amount=%s, want %s", amt, b2)
+	}
+
+	// Clearing #1 again is an idempotent no-op.
+	cleared, err = s.ClearBurn(ctx, 1)
+	if err != nil {
+		t.Fatalf("second clear of #1: %v", err)
+	}
+	if cleared != nil {
+		t.Errorf("re-clearing an already-cleared block returned %s, want nil", cleared)
+	}
+	if got := burnTotalWei(t, s); got.Cmp(b2) != 0 {
+		t.Errorf("re-clear moved the total: %s, want %s", got, b2)
+	}
+
+	// Block 3 never burned anything: clearing it must not create a phantom row or move the total.
+	cleared, err = s.ClearBurn(ctx, 3)
+	if err != nil {
+		t.Fatalf("clear never-burned #3: %v", err)
+	}
+	if cleared != nil {
+		t.Errorf("clearing a never-burned block returned %s, want nil", cleared)
+	}
+	if burnRowExists(t, s, 3) {
+		t.Errorf("ClearBurn created a phantom burn row for #3")
+	}
+	if got := burnTotalWei(t, s); got.Cmp(b2) != 0 {
+		t.Errorf("clearing #3 moved the total: %s, want %s", got, b2)
+	}
+}
