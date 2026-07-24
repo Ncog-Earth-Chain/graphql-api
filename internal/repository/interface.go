@@ -316,19 +316,6 @@ type Repository interface {
 		Data  *string
 	}) (*hexutil.Uint64, error)
 
-	// DefiConfiguration loads the current DeFi contract settings.
-	DefiConfiguration() (*types.DefiSettings, error)
-
-	// DefiTokens resolves list of DeFi tokens available for the DeFi functions.
-	DefiTokens() ([]types.DefiToken, error)
-
-	// DefiToken loads details of a single DeFi token by it's address.
-	DefiToken(*common.Address) (*types.DefiToken, error)
-
-	// DefiTokenPrice loads the current price of the given token
-	// from on-chain price oracle.
-	DefiTokenPrice(*common.Address) (hexutil.Big, error)
-
 	// TokenTransactions provides list of ERC20/ERC721/ERC1155 transactions based on given filters.
 	TokenTransactions(ctx context.Context, tokenType string, token *common.Address, tokenId *big.Int, acc *common.Address, txType []int32, cursor *string, count int32) (*types.TokenTransactionList, error)
 
@@ -349,8 +336,8 @@ type Repository interface {
 	// contract address for an identified owner address.
 	Erc20BalanceOf(*common.Address, *common.Address) (hexutil.Big, error)
 
-	// Erc20Allowance loads the current amount of ERC20 tokens unlocked for DeFi
-	// contract by the token owner.
+	// Erc20Allowance loads the current amount of ERC20 tokens the owner has
+	// unlocked for the given spender.
 	Erc20Allowance(*common.Address, *common.Address, *common.Address) (hexutil.Big, error)
 
 	// Erc20TotalSupply provides information about all available tokens
@@ -541,6 +528,17 @@ type Repository interface {
 
 	// NecBurnList provides list of per-block burned native NEC tokens.
 	NecBurnList(ctx context.Context, count int64) ([]types.NecBurn, error)
+
+	// RefreshAccountStats rebuilds the account_stat materialized view that backs account
+	// transaction counts and the "most active" token lists. It must be run on a schedule;
+	// nothing else keeps it current, so without it those figures stay frozen at migration.
+	RefreshAccountStats(ctx context.Context) error
+
+	// MaintainPartitions extends the time- and block-range partitions ahead of the given
+	// head and prunes those past retention. It is idempotent and must be run on a schedule:
+	// the migrations seed a fixed runway once and nothing else advances it, so gas-price
+	// inserts eventually fail and tx_log rows fall into an unprunable default partition.
+	MaintainPartitions(ctx context.Context, head uint64) error
 
 	// Close and cleanup the repository.
 	Close()

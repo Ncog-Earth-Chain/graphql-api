@@ -100,13 +100,6 @@ const (
 	// defStiContract holds deployment address of the Staker Info smart contract.
 	defStiContract = EmptyAddress
 
-	// defDefiFMintAddressProvider represents the address of the fMintAddressProvider
-	//defDefiFMintAddressProvider = EmptyAddress
-
-	// defDefiFMintAddressProvider represents the address of the fMintAddressProvider
-
-	// defDefiFMintAddressProvider represents the address of the fMintAddressProvider
-
 	// defTokenLogoFilePath represents the default path to the tokens map file
 	defTokenLogoFilePath = "tokens.json"
 
@@ -181,7 +174,4 @@ func applyDefaults(cfg *viper.Viper) {
 	cfg.SetDefault(keyStakingStiContract, defStiContract)
 	//cfg.SetDefault(keyStakingTokenizerContract, EmptyAddress)
 	//cfg.SetDefault(keyStakingERC20Token, EmptyAddress)
-
-	// DeFi configuration
-	//cfg.SetDefault(keyDefiFMintAddressProvider, defDefiFMintAddressProvider)
 }

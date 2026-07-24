@@ -1,8 +1,7 @@
 {
   "app_name": "My GraphQL API for Ncogearthchain MainNet",
   "me": {
-    "address": "",
-    "pkey": ""
+    "address": ""
   },
   "server": {
     "bind": "127.0.0.1:3000",
@@ -20,9 +19,12 @@
   "log": {
     "level": "Info"
   },
-  "db": {
-    "url": "mongodb://127.0.0.1:27017",
-    "db": "mainnet"
+  "pg": {
+    "url": "postgres://explorer:CHANGE_ME@127.0.0.1:5432/nec_explorer?sslmode=require",
+    "max_conns": 16,
+    "min_conns": 2,
+    "statement_timeout": 30,
+    "auto_migrate": true
   },
   "compiler": {
     "temp": "/tmp/solidity",
@@ -38,9 +40,6 @@
     "token": "0x69c744d3444202d35a2783929a0f930f2fbb05ad"
   },
   "defi": {
-    "fmint": {
-      "address_provider": "0xcb20a1a22976764b882c2f03f0c8523f3df54b10"
-    },
     "symbols": [
       "USD",
       "EUR",

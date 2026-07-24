@@ -127,12 +127,6 @@ type Query {
     # the total amount of collected rewards is being presented.
     sfcRewardsCollectedAmount(delegator: Address, staker: BigInt, since: Long, until: Long): BigInt!
 
-    # defiConfiguration exposes the current DeFi contract setup.
-    defiConfiguration:DefiSettings!
-
-    # defiTokens represents a list of all available DeFi tokens.
-    defiTokens:[DefiToken!]!
-
     # logs provides event logs matching the given filters, newest first.
     #
     # Every filter combination here is served by an index. address alone, address with

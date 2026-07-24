@@ -41,12 +41,8 @@ type NecBridge struct {
 	log logger.Logger
 	cg  *singleflight.Group
 
-	// fMintCfg represents the configuration of the fMint protocol
 	sigConfig *config.ServerSignature
 	sfcConfig *config.Staking
-
-	// extended minter config
-	fMintCfg fMintConfig
 
 	// common contracts
 	sfcAbi      *abi.ABI
@@ -76,9 +72,6 @@ func New(cfg *config.Config, log logger.Logger) (*NecBridge, error) {
 		// special configuration options below this line
 		sigConfig: &cfg.MySignature,
 		sfcConfig: &cfg.Staking,
-		fMintCfg: fMintConfig{
-			addressProvider: cfg.DeFi.FMint.AddressProvider,
-		},
 
 		// configure block observation loop
 		wg:       new(sync.WaitGroup),
@@ -89,8 +82,6 @@ func New(cfg *config.Config, log logger.Logger) (*NecBridge, error) {
 	// inform about the local address of the API node
 	log.Noticef("using signature address %s", br.sigConfig.Address.String())
 
-	// add the bridge ref to the fMintCfg and return the instance
-	br.fMintCfg.bridge = br
 	br.run()
 	return br, nil
 }

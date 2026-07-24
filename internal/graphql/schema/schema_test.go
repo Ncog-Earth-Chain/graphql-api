@@ -60,10 +60,6 @@ var expectedContent = []bundleContentTest{
 		msg: "ERC20 token detail type must exists",
 	},
 	{
-		re:  "(?m)^type\\s+DefiSettings\\s+{",
-		msg: "DeFi settings detail type must exists",
-	},
-	{
 		re:  "(?m)^type\\s+GovernanceContract\\s+{",
 		msg: "governance contract type must exists",
 	},

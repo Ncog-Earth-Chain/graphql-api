@@ -16,7 +16,7 @@ This is the version you want to be able to connect with Forest v.0.6.0-rc2. The 
 
 ## Building the source
 
-Building `apiserver` requires a Go (version 1.13 or later). You can install
+Building `apiserver` requires Go (version 1.25 or later). You can install
 it using your favourite package manager. Once the dependencies are installed, run
 
 ```shell
@@ -40,7 +40,12 @@ API Server for performance and security reasons. Please consider security implic
 of opening Forest RPC to outside access, especially if you enable "personal" commands
 on your node while keeping your account keys in the Forest key store.
 
-Persistent data are stored in a MongoDB database. Going through the installation and
-configuration process of MongoDB is out of scope here, please consult
-[MongoDB manual](https://docs.mongodb.com/manual/) to install and configure appropriate
-MongoDB environment for your deployment of the API server.
+Persistent data are stored in a PostgreSQL database (version 14 or later). Going through
+the installation and configuration of PostgreSQL is out of scope here; please consult the
+[PostgreSQL documentation](https://www.postgresql.org/docs/) to provision a server for your
+deployment. Point the API at it with the `pg` block of the configuration file (see
+[doc/example.config.json](doc/example.config.json)): set `pg.url` to a libpq DSN and leave
+`pg.auto_migrate` enabled to apply the bundled schema migrations at startup.
+
+The database schema, the operational runbook, and the migration from the previous MongoDB
+storage are documented in [doc/postgres-cutover.md](doc/postgres-cutover.md).

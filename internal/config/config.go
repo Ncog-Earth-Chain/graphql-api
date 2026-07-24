@@ -168,15 +168,10 @@ type Staking struct {
 	TokenizedStakeToken common.Address `mapstructure:"token"`
 }
 
-// DeFi represents the DeFi and financial contracts configuration.
+// DeFi holds the fiat price-feed configuration (the set of supported price symbols).
+// The fMint/DeFi contract surface has been removed; only the price symbols remain.
 type DeFi struct {
-	FMint        DeFiFMint `mapstructure:"fmint"`
-	PriceSymbols []string  `mapstructure:"symbols"`
-}
-
-// DeFiFMint represents the fMint DeFi module configuration.
-type DeFiFMint struct {
-	AddressProvider common.Address `mapstructure:"address_provider"`
+	PriceSymbols []string `mapstructure:"symbols"`
 }
 
 // Governance represents the governance module configuration.

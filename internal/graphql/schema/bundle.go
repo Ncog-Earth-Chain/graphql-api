@@ -131,12 +131,6 @@ type Query {
     # the total amount of collected rewards is being presented.
     sfcRewardsCollectedAmount(delegator: Address, staker: BigInt, since: Long, until: Long): BigInt!
 
-    # defiConfiguration exposes the current DeFi contract setup.
-    defiConfiguration:DefiSettings!
-
-    # defiTokens represents a list of all available DeFi tokens.
-    defiTokens:[DefiToken!]!
-
     # logs provides event logs matching the given filters, newest first.
     #
     # Every filter combination here is served by an index. address alone, address with
@@ -742,91 +736,6 @@ type DdbOperationListEdge {
     cursor: Cursor!
     operation: DdbOperation!
 }
-
-# DefiSettings represents the set of current settings and limits
-# applied to DeFi operations.
-type DefiSettings {
-    # priceOracleAggregate is the address of the current price oracle
-    # aggregate used by the DeFi to obtain USD price of tokens managed.
-    priceOracleAggregate: Address!
-
-    # StakeTokenizerContract is the address of the Stake Tokenizer contract.
-    StakeTokenizerContract: Address!
-
-    # StakeTokenizedERC20Token is the address of the Tokenized Stake ERC20 contract.
-    StakeTokenizedERC20Token: Address!
-
-}
-
-# DefiToken represents a token available for DeFi operations.
-type DefiToken {
-    # address of the token is used as the token's unique identifier.
-    address: Address!
-
-    # name of the token.
-    name: String!
-
-    # symbol used as an abbreviation for the token.
-    symbol: String!
-
-    # logoUrl is the URL of the token logo image.
-    logoUrl: String!
-
-    # decimals is the number of decimals the token supports.
-    # The most common value is 18 to mimic the ETH to WEI relationship.
-    decimals: Int!
-
-    # isActive signals if the token can be used
-    # in the DeFi functions at all.
-    isActive: Boolean!
-
-    # canWrapNEC signals if the token can be used
-    # to wrap native NEC tokens for DeFi trading.
-    canWrapNEC: Boolean!
-
-    # canDeposit signals if the token can be used
-    # in deposit as a collateral asset.
-    canDeposit: Boolean!
-
-    # canMint signals if the token can be used
-    # in fMint protocol as the target token.
-    canMint: Boolean!
-
-    # canBorrow signals if the token is available
-    # for FLend borrow operations.
-    canBorrow: Boolean!
-
-    # canTrade signals if the token is available
-    # for FTrade direct trading operations.
-    canTrade: Boolean!
-
-    # price represents the value of the token in ref. denomination.
-    # We use fUSD tokens as the synth reference value.
-    price: BigInt!
-
-    # priceDecimals is the number of decimals used on the price
-    # field to properly handle value calculations without loosing precision.
-    priceDecimals: Int!
-
-    # availableBalance represents the total available balance of the token
-    # on the account regardless of the DeFi usage of the token.
-    # It's effectively the amount available held by the ERC20 token
-    # on the account behalf.
-    availableBalance(owner: Address!): BigInt!
-
-    # defiAllowance represents the amount of ERC20 tokens unlocked
-    # by the owner / token holder to be accessible for DeFi operations.
-    # If an operation requires access to certain ERC20 token, the DeFi
-    # contract must be allowed to make a transfer of required amount
-    # of tokens from the owner to the DeFi Liquidity Poll.
-    # If it's not given, the operation will fail.
-    allowance(owner: Address!): BigInt!
-
-    # totalSupply represents total amount of tokens across all accounts
-    totalSupply: BigInt!
-
-}
-
 
 # Delegation represents a delegation on Ncogearthchain block chain.
 type Delegation {

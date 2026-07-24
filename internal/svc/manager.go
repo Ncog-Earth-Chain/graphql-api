@@ -135,6 +135,9 @@ func (mgr *ServiceManager) init() {
 	// make transaction flow monitor
 	mgr.svc = append(mgr.svc, &trxFlowMonitor{service: service{mgr: mgr}})
 
+	// make database maintenance service (matview refresh + partition runway/retention)
+	mgr.svc = append(mgr.svc, &dbMaintenance{service: service{mgr: mgr}})
+
 	// add orchestrator as the last service, so it can safely operate on all the other
 	mgr.ora = &orchestrator{service: service{mgr: mgr}}
 	mgr.svc = append(mgr.svc, mgr.ora)

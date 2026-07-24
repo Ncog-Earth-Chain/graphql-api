@@ -14,6 +14,7 @@ We strongly discourage opening Forest RPC interface for unrestricted Internet ac
 package rpc
 
 import (
+	"fmt"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/repository/rpc/contracts"
 
@@ -110,9 +111,16 @@ func (nec *NecBridge) Erc20BalanceOf(token *common.Address, owner *common.Addres
 	return hexutil.Big(*val), nil
 }
 
-// Erc20Allowance loads the current amount of ERC20 tokens unlocked for DeFi
-// contract by the token owner.
+// Erc20Allowance loads the current amount of ERC20 tokens the owner has
+// unlocked for the given spender.
 func (nec *NecBridge) Erc20Allowance(token *common.Address, owner *common.Address, spender *common.Address) (hexutil.Big, error) {
+	// a spender is required; there is no default. This historically fell back to the
+	// fMint minter address, but the DeFi/fMint surface has been removed, so the caller
+	// must name the spender explicitly.
+	if nil == spender {
+		return hexutil.Big{}, fmt.Errorf("erc20 allowance requires an explicit spender")
+	}
+
 	// connect the contract
 	contract, err := contracts.NewERCTwenty(*token, nec.eth)
 	if err != nil {
@@ -120,16 +128,10 @@ func (nec *NecBridge) Erc20Allowance(token *common.Address, owner *common.Addres
 		return hexutil.Big{}, err
 	}
 
-	// no spender? use fMint address by default
-	if nil == spender {
-		addr := nec.fMintCfg.mustContractAddress(fMintAddressMinter)
-		spender = &addr
-	}
-
-	// get the amount of tokens allowed for DeFi
+	// get the amount of tokens allowed for the spender
 	val, err := contract.Allowance(nil, *owner, *spender)
 	if err != nil {
-		nec.log.Errorf("can not get defi ERC20 %s allowance for %s; %s", token.String(), owner.String(), err.Error())
+		nec.log.Errorf("can not get ERC20 %s allowance for %s; %s", token.String(), owner.String(), err.Error())
 		return hexutil.Big{}, err
 	}
 

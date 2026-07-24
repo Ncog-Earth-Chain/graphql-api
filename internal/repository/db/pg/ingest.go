@@ -386,6 +386,36 @@ func (s *Store) ContiguousHead(ctx context.Context) (uint64, error) {
 	return uint64(v), nil
 }
 
+// ensureBlockPartitionsMaxRounds bounds the ensure loop. The SQL creates at most
+// ahead_target partitions per call and converges in a handful of rounds; this is a
+// defensive stop so a logic error can never spin forever.
+const ensureBlockPartitionsMaxRounds = 1024
+
+// EnsureBlockPartitions creates any missing block-range partitions for a partitioned
+// table up to the runway configured ahead of head, returning the number created.
+//
+// The migration seeds partitions once and nothing else extends them; without this the
+// table eventually writes every row into its DEFAULT partition, which cannot be pruned
+// and defeats the per-partition indexes. Each SQL call is bounded to ahead_target new
+// partitions so its ACCESS EXCLUSIVE lock on the parent is never held for an unbounded
+// run, so we loop until it reports nothing left to create. Idempotent once covered.
+func (s *Store) EnsureBlockPartitions(ctx context.Context, table string, head uint64) (int, error) {
+	total := 0
+	for round := 0; round < ensureBlockPartitionsMaxRounds; round++ {
+		var made int
+		if err := s.pool.QueryRow(ctx,
+			`SELECT ensure_block_partitions($1, $2)`, table, int64(head)).Scan(&made); err != nil {
+			return total, fmt.Errorf("can not ensure block partitions for %s: %w", table, err)
+		}
+		total += made
+		if made == 0 {
+			return total, nil
+		}
+	}
+	return total, fmt.Errorf("block partition creation for %s did not converge after %d rounds",
+		table, ensureBlockPartitionsMaxRounds)
+}
+
 // MissingBlocks lists gaps in the stored range, so they can be healed by re-scanning.
 //
 // The MongoDB ingest had no equivalent: a gap was invisible, and the scanner's fixed

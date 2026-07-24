@@ -81,7 +81,4 @@ const (
 	keyStakingStiContract = "staking.sti"
 	//keyStakingTokenizerContract = "staking.tokenizer"
 	//keyStakingERC20Token        = "staking.token"
-
-	// defi related configs
-	//keyDefiFMintAddressProvider = "defi.fmint.address_provider"
 )

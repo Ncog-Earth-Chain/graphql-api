@@ -145,12 +145,6 @@ type ApiResolver interface {
 	// SendTransaction sends raw signed and RLP encoded transaction to the blockchain.
 	SendTransaction(*struct{ Tx hexutil.Bytes }) (*Transaction, error)
 
-	// DefiConfiguration resolves the current DeFi contract settings.
-	DefiConfiguration() (*DefiConfiguration, error)
-
-	// DefiTokens resolves list of DeFi tokens available for the DeFi functions.
-	DefiTokens() ([]*DefiToken, error)
-
 	// Erc20Token resolves an instance of ERC20 token if available.
 	Erc20Token(*struct{ Token common.Address }) *ERC20Token
 

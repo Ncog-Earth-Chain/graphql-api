@@ -15,16 +15,20 @@ import (
 
 // Native NEC burn reads and writes.
 //
-// Three structural changes from the MongoDB implementation, all of them fixes rather
-// than preferences:
+// Structural changes from the MongoDB implementation, all of them fixes rather than
+// preferences:
 //
-//   - Accumulation actually happens. The Mongo writer decoded the existing document into
-//     the wrong variable (`sr.Decode(&sr)`), so the "existing" burn was always a zero
-//     value: the new amount replaced rather than extended the block's total, the dedup
-//     and partial-burn guards were unreachable, and the final UpdateOne filtered on
-//     block 0 and therefore matched nothing at all. The whole update path was a no-op
-//     that reported success. Here the accumulation is done by the database, in SQL,
-//     against the row itself.
+//   - The write is reorg-aware. Each delivery carries a block's ENTIRE burn, so a second
+//     delivery for a block is either a verbatim re-delivery or a reorg -- never a partial
+//     addition. The stored amount is REPLACED with the delivered one and the running total
+//     is moved by the difference, so a re-delivery moves it by zero and a reorg reconciles
+//     it exactly. The Mongo path (and the first PostgreSQL version) ADDED every delivery and
+//     used the transaction-hash set to dedup, which could not distinguish a reorg -- whose
+//     transactions are all new -- from a brand-new burn, so a reorged block stacked a second
+//     burn on top of the first and inflated the global total permanently. (The Mongo writer
+//     never even got that far: it decoded the existing document into the wrong variable, so
+//     the accumulation, dedup and partial guards were all unreachable and the final UpdateOne
+//     matched nothing -- the whole path was a no-op that reported success.)
 //
 //   - Amounts are stored as exact wei. Mongo divided by BurnDecimalsCorrection before
 //     storing and then summed the truncated values, losing up to 1e10 wei per block.
@@ -32,29 +36,26 @@ import (
 //     reports are slightly HIGHER than Mongo's, and correct.
 //
 //   - Dedup is structural. The included transaction hashes live in burn_tx under a
-//     composite primary key, so a hash cannot be recorded twice for a block no matter
-//     how often the burn is re-delivered. Mongo appended unconditionally into an array
-//     that grew without bound.
+//     composite primary key, so a hash cannot be recorded twice for a block. On a reorg the
+//     recorded set is replaced, not merged, so it reflects the block that actually won.
 //
 // The running total lives in meta_counter('burn_total_wei') and is moved inside the same
-// transaction as the burn row. A sum() over `burn` would be a full-table numeric
-// aggregate over one-row-per-block for a figure that changes once per block.
+// transaction as the burn row. A sum() over `burn` would be a full-table numeric aggregate
+// over one-row-per-block for a figure that changes once per block.
+//
+// burn and burn_tx are deliberately NOT in the reorg purge set: this write corrects a
+// block's burn in place rather than relying on delete-and-rebuild.
 
-// StoreBurn records a native NEC burn for a block, accumulating into any burn already
-// stored for that block.
+// StoreBurn records the native NEC burn for a block, replacing any burn already stored for
+// that block and reconciling the running total by the difference.
 //
-// The transaction hash list is the idempotency oracle:
-//
-//   - every incoming hash already recorded  -> re-delivery, no amounts move
-//   - no incoming hash recorded             -> a genuinely new burn, amounts accumulate
-//   - some but not all recorded             -> rejected, exactly as the Mongo writer
-//     intended to (it could not, see above). A partial overlap means the caller has
-//     merged two different views of the block and there is no correct amount to add.
-//
-// A burn carrying no hashes at all has no such signal and is therefore always added,
-// which matches the Mongo behaviour. Callers that can re-deliver must send the hashes.
+// Each delivery carries the block's whole burn: the dispatcher accumulates every transaction
+// of a block in memory and calls this once, when the block boundary is crossed. A second
+// call for the same block is therefore a re-delivery (after a restart) or a reorg that
+// changed the block's contents; both are handled by replacing the amount and moving the
+// total by (new - old).
 func (s *Store) StoreBurn(ctx context.Context, burn *types.NecBurn) error {
-	// Mirrors the Mongo guard: a nil burn is not an error, it is nothing to do.
+	// A nil burn is not an error, it is nothing to do.
 	if burn == nil {
 		return nil
 	}
@@ -65,102 +66,75 @@ func (s *Store) StoreBurn(ctx context.Context, burn *types.NecBurn) error {
 	}
 
 	blockNumber := int64(burn.BlockNumber)
+
+	// De-duplicate the hash list in Go so tx_count equals the number of burn_tx rows even
+	// if a caller repeats a hash within one delivery.
+	seen := make(map[string]struct{}, len(burn.TxList))
 	hashes := make([][]byte, 0, len(burn.TxList))
 	for i := range burn.TxList {
-		hashes = append(hashes, HashVal(burn.TxList[i]))
+		hb := HashVal(burn.TxList[i])
+		k := string(hb)
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		seen[k] = struct{}{}
+		hashes = append(hashes, hb)
 	}
+	txCount := len(hashes)
 
 	return s.pool.InTx(ctx, func(ctx context.Context, tx Tx) error {
-		// The burn row must exist before burn_tx can reference it. Amount and count start
-		// at zero and are moved by the UPDATE below, so the insert and the accumulate path
-		// are the same code -- a first burn and a later addition differ only in whether
-		// this insert did anything.
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO burn (block_number, ts, amount_wei, tx_count)
-			VALUES ($1, $2, 0, 0)
-			ON CONFLICT (block_number) DO NOTHING`,
-			blockNumber, burn.BlkTimeStamp.UTC()); err != nil {
-			return burnWriteError(blockNumber, err)
-		}
-
-		newHashes := 0
-		if len(hashes) > 0 {
-			inserted, total, err := claimBurnTxHashes(ctx, tx, blockNumber, hashes)
-			if err != nil {
-				return burnWriteError(blockNumber, err)
-			}
-
-			// Full replay. Commit -- the hash rows are unchanged and the amounts must not
-			// move a second time.
-			if inserted == 0 {
-				return nil
-			}
-			if inserted < total {
-				s.log.Criticalf("invalid partial burn received at #%d: %d of %d transactions already recorded",
-					blockNumber, total-inserted, total)
-				return fmt.Errorf("partial burn update rejected at #%d", blockNumber)
-			}
-			newHashes = inserted
-		}
-
-		// tx_count counts hashes actually claimed, not hashes offered, so it stays equal to
-		// the number of burn_tx rows even if a caller repeats a hash within one call.
-		if _, err := tx.Exec(ctx, `
-			UPDATE burn
-			SET    amount_wei = amount_wei + $2::NUMERIC,
-			       tx_count   = tx_count + $3,
-			       ts         = $4
-			WHERE  block_number = $1`,
-			blockNumber, amount, newHashes, burn.BlkTimeStamp.UTC()); err != nil {
-			return burnWriteError(blockNumber, err)
-		}
-
-		// Same transaction as the row above, deliberately: a total maintained separately
-		// would drift permanently on any crash between the two, and nothing recomputes it.
+		// Upsert the block's burn to the delivered value and move the running total by the
+		// delta, atomically. `prev` reads the pre-write amount under the statement snapshot
+		// (a data-modifying WITH cannot observe its siblings' effects), `up` writes the new
+		// amount and returns it, and the outer UPDATE applies (new - old) -- which is
+		// negative when a reorg reduced the block's burn, and SQL handles that. A missing
+		// block row surfaces here as a 23503 foreign-key violation, annotated below.
 		ct, err := tx.Exec(ctx, `
+			WITH prev AS (
+			    SELECT amount_wei AS old FROM burn WHERE block_number = $1
+			),
+			up AS (
+			    INSERT INTO burn (block_number, ts, amount_wei, tx_count)
+			    VALUES ($1, $2, $3::NUMERIC, $4)
+			    ON CONFLICT (block_number) DO UPDATE
+			       SET amount_wei = EXCLUDED.amount_wei,
+			           tx_count   = EXCLUDED.tx_count,
+			           ts         = EXCLUDED.ts
+			    RETURNING amount_wei AS new
+			)
 			UPDATE meta_counter
-			SET    value = value + $1::NUMERIC, updated_at = now()
-			WHERE  key = 'burn_total_wei'`, amount)
+			SET    value = value + ((SELECT new FROM up) - COALESCE((SELECT old FROM prev), 0)),
+			       updated_at = now()
+			WHERE  key = 'burn_total_wei'`,
+			blockNumber, burn.BlkTimeStamp.UTC(), amount, txCount)
 		if err != nil {
-			return fmt.Errorf("can not update the burned total for #%d: %w", blockNumber, err)
+			return burnWriteError(blockNumber, err)
 		}
 		if ct.RowsAffected() == 0 {
 			// Migration 00001 seeds this row. Its absence means the running total has been
-			// silently not-maintained, so refuse the write rather than record a burn that
-			// the total will never include.
+			// silently not-maintained, so refuse the write rather than record a burn the
+			// total will never include. The burn row and the counter move together or not
+			// at all: this whole function is one transaction.
 			return fmt.Errorf("burn total counter row is missing; burn at #%d not stored", blockNumber)
+		}
+
+		// Replace the recorded transaction set for the block. On a reorg the old set names
+		// the losing block's transactions, so it is cleared rather than merged. burn_tx is
+		// write-only (a record, never read for display), so replacing it has no read effect.
+		if _, err := tx.Exec(ctx, `DELETE FROM burn_tx WHERE block_number = $1`, blockNumber); err != nil {
+			return burnWriteError(blockNumber, err)
+		}
+		if len(hashes) > 0 {
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO burn_tx (block_number, tx_hash)
+				SELECT $1, unnest($2::BYTEA[])
+				ON CONFLICT (block_number, tx_hash) DO NOTHING`,
+				blockNumber, hashes); err != nil {
+				return burnWriteError(blockNumber, err)
+			}
 		}
 		return nil
 	})
-}
-
-// claimBurnTxHashes inserts the transaction hashes for a block and reports how many were
-// new against how many were offered.
-//
-// One statement so the claim and the count cannot disagree, and so the composite primary
-// key on burn_tx serves as both the conflict target and the dedup probe -- there is no
-// separate SELECT that a concurrent writer could slip between.
-//
-// The incoming list is made DISTINCT first: a caller repeating a hash within a single call
-// would otherwise inflate `total` and make its own delivery look partial.
-func claimBurnTxHashes(ctx context.Context, q Querier, blockNumber int64, hashes [][]byte) (inserted, total int, err error) {
-	err = q.QueryRow(ctx, `
-		WITH incoming(tx_hash) AS (
-		    SELECT DISTINCT unnest($2::BYTEA[])
-		),
-		ins AS (
-		    INSERT INTO burn_tx (block_number, tx_hash)
-		    SELECT $1, tx_hash FROM incoming
-		    ON CONFLICT (block_number, tx_hash) DO NOTHING
-		    RETURNING 1
-		)
-		SELECT (SELECT count(*) FROM ins)::INT,
-		       (SELECT count(*) FROM incoming)::INT`,
-		blockNumber, hashes).Scan(&inserted, &total)
-	if err != nil {
-		return 0, 0, fmt.Errorf("can not record burn transactions: %w", err)
-	}
-	return inserted, total, nil
 }
 
 // burnWriteError annotates a burn write failure, calling out the one failure mode that is
