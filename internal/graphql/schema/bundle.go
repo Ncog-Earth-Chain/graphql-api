@@ -255,8 +255,14 @@ type Query {
         count: Int = 25
     ): DdbOperationList!
 
-    # ddbContracts provides the known data contracts, most recently active first.
-    ddbContracts(count: Int = 25): [DdbContract!]!
+    # ddbContracts provides the known data contracts, most recently active first, paginated.
+    ddbContracts(cursor: Cursor, count: Int = 25): DdbContractList!
+
+    # ddbContract resolves a single data contract by its address, or null if unknown. This
+    # is the point lookup the paginated list cannot stand in for: a contract that has
+    # dropped below the recent-activity page is otherwise only reachable by walking the
+    # whole cursor.
+    ddbContract(address: Address!): DdbContract
 
     # === DDB (Decentralized DataBase) ===
 
@@ -735,6 +741,18 @@ type DdbOperationList {
 type DdbOperationListEdge {
     cursor: Cursor!
     operation: DdbOperation!
+}
+
+# DdbContractList is a page of data contracts.
+type DdbContractList {
+    edges: [DdbContractListEdge!]!
+    pageInfo: ListPageInfo!
+}
+
+# DdbContractListEdge is a single edge in a sequential list of data contracts.
+type DdbContractListEdge {
+    cursor: Cursor!
+    contract: DdbContract!
 }
 
 # Delegation represents a delegation on Ncogearthchain block chain.

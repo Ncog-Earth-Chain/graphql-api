@@ -126,16 +126,43 @@ func (s *Store) DdbOperationAt(ctx context.Context, blockNumber uint64, txIndex 
 	return op, nil
 }
 
-// DdbContracts lists known data contracts, most recently active first.
-func (s *Store) DdbContracts(ctx context.Context, count int32) ([]*types.DdbContract, error) {
+var ddbContractKeyset = Keyset{Columns: []KeyColumn{
+	{Name: "last_block", Dir: Desc},
+	{Name: "last_tx_index", Dir: Desc},
+}}
+
+const ddbContractColumns = `contract_addr, db_name, contract_name, author, latest_version,
+	first_block, last_block, last_tx_index, op_count, created_at, updated_at`
+
+// DdbContracts lists known data contracts, most recently active first, cursor-paginated.
+//
+// Keyset on (last_block, last_tx_index) -- the recent-activity index -- so a contract past
+// the first page is reachable. The earlier bare top-N list left every contract below the
+// 25 most recently active with no way to page to it.
+func (s *Store) DdbContracts(ctx context.Context, cursor string, count int32) ([]*types.DdbContract, error) {
 	page := NewPage(count, maxListLimit)
 
-	rows, err := s.pool.Query(ctx, `
-		SELECT contract_addr, db_name, contract_name, author, latest_version,
-		       first_block, last_block, op_count, created_at, updated_at
-		FROM   ddb_contract
-		ORDER  BY last_block DESC, last_tx_index DESC
-		LIMIT  $1`, page.Limit)
+	var where string
+	var args []any
+
+	cur, err := DecodeCursor(cursor, 2)
+	if err != nil {
+		return nil, err
+	}
+	if len(cur) == 2 {
+		pred, curArgs, err := ddbContractKeyset.After([]any{cur[0], int32(cur[1])}, page.Reverse, len(args))
+		if err != nil {
+			return nil, err
+		}
+		where = " WHERE " + pred
+		args = append(args, curArgs...)
+	}
+
+	sql := `SELECT ` + ddbContractColumns + ` FROM ddb_contract` + where +
+		` ` + ddbContractKeyset.OrderBy(page.Reverse) + ` LIMIT $` + itoa(len(args)+1)
+	args = append(args, page.Limit)
+
+	rows, err := s.pool.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, fmt.Errorf("DDB contract query failed: %w", err)
 	}
@@ -143,38 +170,71 @@ func (s *Store) DdbContracts(ctx context.Context, count int32) ([]*types.DdbCont
 
 	out := make([]*types.DdbContract, 0, page.Limit)
 	for rows.Next() {
-		var (
-			addr, author          []byte
-			dbName, name, version *string
-			firstBlock, lastBlock int64
-			opCount               int64
-			createdAt, updatedAt  pgtype.Timestamptz
-		)
-		if err := rows.Scan(&addr, &dbName, &name, &author, &version,
-			&firstBlock, &lastBlock, &opCount, &createdAt, &updatedAt); err != nil {
-			return nil, err
-		}
-
-		a, err := ToAddr(addr)
+		c, err := scanDdbContract(rows)
 		if err != nil {
 			return nil, err
 		}
-		au, _ := ToAddr(author)
-
-		out = append(out, &types.DdbContract{
-			Address:        *a,
-			DbName:         deref(dbName),
-			ContractName:   deref(name),
-			Author:         au,
-			LatestVersion:  deref(version),
-			FirstBlock:     hexutil.Uint64(firstBlock),
-			LastBlock:      hexutil.Uint64(lastBlock),
-			OperationCount: hexutil.Uint64(opCount),
-			CreatedAt:      hexutil.Uint64(createdAt.Time.Unix()),
-			UpdatedAt:      hexutil.Uint64(updatedAt.Time.Unix()),
-		})
+		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+// DdbContract loads a single data contract by its address, or nil if unknown.
+//
+// This is the point lookup the list could not stand in for: without it, a contract that has
+// dropped below the recent-activity page is only reachable by walking the whole cursor.
+func (s *Store) DdbContract(ctx context.Context, addr common.Address) (*types.DdbContract, error) {
+	row := s.pool.QueryRow(ctx,
+		`SELECT `+ddbContractColumns+` FROM ddb_contract WHERE contract_addr = $1`, AddrVal(addr))
+
+	c, err := scanDdbContract(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("can not load DDB contract %s: %w", addr.String(), err)
+	}
+	return c, nil
+}
+
+// DdbContractCursor renders the pagination cursor for a contract.
+func DdbContractCursor(lastBlock, lastTxIndex uint64) string {
+	return EncodeCursor([]int64{int64(lastBlock), int64(lastTxIndex)})
+}
+
+// scanDdbContract maps one ddb_contract row onto the domain type.
+func scanDdbContract(row rowScanner) (*types.DdbContract, error) {
+	var (
+		addr, author                       []byte
+		dbName, name, version              *string
+		firstBlock, lastBlock, lastTxIndex int64
+		opCount                            int64
+		createdAt, updatedAt               pgtype.Timestamptz
+	)
+	if err := row.Scan(&addr, &dbName, &name, &author, &version,
+		&firstBlock, &lastBlock, &lastTxIndex, &opCount, &createdAt, &updatedAt); err != nil {
+		return nil, err
+	}
+
+	a, err := ToAddr(addr)
+	if err != nil {
+		return nil, err
+	}
+	au, _ := ToAddr(author)
+
+	return &types.DdbContract{
+		Address:        *a,
+		DbName:         deref(dbName),
+		ContractName:   deref(name),
+		Author:         au,
+		LatestVersion:  deref(version),
+		FirstBlock:     hexutil.Uint64(firstBlock),
+		LastBlock:      hexutil.Uint64(lastBlock),
+		LastTxIndex:    hexutil.Uint64(lastTxIndex),
+		OperationCount: hexutil.Uint64(opCount),
+		CreatedAt:      hexutil.Uint64(createdAt.Time.Unix()),
+		UpdatedAt:      hexutil.Uint64(updatedAt.Time.Unix()),
+	}, nil
 }
 
 // DdbOperationCursor renders the pagination cursor for an operation.

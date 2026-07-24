@@ -74,21 +74,78 @@ func (rs *rootResolver) DdbOperations(ctx context.Context, args struct {
 	return &DdbOperationList{list: rows, asked: args.Count}, nil
 }
 
-// DdbContracts resolves the known data contracts.
-func (rs *rootResolver) DdbContracts(ctx context.Context, args struct{ Count int32 }) ([]*DdbContract, error) {
+// DdbContracts resolves the known data contracts, most recently active first, paginated.
+func (rs *rootResolver) DdbContracts(ctx context.Context, args struct {
+	Cursor *Cursor
+	Count  int32
+}) (*DdbContractList, error) {
 	args.Count = listLimitCount(args.Count, listMaxEdgesPerRequest)
 
-	rows, err := repository.R().DdbContracts(ctx, args.Count)
+	rows, err := repository.R().DdbContracts(ctx, (*string)(args.Cursor), args.Count)
 	if err != nil {
 		log.Errorf("can not get DDB contracts; %s", err.Error())
 		return nil, err
 	}
+	return &DdbContractList{list: rows, asked: args.Count}, nil
+}
 
-	out := make([]*DdbContract, len(rows))
-	for i, c := range rows {
-		out[i] = &DdbContract{DdbContract: *c}
+// DdbContract resolves a single data contract by its address, or nil if unknown.
+//
+// The list only pages through contracts by recent activity; this makes any contract
+// reachable directly, which the top-N list alone could not do.
+func (rs *rootResolver) DdbContract(ctx context.Context, args struct {
+	Address common.Address
+}) (*DdbContract, error) {
+	c, err := repository.R().DdbContract(ctx, args.Address)
+	if err != nil {
+		log.Errorf("can not get DDB contract %s; %s", args.Address.String(), err.Error())
+		return nil, err
 	}
-	return out, nil
+	if c == nil {
+		return nil, nil
+	}
+	return &DdbContract{DdbContract: *c}, nil
+}
+
+// DdbContractList resolves a page of data contracts.
+type DdbContractList struct {
+	list  []*types.DdbContract
+	asked int32
+}
+
+// DdbContractListEdge resolves one contract with its cursor.
+type DdbContractListEdge struct {
+	Contract *DdbContract
+}
+
+// Edges resolves the page entries.
+func (dl *DdbContractList) Edges() []DdbContractListEdge {
+	out := make([]DdbContractListEdge, len(dl.list))
+	for i, c := range dl.list {
+		out[i] = DdbContractListEdge{Contract: &DdbContract{DdbContract: *c}}
+	}
+	return out
+}
+
+// PageInfo resolves the page boundaries from whether the page came back short.
+func (dl *DdbContractList) PageInfo() (*ListPageInfo, error) {
+	if len(dl.list) == 0 {
+		return NewListPageInfo(nil, nil, false, false)
+	}
+
+	first := Cursor(pg.DdbContractCursor(
+		uint64(dl.list[0].LastBlock), uint64(dl.list[0].LastTxIndex)))
+	l := dl.list[len(dl.list)-1]
+	last := Cursor(pg.DdbContractCursor(uint64(l.LastBlock), uint64(l.LastTxIndex)))
+
+	short := int32(len(dl.list)) < absCount(dl.asked)
+	return NewListPageInfo(&first, &last, !short, false)
+}
+
+// Cursor resolves an edge's pagination cursor.
+func (e DdbContractListEdge) Cursor() Cursor {
+	return Cursor(pg.DdbContractCursor(
+		uint64(e.Contract.LastBlock), uint64(e.Contract.LastTxIndex)))
 }
 
 // Edges resolves the page entries.

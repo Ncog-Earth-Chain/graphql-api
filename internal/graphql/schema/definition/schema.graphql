@@ -251,8 +251,14 @@ type Query {
         count: Int = 25
     ): DdbOperationList!
 
-    # ddbContracts provides the known data contracts, most recently active first.
-    ddbContracts(count: Int = 25): [DdbContract!]!
+    # ddbContracts provides the known data contracts, most recently active first, paginated.
+    ddbContracts(cursor: Cursor, count: Int = 25): DdbContractList!
+
+    # ddbContract resolves a single data contract by its address, or null if unknown. This
+    # is the point lookup the paginated list cannot stand in for: a contract that has
+    # dropped below the recent-activity page is otherwise only reachable by walking the
+    # whole cursor.
+    ddbContract(address: Address!): DdbContract
 
     # === DDB (Decentralized DataBase) ===
 

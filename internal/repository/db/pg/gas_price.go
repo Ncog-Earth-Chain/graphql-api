@@ -140,12 +140,10 @@ func (s *Store) GasPricePeriodCount(ctx context.Context) (uint64, error) {
 // Not-found is an empty non-nil slice and a nil error, never (nil, nil) -- the resolver
 // checks len() on the result.
 //
-// The predicate is deliberately the Mongo one, ts_from >= from AND ts_to <= to, and it is
-// asymmetric: a period that starts inside the window but ends after `to` is dropped, so
-// the newest period is systematically missing from every "up to now" query. The correct
-// test is overlap (ts_from < to AND ts_to > from). It is left alone here because changing
-// it changes what the API returns, which is a product decision and not part of a storage
-// port -- but it is a defect, not a quirk to keep.
+// The predicate is an OVERLAP test, ts_from < to AND ts_to > from, so a period that starts
+// inside the window but ends after `to` -- the newest, still-open period -- is included.
+// The earlier port kept Mongo's asymmetric ts_from >= from AND ts_to <= to, which dropped
+// that newest period from every "up to now" query. That was a defect, now fixed.
 func (s *Store) GasPriceTicks(ctx context.Context, from *time.Time, to *time.Time) ([]types.GasPricePeriod, error) {
 	// Mongo encoded a nil *time.Time as BSON null and the comparison quietly matched
 	// nothing; in PostgreSQL a NULL bind makes every comparison NULL, which is also zero
@@ -162,15 +160,15 @@ func (s *Store) GasPriceTicks(ctx context.Context, from *time.Time, to *time.Tim
 	// ORDER BY (ts_from, period_type) rather than ts_from alone: the pair is the primary
 	// key, so the ordering is total and the same range always returns the same sequence.
 	//
-	// `ts_from <= $2` is redundant against `ts_to <= $2` for any period with
-	// ts_from <= ts_to, which the writer always produces. It is spelled out because
-	// ts_from is the PARTITION KEY and ts_to is not: without it the planner cannot prune
-	// and has to append a scan of every future partition, which is 13 today and grows
-	// with every maintenance run.
+	// ts_from is the PARTITION KEY, so `ts_from < $2` lets the planner prune every future
+	// partition instead of appending a scan of each -- there are 13 today and the count
+	// grows with every maintenance run. The lower bound is on ts_to, which is not the
+	// partition key, so past partitions are not pruned; they are finite and the LIMIT
+	// bounds the scan.
 	rows, err := s.pool.Query(ctx, `
 		SELECT `+gasTickColumns+`
 		FROM   gas_price_tick
-		WHERE  ts_from >= $1 AND ts_from <= $2 AND ts_to <= $2
+		WHERE  ts_from < $2 AND ts_to > $1
 		ORDER  BY ts_from ASC, period_type ASC
 		LIMIT  $3`,
 		from.UTC(), to.UTC(), maxGasPriceTicks)

@@ -5,6 +5,8 @@ import (
 
 	"ncogearthchain-api-graphql/internal/repository/db/pg"
 	"ncogearthchain-api-graphql/internal/types"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // DdbOperations returns the on-chain DDB operation history.
@@ -22,6 +24,11 @@ func (p *proxy) DdbOperationAt(ctx context.Context, blockNumber, txIndex uint64)
 }
 
 // DdbContracts returns the known data contracts, most recently active first.
-func (p *proxy) DdbContracts(ctx context.Context, count int32) ([]*types.DdbContract, error) {
-	return p.pg.DdbContracts(ctx, count)
+func (p *proxy) DdbContracts(ctx context.Context, cursor *string, count int32) ([]*types.DdbContract, error) {
+	return p.pg.DdbContracts(ctx, derefCursor(cursor), count)
+}
+
+// DdbContract returns a single data contract by address, or nil if unknown.
+func (p *proxy) DdbContract(ctx context.Context, addr common.Address) (*types.DdbContract, error) {
+	return p.pg.DdbContract(ctx, addr)
 }

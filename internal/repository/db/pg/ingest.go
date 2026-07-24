@@ -197,6 +197,19 @@ func (s *Store) writeTransaction(ctx context.Context, q Querier, t *types.Transa
 	blockNumber := int64(*t.BlockNumber)
 	txIndex := int32(*t.Index)
 
+	// is_ddb marks a DDB commit transaction. The authoritative signal is the decoded
+	// dual-consensus record (t.DDB), the same one writeDdbCommit gates on -- not the
+	// destination address. The previous predicate ANDed "creates a contract" with "is
+	// addressed to the DDB system contract", which cannot both hold (a contract-creation
+	// transaction has no recipient), so the flag was always false and its partial index
+	// tx_ddb_idx was permanently empty. ddb_contract carries the data-contract address the
+	// commit targets, when it names one.
+	isDDB := t.DDB != nil
+	var ddbContract []byte
+	if isDDB {
+		ddbContract = Addr(t.DDB.ContractAddress)
+	}
+
 	_, err = q.Exec(ctx, `
 		INSERT INTO tx (hash, block_number, tx_index, block_hash, from_addr, to_addr,
 		                value_wei, nonce, gas_limit, gas_used, gas_cumulative,
@@ -233,8 +246,8 @@ func (s *Store) writeTransaction(ctx context.Context, q Querier, t *types.Transa
 		txStatus(t.Status),
 		Addr(t.ContractAddress),
 		t.TimeStamp.UTC(),
-		t.ContractAddress != nil && isDDBAddress(t.To),
-		nil,
+		isDDB,
+		ddbContract,
 	)
 	if err != nil {
 		return fmt.Errorf("can not store transaction %s: %w", t.Hash.String(), err)
@@ -489,18 +502,6 @@ const (
 	statusFailed  int16 = 0
 	statusSuccess int16 = 1
 )
-
-// isDDBAddress reports whether a transaction is addressed to the DDB system contract.
-func isDDBAddress(to *common.Address) bool {
-	if to == nil {
-		return false
-	}
-	return *to == ddbContractAddress
-}
-
-// ddbContractAddress is the DDB system contract every data-contract transaction is
-// addressed to.
-var ddbContractAddress = common.HexToAddress("0x0000000000000000000000000000000000000DDB")
 
 // StoreTransaction writes a single transaction with its block.
 //

@@ -143,8 +143,14 @@ type DdbContract struct {
 
 	LatestVersion string `json:"latestVersion,omitempty"`
 
-	FirstBlock     hexutil.Uint64 `json:"firstBlock"`
-	LastBlock      hexutil.Uint64 `json:"lastBlock"`
+	FirstBlock hexutil.Uint64 `json:"firstBlock"`
+	LastBlock  hexutil.Uint64 `json:"lastBlock"`
+
+	// LastTxIndex is the position of the most recent operation within its block. It pairs
+	// with LastBlock to form the pagination cursor (last_block, last_tx_index), which the
+	// recent-activity index is ordered by; it is not exposed as a GraphQL field.
+	LastTxIndex hexutil.Uint64 `json:"lastTxIndex"`
+
 	OperationCount hexutil.Uint64 `json:"operationCount"`
 
 	CreatedAt hexutil.Uint64 `json:"createdAt"`

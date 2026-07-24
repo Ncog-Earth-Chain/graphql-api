@@ -449,8 +449,12 @@ type Repository interface {
 	// DdbOperationAt returns the DDB operation committed at a block position.
 	DdbOperationAt(ctx context.Context, blockNumber, txIndex uint64) (*types.DdbOperation, error)
 
-	// DdbContracts returns the known data contracts, most recently active first.
-	DdbContracts(ctx context.Context, count int32) ([]*types.DdbContract, error)
+	// DdbContracts returns the known data contracts, most recently active first,
+	// cursor-paginated.
+	DdbContracts(ctx context.Context, cursor *string, count int32) ([]*types.DdbContract, error)
+
+	// DdbContract returns a single data contract by address, or nil if unknown.
+	DdbContract(ctx context.Context, addr common.Address) (*types.DdbContract, error)
 
 	// Logs returns event logs matching the criteria, newest first.
 	//

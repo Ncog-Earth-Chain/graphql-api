@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # An ephemeral PostgreSQL so the DB-gated integration tests actually run. Without a
+    # database EXPLORER_TEST_DSN is unset and roughly half the pg suite -- every ingest
+    # atomicity, reorg-purge, watermark, DDB-storage and pagination test -- silently skips.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: explorer
+          POSTGRES_PASSWORD: explorer
+          POSTGRES_DB: nec_explorer
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U explorer -d nec_explorer"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      EXPLORER_TEST_DSN: postgres://explorer:explorer@localhost:5432/nec_explorer?sslmode=disable
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      # The GraphQL bundle is generated from the .graphql sources; a schema edit that forgot
+      # to regenerate it would otherwise ship a schema that silently disagrees with the code.
+      - name: Schema bundle is current
+        run: |
+          bash internal/graphql/schema/tools/make_bundle.sh
+          git diff --exit-code internal/graphql/schema/bundle.go
+
+      # Apply the schema through the same embedded migrations the server runs at startup.
+      - name: Apply migrations
+        run: go run ./cmd/migrate -dsn "$EXPLORER_TEST_DSN"
+
+      # -count=1 disables the test cache so the DB-gated tests are actually exercised.
+      - name: Test
+        run: go test ./... -count=1
