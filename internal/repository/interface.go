@@ -66,6 +66,16 @@ type Repository interface {
 	// LastKnownBlock returns number of the last block known to the repository.
 	LastKnownBlock(ctx context.Context) (uint64, error)
 
+	// ContiguousHead returns the highest block below which nothing is missing (ingest watermark).
+	ContiguousHead(ctx context.Context) (uint64, error)
+
+	// MissingBlocks lists gaps in the stored range [from, to] so a heal loop can re-fetch them.
+	MissingBlocks(ctx context.Context, from, to uint64, limit int) ([]uint64, error)
+
+	// ForkedPredecessors lists stored blocks whose hash diverges from the next block's
+	// parent_hash (reorged blocks), so a reorg heal can re-fetch the canonical ones.
+	ForkedPredecessors(ctx context.Context, aboveBlock uint64, limit int) ([]uint64, error)
+
 	// ObservedHeaders provides a channel fed with new headers observed
 	// by the connected blockchain node.
 	ObservedHeaders() chan *etc.Header
@@ -456,6 +466,10 @@ type Repository interface {
 	// DdbContract returns a single data contract by address, or nil if unknown.
 	DdbContract(ctx context.Context, addr common.Address) (*types.DdbContract, error)
 
+	// DdbStateHashChainValid reports whether a data contract's per-operation state-hash chain
+	// is continuous (each op's priorPostStateHash == the previous op's postStateHash).
+	DdbStateHashChainValid(ctx context.Context, addr common.Address) (bool, error)
+
 	// Logs returns event logs matching the criteria, newest first.
 	//
 	// MongoDB stored logs inside the transaction document and indexed nothing about them,
@@ -532,6 +546,10 @@ type Repository interface {
 
 	// NecBurnList provides list of per-block burned native NEC tokens.
 	NecBurnList(ctx context.Context, count int64) ([]types.NecBurn, error)
+
+	// Healthy reports whether the storage backend is reachable and returns the ingest head.
+	// It backs the /health probe, which a load balancer uses instead of a real query.
+	Healthy(ctx context.Context) (uint64, error)
 
 	// RefreshAccountStats rebuilds the account_stat materialized view that backs account
 	// transaction counts and the "most active" token lists. It must be run on a schedule;

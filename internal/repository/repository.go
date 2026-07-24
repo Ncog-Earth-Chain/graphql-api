@@ -253,7 +253,12 @@ type TokenSummary struct {
 	Amount        hexutil.Big    `json:"amount"`
 }
 
-// TokenSummariesByAddress aggregates all token types for a wallet address.
+// TokenSummariesByAddress aggregates the account's ERC20 balances and ERC721 ownership.
+//
+// ERC1155 is deliberately excluded: a holding is keyed by (contract, tokenId) and one
+// contract can hold many ids, which this flat per-contract summary (no tokenId dimension)
+// cannot represent without misstating balances. ERC1155 holdings are served by the dedicated
+// ERC1155 endpoints instead. The account.tokenSummaries schema field documents the same.
 func (p *proxy) TokenSummariesByAddress(ctx context.Context, addr common.Address, count int32) ([]TokenSummary, error) {
 	var summaries []TokenSummary
 

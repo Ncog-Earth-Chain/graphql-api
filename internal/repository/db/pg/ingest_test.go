@@ -432,9 +432,6 @@ func TestPurgeCoversEveryBlockKeyedTable(t *testing.T) {
 		// where the contract was deployed; it is not an ownership key.
 		"contract": "address-keyed; holds non-rebuildable user-submitted verification",
 
-		// Uniswap, scheduled for removal (see doc/defi-removal-notes.md).
-		"swap": "part of the Uniswap module being removed",
-
 		// DOMAIN-KEYED, and this is a known limitation rather than a clean exemption.
 		//
 		// delegation is keyed (delegator, validator_id) and withdrawal is keyed

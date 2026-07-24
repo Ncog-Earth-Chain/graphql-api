@@ -41,6 +41,7 @@ func (rs *rootResolver) DdbOperations(ctx context.Context, args struct {
 	SchemaName      *string
 	Requester       *common.Address
 	OpType          *string
+	RequestId       *common.Hash
 	Cursor          *Cursor
 	Count           int32
 }) (*DdbOperationList, error) {
@@ -49,6 +50,7 @@ func (rs *rootResolver) DdbOperations(ctx context.Context, args struct {
 	c := pg.DdbOpCriteria{
 		ContractAddress: args.ContractAddress,
 		Requester:       args.Requester,
+		RequestID:       args.RequestId,
 	}
 	if args.SchemaName != nil {
 		c.SchemaName = *args.SchemaName
@@ -283,6 +285,14 @@ func (c *DdbContract) LatestVersion() *string {
 	}
 	s := c.DdbContract.LatestVersion
 	return &s
+}
+
+// StateHashChainValid reports whether this contract's per-operation state-hash chain is
+// continuous -- the verification the "verifiable" priorPostStateHash/postStateHash fields
+// imply but which nothing performed until now. False means a link is broken: an operation's
+// priorPostStateHash does not equal the previous operation's postStateHash.
+func (c *DdbContract) StateHashChainValid(ctx context.Context) (bool, error) {
+	return repository.R().DdbStateHashChainValid(ctx, c.DdbContract.Address)
 }
 
 // Operations resolves this contract's operation history, newest first.

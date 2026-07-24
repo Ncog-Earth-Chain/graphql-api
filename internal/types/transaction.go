@@ -109,10 +109,6 @@ type Transaction struct {
 	PubKey hexutil.Bytes `json:"pubKey,omitempty"`
 }
 
-type DDBInput struct {
-	ContractAddress string `json:"contractAddress"`
-}
-
 // Uid calculates an ordinal index of the transaction referenced.
 // The ordinal index of a transaction should be unique across a consistent block chain.
 // The calculation gives us about 700 years of index space with 50k blocks per second

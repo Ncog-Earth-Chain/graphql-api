@@ -137,6 +137,9 @@ func (app *apiServer) setupHandlers(mux *http.ServeMux) {
 	// setup gas price estimator REST API resolver
 	mux.Handle("/json/gas", handlers.GasPrice(app.log))
 
+	// liveness/readiness probe for load balancers (DB reachable + ingest watermark queryable)
+	mux.Handle("/health", handlers.Health(app.log))
+
 	// Handle the GraphiQL interface. It is an unauthenticated interactive IDE, so
 	// it is opt-in rather than always mounted.
 	if app.cfg.Server.GraphiEnabled {

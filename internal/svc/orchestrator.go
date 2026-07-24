@@ -5,14 +5,31 @@ import (
 	"fmt"
 	"ncogearthchain-api-graphql/internal/repository/cache/ring"
 	"ncogearthchain-api-graphql/internal/types"
+	"time"
 	"unsafe"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	etc "github.com/ethereum/go-ethereum/core/types"
 )
 
-// orBlockCacheCapacity represents the capacity of the local block cache.
-const orBlockCacheCapacity = 50
+const (
+	// orBlockCacheCapacity represents the capacity of the local block cache.
+	orBlockCacheCapacity = 50
+
+	// orGapHealPeriod is how often the orchestrator looks for blocks that a transient RPC
+	// failure left absent between the ingest watermark and the highest stored block. Without
+	// this, such a hole persisted until a process restart -- the forward scanner only rewinds
+	// a fixed depth at startup and never revisits an older gap.
+	orGapHealPeriod = 3 * time.Minute
+
+	// orGapHealBatch bounds how many missing blocks are re-queued per pass.
+	orGapHealBatch = 64
+
+	// orReorgWindow is how many blocks below the head the reorg check inspects for parent-hash
+	// continuity. Reorgs are shallow and near the head, so scanning a fixed recent window keeps
+	// the check cheap while still catching any real fork.
+	orReorgWindow = 256
+)
 
 // orchestrator implements service responsible for moderating connections between other services.
 type orchestrator struct {
@@ -20,6 +37,7 @@ type orchestrator struct {
 	blkCache          *ring.Ring
 	pushHeads         bool
 	inScanStateSwitch chan bool
+	healTicker        *time.Ticker
 }
 
 // name returns the name of the service used by manager.
@@ -64,6 +82,9 @@ func (or *orchestrator) run() {
 // by an inbound channel.
 func (or *orchestrator) execute() {
 	defer func() {
+		if or.healTicker != nil {
+			or.healTicker.Stop()
+		}
 		close(or.sigStop)
 		or.mgr.finished(or)
 	}()
@@ -71,6 +92,7 @@ func (or *orchestrator) execute() {
 	// access the new heads queue
 	// it's filled with new heads as the connected node processes blocks from the network
 	heads := repo.ObservedHeaders()
+	or.healTicker = time.NewTicker(orGapHealPeriod)
 	for {
 		select {
 		case <-or.sigStop:
@@ -86,6 +108,103 @@ func (or *orchestrator) execute() {
 					or.unloadCache()
 				}
 			}
+		case <-or.healTicker.C:
+			or.healGaps()
+			or.checkReorg()
+		}
+	}
+}
+
+// checkReorg detects a chain reorg by parent-hash continuity: when a stored block's hash does
+// not match the parent_hash of the block above it, that stored block is on an abandoned fork.
+// It is re-queued for re-fetch, which overwrites it (StoreBlock is purge-then-insert) with the
+// canonical block; the next pass then checks that block's own parent, walking the rewind back
+// one step at a time. It is non-destructive on purpose -- deleting a stored block would trip
+// the burn foreign key and lose the reorg-aware burn total -- and bounded, because only blocks
+// within orReorgWindow of the head are inspected and at most a batch is re-queued per pass.
+func (or *orchestrator) checkReorg() {
+	ctx := bgCtx()
+
+	last, err := repo.LastKnownBlock(ctx)
+	if err != nil {
+		log.Errorf("reorg check: can not read last known block; %s", err.Error())
+		return
+	}
+	var above uint64
+	if last > orReorgWindow {
+		above = last - orReorgWindow
+	}
+
+	forked, err := repo.ForkedPredecessors(ctx, above, orGapHealBatch)
+	if err != nil {
+		log.Errorf("reorg check: %s", err.Error())
+		return
+	}
+	if len(forked) == 0 {
+		return
+	}
+	log.Warningf("reorg check: %d stored block(s) diverge from their successor's parent; re-fetching the canonical blocks", len(forked))
+
+	for _, bn := range forked {
+		blk, err := repo.BlockByNumber((*hexutil.Uint64)(&bn))
+		if err != nil {
+			log.Errorf("reorg check: block #%d not available; %s", bn, err.Error())
+			continue
+		}
+		select {
+		case or.mgr.bld.inBlock <- blk:
+		case <-or.sigStop:
+			or.sigStop <- true
+			return
+		}
+	}
+}
+
+// healGaps re-queues blocks missing between the ingest watermark and the highest stored
+// block. A transient RPC failure on a block leaves a hole the forward scanner never revisits;
+// enumerating and re-fetching the holes turns a permanent gap into a self-repairing one.
+// Re-ingest is idempotent (a block is stored delete-then-insert), so re-queuing a block that
+// is in fact present is harmless.
+func (or *orchestrator) healGaps() {
+	ctx := bgCtx()
+
+	head, err := repo.ContiguousHead(ctx)
+	if err != nil {
+		log.Errorf("gap heal: can not read ingest watermark; %s", err.Error())
+		return
+	}
+	last, err := repo.LastKnownBlock(ctx)
+	if err != nil {
+		log.Errorf("gap heal: can not read last known block; %s", err.Error())
+		return
+	}
+	// The watermark sits just below the first missing block, so a gap can only exist when the
+	// highest stored block is more than one above it.
+	if last <= head+1 {
+		return
+	}
+
+	missing, err := repo.MissingBlocks(ctx, head+1, last, orGapHealBatch)
+	if err != nil {
+		log.Errorf("gap heal: can not enumerate missing blocks; %s", err.Error())
+		return
+	}
+	if len(missing) == 0 {
+		return
+	}
+	log.Noticef("gap heal: re-queuing %d missing block(s) in <#%d, #%d>", len(missing), head+1, last)
+
+	for _, bn := range missing {
+		blk, err := repo.BlockByNumber((*hexutil.Uint64)(&bn))
+		if err != nil {
+			log.Errorf("gap heal: block #%d not available; %s", bn, err.Error())
+			continue
+		}
+		select {
+		case or.mgr.bld.inBlock <- blk:
+		case <-or.sigStop:
+			or.sigStop <- true
+			return
 		}
 	}
 }

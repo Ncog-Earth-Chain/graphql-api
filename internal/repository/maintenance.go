@@ -27,6 +27,17 @@ const (
 	txLogPartitionTable = "tx_log"
 )
 
+// Healthy reports API readiness: the PostgreSQL backend is reachable and the ingest
+// watermark is queryable. It returns the contiguous head (the highest block below which
+// nothing is missing) so a probe can also observe ingest progress. A load balancer should
+// cut over on this rather than issuing a real GraphQL query.
+func (p *proxy) Healthy(ctx context.Context) (uint64, error) {
+	if err := p.pg.Ping(ctx); err != nil {
+		return 0, fmt.Errorf("database unreachable: %w", err)
+	}
+	return p.pg.ContiguousHead(ctx)
+}
+
 // RefreshAccountStats rebuilds the account_stat materialized view.
 func (p *proxy) RefreshAccountStats(ctx context.Context) error {
 	return p.pg.RefreshAccountStats(ctx)

@@ -118,24 +118,24 @@ func (s *Store) TrxGasSpeed(ctx context.Context, from *time.Time, to *time.Time)
 // TrxRecentTrxSpeed provides the number of transactions per second over the last `sec`
 // seconds.
 //
-// Known, preserved quirks:
-//   - there is no upper bound on ts, so a block carrying a timestamp in the future
-//     inflates the rate until wall clock catches up. Adding `AND ts <= now()` would fix
-//     it but would change a published gauge, so it is flagged rather than changed.
-//   - the divisor is always `sec`, even when the chain is younger than that, so the
-//     figure understates during the first minutes after genesis. Cosmetic.
+// The window is bounded at BOTH ends -- ts >= from AND ts <= now -- so a block carrying a
+// timestamp in the future can no longer inflate the rate until the wall clock catches up.
+//
+// Known, preserved quirk: the divisor is always `sec`, even when the chain is younger than
+// that, so the figure understates during the first minutes after genesis. Cosmetic.
 func (s *Store) TrxRecentTrxSpeed(ctx context.Context, sec int32) (float64, error) {
 	if sec < 60 {
 		sec = 60
 	}
 
-	// Computed in Go, not as now() in SQL, so the boundary is the same value the caller
+	// Computed in Go, not as now() in SQL, so both boundaries are the same values the caller
 	// can log and so the statement stays parameterised and plan-cacheable.
-	from := time.Now().UTC().Add(time.Duration(-sec) * time.Second)
+	now := time.Now().UTC()
+	from := now.Add(time.Duration(-sec) * time.Second)
 
 	var total int64
 	if err := s.pool.QueryRow(ctx,
-		`SELECT count(*) FROM tx WHERE ts >= $1`, from).Scan(&total); err != nil {
+		`SELECT count(*) FROM tx WHERE ts >= $1 AND ts <= $2`, from, now).Scan(&total); err != nil {
 		return 0, fmt.Errorf("can not count recent transactions: %w", err)
 	}
 	if total == 0 {

@@ -9,8 +9,6 @@ schema {
     subscription: Subscription
 }
 
-scalar JSON
-
 scalar JSONAny
 
 # Entry points for querying the API
@@ -251,6 +249,7 @@ type Query {
         schemaName: String,
         requester: Address,
         opType: DdbOperationType,
+        requestId: Bytes32,
         cursor: Cursor,
         count: Int = 25
     ): DdbOperationList!
@@ -331,17 +330,6 @@ type Subscription {
     # Subscribe to receive information about new transactions in the blockchain.
     onTransaction: Transaction!
 }
-
-
-type TokenSummary {
-    tokenAddress: Address!
-    tokenName: String!
-    tokenSymbol: String!
-    tokenType: String!
-    tokenDecimals: Int!
-    type: String!
-    amount: BigInt!
-}
 # Account defines block-chain account information container
 type Account {
     # Address is the address of the account.
@@ -379,7 +367,10 @@ type Account {
     # Details about smart contract, if the account is a smart contract.
     contract: Contract
 
-    # List of all tokens (ERC20, DeFi/fMint, ERC721, ERC1155, etc.) associated with the account.
+    # The account's fungible and non-fungible token holdings: ERC20 balances and ERC721
+    # ownership. ERC1155 is intentionally NOT folded in here -- an ERC1155 holding is keyed by
+    # (contract, tokenId) and one contract can hold many ids, which a flat per-contract summary
+    # cannot express; use erc1155TxList and the ERC1155 endpoints for those.
     tokenSummaries: [TokenSummary!]!
 }
 
@@ -726,6 +717,13 @@ type DdbContract {
 
     createdAt: Long!
     updatedAt: Long!
+
+    # stateHashChainValid reports whether this contract's per-operation state-hash chain is
+    # continuous: every operation's priorPostStateHash equals the previous operation's
+    # postStateHash. This is the verification the endorsement's priorPostStateHash /
+    # postStateHash fields imply -- false means a link is broken (tampering, or a gap in the
+    # captured operation stream).
+    stateHashChainValid: Boolean!
 
     # operations resolves this contract's operation history, newest first.
     operations(cursor: Cursor, count: Int = 25): [DdbOperation!]!

@@ -44,6 +44,12 @@ type DdbOpCriteria struct {
 	SchemaName      string
 	Requester       *common.Address
 	OpType          *int16
+
+	// RequestID narrows to a single operation by its endorsement-protocol identity. The
+	// ddb_op_request_idx index exists for exactly this lookup; without a reader it was dead,
+	// and there was no path from a requestId (which ddb_getEndorsementStatus reports live) to
+	// the persisted operation.
+	RequestID *common.Hash
 }
 
 // DdbOperations lists DDB operations, newest first.
@@ -62,6 +68,9 @@ func (s *Store) DdbOperations(ctx context.Context, c DdbOpCriteria, cursor strin
 	}
 	if c.OpType != nil {
 		f.Eq("o.op_type", *c.OpType)
+	}
+	if c.RequestID != nil {
+		f.Eq("o.request_id", HashVal(*c.RequestID))
 	}
 
 	where, args := f.Render(0)
@@ -200,6 +209,35 @@ func (s *Store) DdbContract(ctx context.Context, addr common.Address) (*types.Dd
 // DdbContractCursor renders the pagination cursor for a contract.
 func DdbContractCursor(lastBlock, lastTxIndex uint64) string {
 	return EncodeCursor([]int64{int64(lastBlock), int64(lastTxIndex)})
+}
+
+// DdbStateHashChainValid reports whether a contract's per-operation state-hash chain is
+// continuous: every operation's prior_post_state_hash equals the previous operation's
+// post_state_hash, in (block_number, tx_index) order.
+//
+// The schema advertises priorPostStateHash/postStateHash as "verifiable", but nothing checked
+// the links -- they were returned verbatim and trusted. This turns the claim into an actual
+// verification. The first operation is exempt (it has no prior state and thus no predecessor
+// to match), which is why LAG's NULL is skipped rather than treated as a break.
+func (s *Store) DdbStateHashChainValid(ctx context.Context, addr common.Address) (bool, error) {
+	var valid bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT NOT EXISTS (
+		    WITH linked AS (
+		        SELECT e.prior_post_state_hash AS prior,
+		               LAG(e.post_state_hash) OVER (ORDER BY e.block_number, e.tx_index) AS prev_post
+		        FROM   ddb_endorsement e
+		        JOIN   ddb_operation o
+		               ON o.block_number = e.block_number AND o.tx_index = e.tx_index
+		        WHERE  o.contract_addr = $1
+		    )
+		    SELECT 1 FROM linked
+		    WHERE prev_post IS NOT NULL AND prior IS DISTINCT FROM prev_post
+		)`, AddrVal(addr)).Scan(&valid)
+	if err != nil {
+		return false, fmt.Errorf("can not verify DDB state-hash chain for %s: %w", addr.String(), err)
+	}
+	return valid, nil
 }
 
 // scanDdbContract maps one ddb_contract row onto the domain type.

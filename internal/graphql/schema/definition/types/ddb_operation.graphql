@@ -127,6 +127,13 @@ type DdbContract {
     createdAt: Long!
     updatedAt: Long!
 
+    # stateHashChainValid reports whether this contract's per-operation state-hash chain is
+    # continuous: every operation's priorPostStateHash equals the previous operation's
+    # postStateHash. This is the verification the endorsement's priorPostStateHash /
+    # postStateHash fields imply -- false means a link is broken (tampering, or a gap in the
+    # captured operation stream).
+    stateHashChainValid: Boolean!
+
     # operations resolves this contract's operation history, newest first.
     operations(cursor: Cursor, count: Int = 25): [DdbOperation!]!
 }

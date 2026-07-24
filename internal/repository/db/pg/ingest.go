@@ -456,6 +456,39 @@ func (s *Store) MissingBlocks(ctx context.Context, from, to uint64, limit int) (
 	return out, rows.Err()
 }
 
+// ForkedPredecessors returns the numbers of stored blocks whose hash does NOT match the
+// parent_hash of the block stored immediately above them -- predecessors left on an abandoned
+// fork by a reorg. Re-fetching such a block overwrites it (StoreBlock is purge-then-insert)
+// with the canonical block; walking upward one step per pass heals a multi-block reorg.
+//
+// Only blocks strictly above `aboveBlock` are considered -- reorgs are shallow and near the
+// head, so bounding the scan there keeps this cheap -- and at most `limit` are returned. The
+// parent_hash is the block header's own field; the JOIN is served by the block primary key.
+func (s *Store) ForkedPredecessors(ctx context.Context, aboveBlock uint64, limit int) ([]uint64, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT p.number
+		FROM   block b
+		JOIN   block p ON p.number = b.number - 1
+		WHERE  b.number > $1
+		  AND  b.parent_hash <> p.hash
+		ORDER  BY b.number DESC
+		LIMIT  $2`, int64(aboveBlock), limit)
+	if err != nil {
+		return nil, fmt.Errorf("can not scan for reorged blocks: %w", err)
+	}
+	defer rows.Close()
+
+	var out []uint64
+	for rows.Next() {
+		var n int64
+		if err := rows.Scan(&n); err != nil {
+			return nil, err
+		}
+		out = append(out, uint64(n))
+	}
+	return out, rows.Err()
+}
+
 // nullableBig converts an optional chain id for storage, preserving NULL.
 //
 // NULL means "the node did not report one", which is different from chain 0 -- a

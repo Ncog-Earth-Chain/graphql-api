@@ -39,6 +39,12 @@ func (s *Store) Close() {
 	}
 }
 
+// Ping verifies the database connection is alive. It backs the /health probe, which needs a
+// cheap readiness signal that does not run a real query.
+func (s *Store) Ping(ctx context.Context) error {
+	return s.pool.Ping(ctx)
+}
+
 // counter reads a meta_counter value.
 //
 // meta_counter holds the small scalars that must move in step with the data they

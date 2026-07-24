@@ -41,6 +41,24 @@ func (p *proxy) LastKnownBlock(ctx context.Context) (uint64, error) {
 	return p.pg.LastKnownBlock(ctx)
 }
 
+// ContiguousHead returns the highest block below which nothing is missing -- the ingest
+// watermark. Gaps to heal live between this and LastKnownBlock.
+func (p *proxy) ContiguousHead(ctx context.Context) (uint64, error) {
+	return p.pg.ContiguousHead(ctx)
+}
+
+// MissingBlocks lists gaps in the stored range [from, to] (bounded by limit), so a heal loop
+// can re-fetch the blocks a transient RPC failure left absent.
+func (p *proxy) MissingBlocks(ctx context.Context, from, to uint64, limit int) ([]uint64, error) {
+	return p.pg.MissingBlocks(ctx, from, to, limit)
+}
+
+// ForkedPredecessors lists stored blocks (above aboveBlock, bounded by limit) whose hash does
+// not match the parent_hash of the block above them, so a reorg heal can re-fetch them.
+func (p *proxy) ForkedPredecessors(ctx context.Context, aboveBlock uint64, limit int) ([]uint64, error) {
+	return p.pg.ForkedPredecessors(ctx, aboveBlock, limit)
+}
+
 // CacheBlock puts a block to the internal block cache.
 func (p *proxy) CacheBlock(blk *types.Block) {
 	p.cache.AddBlock(blk)
