@@ -6,7 +6,6 @@ import (
 	"math/big"
 	"ncogearthchain-api-graphql/internal/repository"
 	"ncogearthchain-api-graphql/internal/types"
-	"strconv"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
@@ -60,8 +59,14 @@ func (cl *ContractList) PageInfo() (*ListPageInfo, error) {
 	}
 
 	// get the first and last elements
-	first := Cursor(strconv.FormatUint(cl.First, 10))
-	last := Cursor(strconv.FormatUint(cl.Last, 10))
+	//
+	// Emit the opaque keyset cursor carried on each row (block_number:tx_index:deploy_seq),
+	// which pg.Contracts decodes with DecodeCursor(_, 3). The old code formatted cl.First/cl.Last,
+	// which buildContractList never populated, so both were always the literal "0"; and the edge
+	// cursor was the legacy Uid() decimal that DecodeCursor rejected -- so pagination could not
+	// advance past the first page.
+	first := Cursor(cl.Collection[0].Cursor)
+	last := Cursor(cl.Collection[len(cl.Collection)-1].Cursor)
 	return NewListPageInfo(&first, &last, !cl.IsEnd, !cl.IsStart)
 }
 
@@ -78,7 +83,7 @@ func (cl *ContractList) Edges() []*ContractListEdge {
 		// make the element
 		edge := ContractListEdge{
 			Contract: NewContract(c),
-			Cursor:   Cursor(strconv.FormatUint(c.Uid(), 10)),
+			Cursor:   Cursor(c.Cursor),
 		}
 
 		// add it to the list

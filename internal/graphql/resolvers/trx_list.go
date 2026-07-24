@@ -5,6 +5,7 @@ import (
 	"context"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/repository"
+	"ncogearthchain-api-graphql/internal/repository/db/pg"
 	"ncogearthchain-api-graphql/internal/types"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -68,8 +69,12 @@ func (tl *TransactionList) PageInfo() (*ListPageInfo, error) {
 	}
 
 	// get the first and last elements
-	first := Cursor(tl.Collection[0].Hash.String())
-	last := Cursor(tl.Collection[len(tl.Collection)-1].Hash.String())
+	//
+	// The cursor is the opaque keyset token (base64 of block_number:tx_index) the store's
+	// TransactionList/TransactionsByAccount decode with DecodeCursor(_, 2) -- NOT the tx hash.
+	// Emitting the hash here made every page after the first fail with "malformed cursor".
+	first := Cursor(pg.TransactionCursor(tl.Collection[0]))
+	last := Cursor(pg.TransactionCursor(tl.Collection[len(tl.Collection)-1]))
 	return NewListPageInfo(&first, &last, !tl.IsEnd, !tl.IsStart)
 }
 
@@ -86,7 +91,7 @@ func (tl *TransactionList) Edges() []*TransactionListEdge {
 		// make the element
 		edges[i] = &TransactionListEdge{
 			Transaction: NewTransaction(t),
-			Cursor:      Cursor(t.Hash.String()),
+			Cursor:      Cursor(pg.TransactionCursor(t)),
 		}
 	}
 	return edges

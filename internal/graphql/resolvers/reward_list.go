@@ -2,6 +2,7 @@
 package resolvers
 
 import (
+	"ncogearthchain-api-graphql/internal/repository/db/pg"
 	"ncogearthchain-api-graphql/internal/types"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -35,8 +36,12 @@ func (rl *RewardClaimList) PageInfo() (*ListPageInfo, error) {
 	}
 
 	// get the first and last elements
-	first := Cursor(rl.Collection[0].Pk())
-	last := Cursor(rl.Collection[len(rl.Collection)-1].Pk())
+	//
+	// Opaque keyset cursor (base64 of block_number:log_index) matching DecodeCursor(_, 2) in
+	// pg.RewardClaims. The old claim-tx-hash cursor could not be decoded (page 2 errored) and
+	// was not even unique per claim (two claims in one tx shared it).
+	first := Cursor(pg.RewardClaimCursor(rl.Collection[0]))
+	last := Cursor(pg.RewardClaimCursor(rl.Collection[len(rl.Collection)-1]))
 	return NewListPageInfo(&first, &last, !rl.IsEnd, !rl.IsStart)
 }
 
@@ -57,5 +62,5 @@ func (rl *RewardClaimList) Edges() []*RewardClaimListEdge {
 
 // Cursor generates the list edge cursor.
 func (rce *RewardClaimListEdge) Cursor() Cursor {
-	return Cursor(rce.Claim.Pk())
+	return Cursor(pg.RewardClaimCursor(&rce.Claim.RewardClaim))
 }

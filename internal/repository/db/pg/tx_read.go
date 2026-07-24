@@ -122,7 +122,9 @@ func (s *Store) TransactionsByAccount(ctx context.Context, addr *common.Address,
 		` + keysetOn("e", txKeyset).OrderBy(page.Reverse) + `
 		LIMIT $` + itoa(len(args)+1)
 
-	args = append(args, page.Limit)
+	// Fetch one row past the page so buildTransactionList can tell "exactly full" from "more
+	// exist" without a second query; the probe row is trimmed before the page is returned.
+	args = append(args, page.Limit+1)
 
 	return s.queryTransactions(ctx, sql, args...)
 }
@@ -157,7 +159,9 @@ func (s *Store) TransactionList(ctx context.Context, cursor string, count int32)
 
 	sql := `SELECT ` + txColumns + ` FROM tx ` + where + ` ` +
 		txKeyset.OrderBy(page.Reverse) + ` LIMIT $` + itoa(len(args)+1)
-	args = append(args, page.Limit)
+	// One row past the page: buildTransactionList uses it to set hasNextPage correctly on an
+	// exactly-full final page, then discards it.
+	args = append(args, page.Limit+1)
 
 	return s.queryTransactions(ctx, sql, args...)
 }

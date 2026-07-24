@@ -57,14 +57,15 @@ func (rs *rootResolver) DdbOperations(ctx context.Context, args struct {
 	}
 	if args.OpType != nil {
 		if code, ok := ddbOpTypeCode(*args.OpType); ok {
+			// A recognised type name maps to its stored op_type code.
 			c.OpType = &code
-		}
-		// An unrecognised name is deliberately NOT an error and NOT a silent match-all:
-		// leaving OpType nil would widen the query rather than narrow it, so an unknown
-		// name maps to a code no row carries and the result is legitimately empty.
-		if _, ok := ddbOpTypeCode(*args.OpType); !ok {
-			var none int16 = -1
-			c.OpType = &none
+		} else {
+			// The only name that reaches here is the enum's UNKNOWN member (all other names are
+			// rejected by GraphQL enum validation). It selects operations whose code this build
+			// does not recognise -- op_type outside 0..9 -- which is what the unfiltered feed
+			// already labels UNKNOWN. Mapping it to a sentinel op_type = -1 (as before) matched no
+			// row, so the filter silently dropped exactly the rows the enum value names.
+			c.UnknownOpType = true
 		}
 	}
 

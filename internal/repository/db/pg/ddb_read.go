@@ -45,6 +45,13 @@ type DdbOpCriteria struct {
 	Requester       *common.Address
 	OpType          *int16
 
+	// UnknownOpType narrows to operations whose op_type the explorer does not recognise --
+	// anything outside the known 0..9 (DdbOpRevokeRole) range. It is the query form of the
+	// DdbOperationType.UNKNOWN enum value. Mapping UNKNOWN to a sentinel op_type = -1 matched no
+	// row (unknown codes are >= 10, never negative), so the filter silently returned empty for
+	// exactly the operations the unfiltered feed labels UNKNOWN.
+	UnknownOpType bool
+
 	// RequestID narrows to a single operation by its endorsement-protocol identity. The
 	// ddb_op_request_idx index exists for exactly this lookup; without a reader it was dead,
 	// and there was no path from a requestId (which ddb_getEndorsementStatus reports live) to
@@ -68,6 +75,11 @@ func (s *Store) DdbOperations(ctx context.Context, c DdbOpCriteria, cursor strin
 	}
 	if c.OpType != nil {
 		f.Eq("o.op_type", *c.OpType)
+	}
+	if c.UnknownOpType {
+		// Codes 0..9 are the types this build knows; anything else renders as UNKNOWN in the
+		// feed. Keep the upper bound in sync with ddbOpTypeCode's known range (DdbOpRevokeRole).
+		f.Raw("o.op_type NOT BETWEEN 0 AND 9")
 	}
 	if c.RequestID != nil {
 		f.Eq("o.request_id", HashVal(*c.RequestID))

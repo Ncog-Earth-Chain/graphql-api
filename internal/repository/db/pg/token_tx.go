@@ -584,10 +584,13 @@ func scanTokenTransaction(row rowScanner) (*types.TokenTransaction, error) {
 		trx.TokenId = (hexutil.Big)(*tid)
 	}
 
-	// ID is not stored. It is exactly the three primary key columns packed, so it is
-	// reproducible rather than persisted -- a stored copy could only ever disagree with
-	// the key it was derived from.
-	trx.ID = trx.Pk()
+	// ID is not stored. It carries the opaque keyset cursor (base64 of block_number:log_index:seq)
+	// that the GraphQL list resolvers emit and that TokenTransactions decodes with DecodeCursor(_, 3).
+	// It was previously the bare 14-byte packed Pk() hex, which DecodeCursor rejected -- so every
+	// token-transfer page after the first errored with "malformed cursor". ID is consumed only as the
+	// cursor (no schema field exposes it), so encoding it as the cursor here is the single-point fix
+	// for all three (ERC-20/721/1155) list resolvers.
+	trx.ID = TokenTransactionCursor(trx)
 
 	return trx, nil
 }

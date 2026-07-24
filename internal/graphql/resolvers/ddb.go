@@ -36,13 +36,33 @@ func (rs *rootResolver) DdbSelect(args struct {
 	return JSONAny{Value: res}, err
 }
 
+// maxDdbQueryRows caps how many rows a single ddbQuery may pull back. The limit argument is
+// forwarded to the node's ddb_query RPC and the whole result set is buffered into memory in the
+// API process, so an unclamped limit (the GraphQL Int allows ~2.1e9) is a memory/CPU amplification
+// vector that the complexity guard does not catch — ddbQuery returns a scalar JSONAny, so its size
+// argument never multiplies a child selection set and the field is only ever charged its flat weight.
+// The cap bounds the real work regardless.
+const maxDdbQueryRows = 1000
+
+// clampDdbLimit constrains a caller-supplied ddbQuery limit to a sane, bounded range: a non-positive
+// value falls back to the schema default (100), and anything above the cap is truncated to it.
+func clampDdbLimit(limit int32) int {
+	if limit <= 0 {
+		return 100
+	}
+	if limit > maxDdbQueryRows {
+		return maxDdbQueryRows
+	}
+	return int(limit)
+}
+
 // DdbQuery resolves the ddbQuery query — up to limit rows from a table.
 func (rs *rootResolver) DdbQuery(args struct {
 	SchemaName string
 	TableName  string
 	Limit      int32
 }) (JSONAny, error) {
-	res, err := repository.R().DdbQuery(args.SchemaName, args.TableName, int(args.Limit))
+	res, err := repository.R().DdbQuery(args.SchemaName, args.TableName, clampDdbLimit(args.Limit))
 	return JSONAny{Value: res}, err
 }
 

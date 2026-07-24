@@ -117,7 +117,17 @@ func (s *Store) foldDdbContract(ctx context.Context, q Querier, d *types.DdbComm
 		    author         = COALESCE(EXCLUDED.author, ddb_contract.author),
 		    latest_version = COALESCE(EXCLUDED.latest_version, ddb_contract.latest_version),
 		    last_block     = GREATEST(EXCLUDED.last_block, ddb_contract.last_block),
-		    last_tx_index  = EXCLUDED.last_tx_index,
+		    -- Advance last_tx_index only when the incoming operation is at or past the stored
+		    -- position, so the (last_block, last_tx_index) pair always names the latest operation.
+		    -- An unconditional overwrite desynced the pair when an OLDER block was re-folded (a
+		    -- reorg re-ingest or a gap-heal of a lower block): last_block kept its GREATEST value
+		    -- while last_tx_index took the older block's index, naming a position no operation holds.
+		    last_tx_index  = CASE
+		        WHEN EXCLUDED.last_block > ddb_contract.last_block THEN EXCLUDED.last_tx_index
+		        WHEN EXCLUDED.last_block = ddb_contract.last_block
+		            THEN GREATEST(EXCLUDED.last_tx_index, ddb_contract.last_tx_index)
+		        ELSE ddb_contract.last_tx_index
+		    END,
 		    -- DERIVED, not incremented. An increment double-counts on re-scan: the same
 		    -- block ingested twice would add twice, and nothing would detect the drift.
 		    -- Counting ddb_operation makes it a function of the stored operations, so it

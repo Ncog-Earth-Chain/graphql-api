@@ -102,6 +102,13 @@ type Contract struct {
 
 	// IsDDB indicates whether this contract was created via a DDB transaction.
 	IsDDB bool `json:"isDDB,omitempty"`
+
+	// Cursor is the opaque keyset pagination cursor for this contract's deployment position
+	// (base64 of block_number:tx_index:deploy_seq). It is derived by the store from the same
+	// query that produced the row (scanContract), not persisted -- json:"-" keeps it out of the
+	// stored document. The contract list resolver emits it so pagination round-trips through
+	// DecodeCursor(_, 3); the legacy Uid() decimal could not be decoded.
+	Cursor string `json:"-"`
 }
 
 // LinkReferenceRange represents a start/length pair within bytecode for linking/immutables.

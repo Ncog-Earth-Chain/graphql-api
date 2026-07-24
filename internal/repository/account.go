@@ -99,7 +99,7 @@ func (p *proxy) AccountTransactions(ctx context.Context, addr *common.Address, r
 		return nil, err
 	}
 
-	return buildTransactionList(list, total, count), nil
+	return buildTransactionList(list, total, count, derefCursor(cursor)), nil
 }
 
 // AccountsActive returns total number of accounts known to repository.

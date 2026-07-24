@@ -58,12 +58,22 @@ func Api(cfg *config.Config, log logger.Logger, rs resolvers.ApiResolver) http.H
 	// server's outer mux on /api AND /graphql. Registering only /graphql meant a
 	// request to /api reached this inner mux with path "/api", matched nothing, and
 	// 404'd -- even though /api is the endpoint the API advertises to peers.
-	queryHandler := corsHandler.Handler(limitBody(guard.Handler(&relay.Handler{Schema: schema})))
+	queryHandler := corsHandler.Handler(limitBody(guard.Handler(maskErrors(log, &relay.Handler{Schema: schema}))))
 	mux.Handle("/graphql", queryHandler)
 	mux.Handle("/api", queryHandler)
 
-	// WS for subscriptions
-	mux.Handle("/graphql-ws", corsHandler.Handler(graphqlws.NewHandlerFunc(schema, &relay.Handler{Schema: schema})))
+	// WS for subscriptions.
+	//
+	// graphqlws.NewHandlerFunc only upgrades requests that carry the "graphql-ws" websocket
+	// subprotocol; anything else (e.g. a plain HTTP POST with no Sec-WebSocket-Protocol header)
+	// falls through to the httpHandler argument. If that fallback is the bare relay.Handler, a
+	// POST to /graphql-ws executes the full schema with NONE of the DoS protections the /graphql
+	// and /api routes enforce -- no complexity budget and no body cap -- so a single shallow-but-
+	// wide query can amplify backend work and an oversized body can exhaust memory. Wrap the
+	// fallback with the same limitBody+guard chain so every path the schema is reachable from is
+	// guarded. (A resolver TimeoutHandler is intentionally NOT added here: it would also cut off
+	// legitimate long-lived websocket subscriptions.)
+	mux.Handle("/graphql-ws", corsHandler.Handler(graphqlws.NewHandlerFunc(schema, limitBody(guard.Handler(maskErrors(log, &relay.Handler{Schema: schema}))))))
 
 	// Return wrapped handler with logging
 	return &LoggingHandler{

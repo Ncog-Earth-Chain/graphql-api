@@ -61,7 +61,7 @@ func (p *proxy) Contracts(ctx context.Context, validatedOnly bool, cursor *strin
 	if err != nil {
 		return nil, err
 	}
-	return buildContractList(rows, total, count), nil
+	return buildContractList(rows, total, count, derefCursor(cursor)), nil
 }
 
 // cutCodeMetadata removes the IPFS/Swarm metadata information from the code

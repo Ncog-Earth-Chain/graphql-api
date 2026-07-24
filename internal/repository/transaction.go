@@ -153,7 +153,7 @@ func (p *proxy) Transactions(ctx context.Context, cursor *string, count int32) (
 	if err != nil {
 		return nil, err
 	}
-	return buildTransactionList(rows, total, count), nil
+	return buildTransactionList(rows, total, count, derefCursor(cursor)), nil
 }
 
 // StoreGasPricePeriod stores the given gas price period data in the persistent storage

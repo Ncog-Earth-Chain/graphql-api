@@ -293,7 +293,9 @@ func (s *Store) Contracts(ctx context.Context, validatedOnly bool, cursor string
 
 	sql := `SELECT ` + contractColumns + contractFrom + ` ` + where + ` ` +
 		keysetOn("c", contractKeyset).OrderBy(page.Reverse) + ` LIMIT $` + itoa(len(args)+1)
-	args = append(args, page.Limit)
+	// One row past the page so buildContractList can distinguish an exactly-full last page from
+	// one with more rows; the probe is trimmed before returning.
+	args = append(args, page.Limit+1)
 
 	rows, err := s.pool.Query(ctx, sql, args...)
 	if err != nil {
@@ -484,6 +486,11 @@ func scanContract(row rowScanner) (*types.Contract, error) {
 	if refs, err := unmarshalLinkRefs(runtimeRefs); err == nil {
 		con.RuntimeLinkReferences = refs
 	}
+
+	// Carry the opaque keyset cursor for this row's deployment position, read from the same
+	// query that produced it. The list resolver emits this so pagination decodes back via
+	// DecodeCursor(_, 3); types.Contract otherwise carries no position of its own.
+	con.Cursor = ContractCursor(blockNumber, txIndex, deploySeq)
 
 	return con, nil
 }

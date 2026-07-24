@@ -33,12 +33,24 @@ func derefCursor(c *string) string {
 // makes it an index-only scan. That is the concrete payoff of the edge table: MongoDB
 // counted an $or over the whole transaction collection with a 500 ms budget, and on
 // timeout reported the CHAIN's total as the account's.
-func buildTransactionList(rows []*types.Transaction, total uint64, count int32) *types.TransactionList {
+func buildTransactionList(rows []*types.Transaction, total uint64, count int32, cursor string) *types.TransactionList {
 	list := &types.TransactionList{
-		Collection:   rows,
 		Total:        total,
 		TotalIsExact: true,
 	}
+
+	// The store fetches one row beyond the page so "a further page exists" can be answered
+	// without a second query and WITHOUT the exactly-full-page ambiguity. Deriving the
+	// direction-end flag from a short page reported hasNextPage=true whenever the remaining
+	// rows were an exact multiple of the page size (the last full page claimed a next page
+	// that is actually empty). Detect the extra row, then discard it. This mirrors the trick
+	// every sibling list store (withdrawal/token_tx/epoch/...) already uses.
+	limit := int(abs32(count))
+	more := len(rows) > limit
+	if more {
+		rows = rows[:limit]
+	}
+	list.Collection = rows
 
 	if len(rows) == 0 {
 		list.IsStart = true
@@ -46,13 +58,18 @@ func buildTransactionList(rows []*types.Transaction, total uint64, count int32) 
 		return list
 	}
 
-	// A short page means there is nothing further in the direction of travel. Which end
-	// that is depends on the sign of count, which is how this API encodes direction.
-	short := len(rows) < int(abs32(count))
+	// `more` fixes the leading boundary (the direction of travel); whether a cursor was
+	// supplied fixes the trailing one -- paging with no cursor starts at the natural edge
+	// (forward -> the top, so IsStart; backward -> the bottom, so IsEnd). Setting only the
+	// short-page flag left the trailing flag false, which the resolver mapped to
+	// hasPreviousPage=true even on the very first page.
+	atBoundary := cursor == ""
 	if count >= 0 {
-		list.IsEnd = short
+		list.IsEnd = !more
+		list.IsStart = atBoundary
 	} else {
-		list.IsStart = short
+		list.IsStart = !more
+		list.IsEnd = atBoundary
 	}
 	return list
 }
@@ -81,12 +98,21 @@ func (p *proxy) burnTotal(ctx context.Context) (int64, error) {
 // The count is exact when filtered to verified contracts, because contract_verified_idx
 // is PARTIAL on that predicate and so touches only verified rows; unfiltered it is an
 // estimate, matching what the MongoDB path actually did.
-func buildContractList(rows []*types.Contract, total uint64, count int32) *types.ContractList {
+func buildContractList(rows []*types.Contract, total uint64, count int32, cursor string) *types.ContractList {
 	list := &types.ContractList{
-		Collection:   rows,
 		Total:        total,
 		TotalIsExact: true,
 	}
+
+	// See buildTransactionList: the store fetches one extra row so `more` answers the leading
+	// boundary without the exactly-full-page ambiguity; the presence of a cursor fixes the
+	// trailing one. Discard the probe row before returning the page.
+	limit := int(abs32(count))
+	more := len(rows) > limit
+	if more {
+		rows = rows[:limit]
+	}
+	list.Collection = rows
 
 	if len(rows) == 0 {
 		list.IsStart = true
@@ -94,11 +120,13 @@ func buildContractList(rows []*types.Contract, total uint64, count int32) *types
 		return list
 	}
 
-	short := len(rows) < int(abs32(count))
+	atBoundary := cursor == ""
 	if count >= 0 {
-		list.IsEnd = short
+		list.IsEnd = !more
+		list.IsStart = atBoundary
 	} else {
-		list.IsStart = short
+		list.IsStart = !more
+		list.IsEnd = atBoundary
 	}
 	return list
 }
