@@ -38,6 +38,12 @@ func handleSfcUndelegated(lr *types.LogRecord) {
 
 // handleNewWithdrawRequest will create a new withdrawal request for the given stake.
 func handleNewWithdrawRequest(wrt string, adr common.Address, valID *big.Int, reqID *big.Int, amo *big.Int, lr *types.LogRecord) {
+	// The block position of the emitting log MUST travel onto the request: block_number and
+	// tx_index are NOT NULL and are the withdrawal keyset ordering, so pg.AddWithdrawal rejects a
+	// request that has neither. The values ride on the embedded go-ethereum log record.
+	bn := hexutil.Uint64(lr.BlockNumber)
+	ix := hexutil.Uint64(uint64(lr.TxIndex))
+
 	// make the request
 	wr := types.WithdrawRequest{
 		Type:              wrt,
@@ -45,6 +51,8 @@ func handleNewWithdrawRequest(wrt string, adr common.Address, valID *big.Int, re
 		WithdrawRequestID: (*hexutil.Big)(reqID),
 		Address:           adr,
 		StakerID:          (*hexutil.Big)(valID),
+		BlockNumber:       &bn,
+		TxIndex:           &ix,
 		CreatedTime:       lr.Block.TimeStamp,
 		Amount:            (*hexutil.Big)(amo),
 	}

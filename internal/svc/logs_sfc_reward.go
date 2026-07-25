@@ -14,7 +14,10 @@ func handleSfcRewardClaim(lr *types.LogRecord, addr common.Address, valID *hexut
 	// debug the event
 	log.Debugf("%s claimed %d in stake to #%d", addr.String(), amo.Uint64(), valID.ToInt().Uint64())
 
-	// add the rewards claim into the repository
+	// add the rewards claim into the repository. The emitting log's position MUST be set:
+	// reward_claim's PRIMARY KEY is (block_number, log_index), so leaving them zero makes every
+	// claim on the chain collide at (0,0) and all but the first are silently dropped by the
+	// ON CONFLICT DO NOTHING insert. The position rides on the embedded go-ethereum log record.
 	if err := repo.StoreRewardClaim(bgCtx(), &types.RewardClaim{
 		Delegator:     addr,
 		ToValidatorId: *valID,
@@ -22,6 +25,9 @@ func handleSfcRewardClaim(lr *types.LogRecord, addr common.Address, valID *hexut
 		ClaimTrx:      lr.TxHash,
 		Amount:        (hexutil.Big)(*amo),
 		IsDelegated:   isRestake,
+		BlockNumber:   lr.BlockNumber,
+		LogIndex:      lr.Index,
+		TxIndex:       lr.TxIndex,
 	}); err != nil {
 		log.Criticalf("can not store rewards claim; %s", err.Error())
 		return
