@@ -72,3 +72,32 @@ func TestBundleContent(t *testing.T) {
 		g.Expect(s).To(gomega.MatchRegexp(c.re))
 	}
 }
+
+// TestDelegationRemovedRewardsReExposed pins the delegation-removal contract: the stake-delegation
+// query surface must be entirely absent, while the reward-claims and withdraw-requests lists --
+// which used to hang off the Delegation type and are intentionally kept -- must be reachable as
+// root Query fields.
+func TestDelegationRemovedRewardsReExposed(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	s := Schema()
+
+	// The whole stake-delegation surface is gone.
+	for _, re := range []string{
+		"(?m)^type\\s+Delegation\\s+{",
+		"(?m)^type\\s+DelegationList\\s+{",
+		"\\bDelegationList\\b",
+		"delegationsByAddress\\s*\\(",
+		"delegationsOf\\s*\\(",
+		"(?m)^\\s+delegations\\s*\\(", // Account.delegations / Staker.delegations fields
+	} {
+		g.Expect(s).ToNot(gomega.MatchRegexp(re), "delegation surface must be removed: "+re)
+	}
+
+	// Rewards and withdrawals stay reachable at the root.
+	for _, re := range []string{
+		"rewardClaims\\s*\\(\\s*address\\s*:",
+		"withdrawRequests\\s*\\(\\s*address\\s*:",
+	} {
+		g.Expect(s).To(gomega.MatchRegexp(re), "kept reward/withdrawal root query must exist: "+re)
+	}
+}

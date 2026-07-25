@@ -16,11 +16,16 @@ import (
 //
 // Stake DELEGATION is not offered on this chain: the persisted `delegation` table and its whole
 // read/write path (StoreDelegation, UpdateDelegationBalance, Delegation, DelegationsByAddress[All],
-// DelegationsOfValidator, IsDelegating) have been removed. What remains here are the live SFC
-// contract accessors still used by the validator (Staker) surface -- on SFCv3 a validator's own
-// stake is modeled as a self-delegation, so its staked amount and lock are read through these
-// calls. The remaining lock/tokenizer/reward accessors are thin SFC bindings kept for the staking
-// surface; none of them touch the removed table.
+// DelegationsOfValidator, IsDelegating) have been removed. What remains here are live SFC-contract
+// accessors -- none of them touch the removed table.
+//
+//   - DelegationAmountStaked and DelegationLock ARE live: the validator (Staker) resolver reads a
+//     validator's own stake and lock through them (on SFCv3 a validator's self-stake is modeled as
+//     a self-delegation).
+//   - DelegationAmountUnlocked, DelegationUnlockPenalty, PendingRewards, DelegationOutstandingSNEC,
+//     DelegationTokenizerUnlocked and DelegationFluidStakingActive are currently UNREFERENCED (they
+//     were used only by the removed Delegation resolver). They are retained deliberately as thin
+//     SFC bindings for the planned reintroduction of stake delegation, not left dead by accident.
 
 // DelegationAmountStaked returns the current amount of staked tokens for the given (address, validator).
 func (p *proxy) DelegationAmountStaked(addr *common.Address, valID *hexutil.Big) (*big.Int, error) {
