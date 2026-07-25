@@ -41,6 +41,7 @@ const (
 	// logging related options
 	keyLoggingLevel  = "log.level"
 	keyLoggingFormat = "log.format"
+	keyLoggingOutput = "log.output"
 
 	// Node connection.
 	//

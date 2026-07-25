@@ -67,6 +67,9 @@ const (
 	// defLoggingFormat holds default format of the Logger output
 	defLoggingFormat = "%{color}%{level:-8s} %{shortpkg}/%{shortfunc}%{color:reset}: %{message}"
 
+	// defLoggingOutput holds the default log sink: "stderr" (or "stdout", or a file path).
+	defLoggingOutput = "stderr"
+
 	// defForestUrl holds default Forest connection string
 	defForestUrl = "~/.ncogearthchain/ncogearthchain.ipc"
 
@@ -130,6 +133,7 @@ func applyDefaults(cfg *viper.Viper) {
 	cfg.SetDefault(keySignatureAddress, defSelfAddress)
 	cfg.SetDefault(keyLoggingLevel, defLoggingLevel)
 	cfg.SetDefault(keyLoggingFormat, defLoggingFormat)
+	cfg.SetDefault(keyLoggingOutput, defLoggingOutput)
 	cfg.SetDefault(keyForestUrl, defForestUrl)
 
 	// PostgreSQL

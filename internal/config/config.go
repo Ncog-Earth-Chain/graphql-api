@@ -104,6 +104,10 @@ type ServerSignature struct {
 type Log struct {
 	Level  string `mapstructure:"level"`
 	Format string `mapstructure:"format"`
+
+	// Output selects the log sink: "stderr" (default), "stdout", or a filesystem path to
+	// append the log to. An unopenable path falls back to stderr rather than failing startup.
+	Output string `mapstructure:"output"`
 }
 
 // Forest represents the Forest node access configuration
