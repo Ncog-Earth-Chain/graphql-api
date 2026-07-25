@@ -71,8 +71,14 @@ func (nec *NecBridge) Block(numTag *string) (*types.Block, error) {
 		return nil, err
 	}
 
-	// detect block not found situation; block number is zero and the hash is also zero
-	if uint64(block.Number) == 0 && block.Hash.Big().Cmp(big.NewInt(0)) == 0 {
+	// Detect the "block not found" situation. A non-existent block-by-number query returns a
+	// zero-valued struct (JSON null unmarshals to all-zero fields), which we must reject. We cannot
+	// key that on hash==0 alone: on Ncogearthchain/Opera-style chains a block hash encodes
+	// epoch<<32|height, so the *real* genesis (epoch 0, height 0) legitimately has an all-zero hash.
+	// The genesis is a real block with a real timestamp, whereas a not-found result is zero in every
+	// field -- so require the timestamp to also be zero before treating this as not-found. Without
+	// this the block scanner stalls forever on genesis and no chain ever gets indexed.
+	if uint64(block.Number) == 0 && block.Hash.Big().Cmp(big.NewInt(0)) == 0 && uint64(block.TimeStamp) == 0 {
 		nec.log.Debugf("block [%s] not found", *numTag)
 		return nil, fmt.Errorf("block not found")
 	}
@@ -96,8 +102,11 @@ func (nec *NecBridge) BlockByHash(hash *string) (*types.Block, error) {
 		return nil, err
 	}
 
-	// detect block not found situation
-	if uint64(block.Number) == 0 {
+	// Detect the "block not found" situation. As in Block() above, a not-found result unmarshals to
+	// an all-zero struct, but the real genesis legitimately sits at number 0 (with an all-zero hash on
+	// Opera-style chains). Require the timestamp to also be zero so a genesis lookup by its real hash
+	// still resolves rather than being misreported as not-found.
+	if uint64(block.Number) == 0 && uint64(block.TimeStamp) == 0 {
 		nec.log.Debugf("block [%s] not found", *hash)
 		return nil, fmt.Errorf("block not found")
 	}
