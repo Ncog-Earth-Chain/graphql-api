@@ -58,23 +58,14 @@ func (acc *Account) Balance() (hexutil.Big, error) {
 	return *val.(*hexutil.Big), nil
 }
 
-// TotalValue resolves account total value including delegated amount and pending rewards.
-func (acc *Account) TotalValue(ctx context.Context) (hexutil.Big, error) {
-	// get the balance
-	balance, err := acc.Balance()
-	if err != nil {
-		return hexutil.Big{}, err
-	}
-
-	// try to pull the delegations details
-	delegated, pendingOut, rewards, err := acc.delegationsTotal(ctx)
-	if err != nil {
-		return hexutil.Big{}, err
-	}
-
-	// calc the sum
-	val := new(big.Int).Add(new(big.Int).Add(new(big.Int).Add(balance.ToInt(), delegated), rewards), pendingOut)
-	return hexutil.Big(*val), nil
+// TotalValue resolves the account total value.
+//
+// Stake delegation is not offered on this chain, so an account has no delegated stake, no
+// delegation-bound pending rewards, and no pending un-delegations to add: the total value is simply
+// the account balance. (This previously summed delegationsTotal over the delegation table, which is
+// now uniformly zero and has been removed.)
+func (acc *Account) TotalValue(_ context.Context) (hexutil.Big, error) {
+	return acc.Balance()
 }
 
 // TxCount resolves the number of transaction sent by the account, also known as nonce.
@@ -208,25 +199,6 @@ func (acc *Account) Staker() (*Staker, error) {
 	return NewStaker(st), nil
 }
 
-// Delegations resolves a list of account delegations, if the account is a delegator.
-func (acc *Account) Delegations(ctx context.Context, args *struct {
-	Cursor *Cursor
-	Count  int32
-}) (*DelegationList, error) {
-	// limit query size; the count can be either positive or negative
-	// this controls the loading direction
-	args.Count = listLimitCount(args.Count, listMaxEdgesPerRequest)
-
-	// pull the list
-	dl, err := repository.R().DelegationsByAddress(ctx, &acc.Address, (*string)(args.Cursor), args.Count)
-	if err != nil {
-		return nil, err
-	}
-
-	// convert to resolvable list
-	return NewDelegationList(dl), nil
-}
-
 // Contract resolves the account smart contract detail,
 // if the account is a smart contract address.
 func (acc *Account) Contract(ctx context.Context) (*Contract, error) {
@@ -257,47 +229,3 @@ func (acc *Account) TokenSummaries(ctx context.Context) ([]*repository.TokenSumm
 	return out, nil
 }
 
-// delegationsTotal calculates total sum of delegations of the given account including
-// pending rewards for those delegations.
-func (acc *Account) delegationsTotal(ctx context.Context) (amount *big.Int, inWithdraw *big.Int, rewards *big.Int, err error) {
-	// pull all the delegations of the account
-	list, err := repository.R().DelegationsByAddressAll(ctx, &acc.Address)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	// prep containers for calculation and loop all delegations found
-	amount = new(big.Int)
-	rewards = new(big.Int)
-	inWithdraw = new(big.Int)
-	for _, dlg := range list {
-		// any active delegated amount?
-		if 0 < dlg.AmountDelegated.ToInt().Uint64() {
-			amount = new(big.Int).Add(amount, dlg.AmountDelegated.ToInt())
-		}
-
-		// get pending rewards for this delegation (can be stashed)
-		rw, err := repository.R().PendingRewards(&acc.Address, dlg.ToStakerId)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-
-		// any rewards?
-		if 0 < rw.Amount.ToInt().Uint64() {
-			rewards = new(big.Int).Add(rewards, rw.Amount.ToInt())
-		}
-
-		// get pending withdrawals
-		wd, err := repository.R().WithdrawRequestsPendingTotal(ctx, &acc.Address, dlg.ToStakerId)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-
-		// add pending withdrawals value
-		if 0 < wd.Uint64() {
-			inWithdraw = new(big.Int).Add(inWithdraw, wd)
-		}
-	}
-
-	return amount, rewards, inWithdraw, nil
-}

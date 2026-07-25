@@ -434,20 +434,19 @@ func TestPurgeCoversEveryBlockKeyedTable(t *testing.T) {
 
 		// DOMAIN-KEYED, and this is a known limitation rather than a clean exemption.
 		//
-		// delegation is keyed (delegator, validator_id) and withdrawal is keyed
-		// (delegator, validator_id, request_id, request_tx). Their block_number records
-		// the LAST event that touched the row, not the row's identity. Deleting by block
-		// would remove a delegation that is still live merely because its most recent
-		// update happened in the reorged block.
+		// withdrawal is keyed (delegator, validator_id, request_id, request_tx). Its
+		// block_number records the LAST event that touched the row, not the row's identity.
+		// Deleting by block would remove a withdrawal that is still live merely because its
+		// most recent update happened in the reorged block.
 		//
-		// Rolling these back correctly needs the prior state, which is not stored --
-		// they are current-state rows built by applying events, with no event log to
-		// replay. So a reorg that removes an SFC event can leave these slightly stale
-		// until the next event for the same key overwrites them.
+		// Rolling it back correctly needs the prior state, which is not stored -- it is a
+		// current-state row built by applying events, with no event log to replay. So a reorg
+		// that removes an SFC event can leave it slightly stale until the next event for the
+		// same key overwrites it.
 		//
-		// Recorded here rather than papered over: the fix is to make them event-sourced,
-		// which is a schema change and a separate decision.
-		"delegation": "domain-keyed; needs event-sourced rollback (known limitation)",
+		// Recorded here rather than papered over: the fix is to make it event-sourced, which
+		// is a schema change and a separate decision. (The sibling `delegation` table was
+		// removed outright -- stake delegation is not offered on this chain.)
 		"withdrawal": "domain-keyed; needs event-sourced rollback (known limitation)",
 
 		// Also domain-keyed, but unlike the two above this one is SAFE to leave stale:

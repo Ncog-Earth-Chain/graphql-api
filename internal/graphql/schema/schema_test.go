@@ -52,10 +52,6 @@ var expectedContent = []bundleContentTest{
 		msg: "SFC staker detail type must exists",
 	},
 	{
-		re:  "(?m)^type\\s+Delegation\\s+{",
-		msg: "SFC delegation detail type must exists",
-	},
-	{
 		re:  "(?m)^type\\s+ERC20Token\\s+{",
 		msg: "ERC20 token detail type must exists",
 	},

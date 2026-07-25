@@ -40,24 +40,6 @@ func NewStaker(st *types.Validator) *Staker {
 	return &Staker{Validator: *st, cg: new(singleflight.Group)}
 }
 
-// Delegations resolves list of delegations associated with the staker.
-func (st Staker) Delegations(ctx context.Context, args struct {
-	Cursor *Cursor
-	Count  int32
-}) (*DelegationList, error) {
-	// limit query size; the count can be either positive or negative
-	// this controls the loading direction
-	args.Count = listLimitCount(args.Count, accMaxTransactionsPerRequest)
-
-	// get delegations
-	dl, err := repository.R().DelegationsOfValidator(ctx, &st.Id, (*string)(args.Cursor), args.Count)
-	if err != nil {
-		return nil, err
-	}
-
-	return NewDelegationList(dl), nil
-}
-
 // StakerInfo resolves extended staker information if available.
 func (st Staker) StakerInfo() *types.StakerInfo {
 	return repository.R().RetrieveStakerInfo(&st.Id)

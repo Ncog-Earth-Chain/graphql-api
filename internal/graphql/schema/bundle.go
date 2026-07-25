@@ -96,18 +96,6 @@ type Query {
     # of stakers in a given state of staking process.
     stakersWithFlag(flag: StakerFlagFilter!): [Staker!]!
 
-    # The list of delegations for the given staker ID.
-    # Cursor is used to obtain specific slice of the staker delegations.
-    # The most recent delegations are provided if cursor is omitted.
-    delegationsOf(staker:BigInt!, cursor: Cursor, count: Int = 25): DelegationList!
-
-    # Get the details of a specific delegation by it's delegator address
-    # and staker the delegation belongs to.
-    delegation(address:Address!, staker: BigInt!): Delegation
-
-    # Get the list of all delegations by it's delegator address.
-    delegationsByAddress(address:Address!, cursor: Cursor, count: Int = 25): DelegationList!
-
     # Returns the current price per gas in WEI units.
     gasPrice: Long!
 
@@ -360,9 +348,6 @@ type Account {
 
     # Details of a staker, if the account is a staker.
     staker: Staker
-
-    # List of delegations of the account, if the account is a delegator.
-    delegations(cursor:Cursor, count:Int = 25): DelegationList!
 
     # Details about smart contract, if the account is a smart contract.
     contract: Contract
@@ -751,108 +736,6 @@ type DdbContractList {
 type DdbContractListEdge {
     cursor: Cursor!
     contract: DdbContract!
-}
-
-# Delegation represents a delegation on Ncogearthchain block chain.
-type Delegation {
-    # Address of the delegator account.
-    address: Address!
-
-    # Identifier of the staker the delegation belongs to.
-    toStakerId: BigInt!
-
-    # Notifies the client that this stake is actually a self-stake
-    # of the validator.
-    isSelfStake: Boolean!
-
-    # Time stamp of the delegation creation.
-    createdTime: Long!
-
-    # Amount delegated in WEI. The value includes all the pending un-delegations.
-    amount: BigInt!
-
-    # Current active amount delegated in WEI.
-    amountDelegated: BigInt!
-
-    # Amount locked in pending un-delegations in WEI.
-    amountInWithdraw: BigInt!
-
-    # Total amount of rewards claimed.
-    claimedReward: BigInt!
-
-    # Pending rewards for the delegation in WEI.
-    pendingRewards: PendingRewards!
-
-    # List of withdraw requests of the delegation,
-    # sorted fro the newest to the oldest requests.
-    withdrawRequests(cursor: Cursor, count: Int = 50): [WithdrawRequest!]!
-
-    # rewardClaims provides a list of reward claims
-    # of the delegation as a scrollable list of edges with details of claims.
-    rewardClaims(cursor: Cursor, count: Int = 25): RewardClaimList!
-
-    # isFluidStakingActive indicates if the delegation is upgraded to fluid staking.
-    isFluidStakingActive: Boolean!
-
-    # isDelegationLocked indicates if the delegation is locked.
-    isDelegationLocked: Boolean!
-
-    # lockedFromEpoch represents the id of epoch the lock has been created.
-    lockedFromEpoch: Long!
-
-    # lockDuration represents the duration the lock has been placed for.
-    lockDuration: Long!
-
-    # lockedUntil represents the time stamp up to which
-    # the delegation is locked, zero if not locked.
-    lockedUntil: Long!
-
-    # lockedAmount represents the amount of delegation stake locked.
-    # The undelegate process must call unlock prior to creating withdraw
-    # request if outstanding unlocked amount
-    # is lower than demanded amount to undelegate.
-    lockedAmount: BigInt!
-
-    # unlockedAmount represents the amount
-    # of delegation stake available for undelegate.
-    unlockedAmount: BigInt!
-
-    # unlockPenalty provides the mount of penalty applied
-    # to the stake amount on premature unlock
-    unlockPenalty(amount: BigInt!): BigInt!
-
-    # outstandingSNEC represents the amount of sNEC tokens representing
-    # the tokenized stake minted and un-repaid on this delegation.
-    outstandingSNEC: BigInt!
-
-    # tokenizerAllowedToWithdraw indicates if the stake tokenizer allows the stake
-    # to be withdrawn. That means all the sNEC tokens have been repaid and the sNEC
-    # debt is effectively zero for the delegation.
-    tokenizerAllowedToWithdraw: Boolean!
-}
-
-# DelegationList is a list of delegations edges provided by sequential access request.
-type DelegationList {
-    "Edges contains provided edges of the sequential list."
-    edges: [DelegationListEdge!]!
-
-    """
-    TotalCount is the maximum number of delegations
-    available for sequential access.
-    """
-    totalCount: Long!
-
-    "PageInfo is an information about the current page of delegation edges."
-    pageInfo: ListPageInfo!
-}
-
-# DelegationListEdge is a single edge in a sequential list of delegations.
-type DelegationListEdge {
-    "Cursor defines a scroll key to this edge."
-    cursor: Cursor!
-
-    "Delegator represents the delegator provided by this list edge."
-    delegation: Delegation!
 }
 
 # Represents epoch information.
@@ -1819,11 +1702,6 @@ type Staker {
 
     # Number of seconds the staker is offline.
     downtime: Long!
-
-    # List of delegations of this staker. Cursor is used to obtain specific slice
-    # of the staker delegations. The most recent delegations
-    # are provided if cursor is omitted.
-    delegations(cursor: Cursor, count: Int = 25):DelegationList!
 
     # Status is a binary encoded status of the staker.
     # Ok = 0, bin 1 = Fork Detected, bin 256 = Validator Offline

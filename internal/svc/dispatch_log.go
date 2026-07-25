@@ -24,13 +24,10 @@ func (lgd *logDispatcher) name() string {
 func (lgd *logDispatcher) init() {
 	lgd.sigStop = make(chan bool, 1)
 	lgd.knownTopics = map[common.Hash]func(*types.LogRecord){
-		// SFC1 topic registrations were removed with the v1/v2 bindings. Every SFC1
-		// handler was exclusive to those bindings and is gone; the one handler shared
-		// with SFC3, handleSfcCreatedDelegation, is kept and stays registered below
-		// against the SFC3::Delegated topic.
-
-		/* SFC3::Delegated(address indexed delegator, uint256 indexed toValidatorID, uint256 amount) */
-		common.HexToHash("0x9a8f44850296624dadfd9c246d17e47171d35727a181bd090aa14bbbe00238bb"): handleSfcCreatedDelegation,
+		// SFC1 topic registrations were removed with the v1/v2 bindings. Stake DELEGATION
+		// is not offered on this chain, so the SFC3::Delegated handler and the delegation
+		// table it fed are gone too; only the withdrawal (Undelegated/Withdrawn) and reward
+		// (Claimed/Restaked) SFC3 events are still tracked below.
 
 		/* SFC3::Undelegated(address indexed delegator, uint256 indexed toValidatorID, uint256 indexed wrID, uint256 amount) */
 		common.HexToHash("0xd3bb4e423fbea695d16b982f9f682dc5f35152e5411646a8a5a79a6b02ba8d57"): handleSfcUndelegated,

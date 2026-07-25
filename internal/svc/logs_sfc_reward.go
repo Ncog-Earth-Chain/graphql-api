@@ -26,13 +26,6 @@ func handleSfcRewardClaim(lr *types.LogRecord, addr common.Address, valID *hexut
 		log.Criticalf("can not store rewards claim; %s", err.Error())
 		return
 	}
-
-	// check active amount on the delegation
-	if err := repo.UpdateDelegationBalance(bgCtx(), &addr, valID, func(amo *big.Int) error {
-		return makeAdHocDelegation(lr, &addr, valID, amo)
-	}); err != nil {
-		log.Errorf("failed to update delegation; %s", err.Error())
-	}
 }
 
 // handleSfcCommonRewardClaim handles the common reward claim on SFC contract.

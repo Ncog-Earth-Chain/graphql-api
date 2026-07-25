@@ -231,30 +231,11 @@ type Repository interface {
 	// RetrieveStakerInfo gets staker information from in-memory if available.
 	RetrieveStakerInfo(*hexutil.Big) *types.StakerInfo
 
-	// IsDelegating returns if the given address is an SFC delegator.
-	IsDelegating(context.Context, *common.Address) (bool, error)
-
-	// StoreDelegation stores a delegation in the persistent repository.
-	StoreDelegation(context.Context, *types.Delegation) error
-
-	// UpdateDelegationBalance updates active balance of the given delegation.
-	UpdateDelegationBalance(context.Context, *common.Address, *hexutil.Big, func(*big.Int) error) error
-
-	// Delegation returns a detail of delegation for the given address and validator ID.
-	Delegation(context.Context, *common.Address, *hexutil.Big) (*types.Delegation, error)
-
-	// DelegationAmountStaked returns the current amount of staked tokens
-	// for the given delegation.
+	// DelegationAmountStaked returns the current amount of staked tokens for the given
+	// (address, validator) -- a validator's own self-stake on SFCv3. Read live from the SFC
+	// contract; the persisted delegation table and its read/write path have been removed since
+	// stake delegation is not offered on this chain.
 	DelegationAmountStaked(*common.Address, *hexutil.Big) (*big.Int, error)
-
-	// DelegationsByAddress returns a list of all delegations of a given delegator address.
-	DelegationsByAddress(context.Context, *common.Address, *string, int32) (*types.DelegationList, error)
-
-	// DelegationsByAddressAll returns a list of all delegations of the given address un-paged.
-	DelegationsByAddressAll(ctx context.Context, addr *common.Address) ([]*types.Delegation, error)
-
-	// DelegationsOfValidator extracts a list of delegations for a validator by its ID.
-	DelegationsOfValidator(context.Context, *hexutil.Big, *string, int32) (*types.DelegationList, error)
 
 	// DelegationLock returns delegation lock information using SFC contract binding.
 	DelegationLock(*common.Address, *hexutil.Big) (*types.DelegationLock, error)

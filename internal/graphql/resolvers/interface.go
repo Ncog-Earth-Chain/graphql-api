@@ -92,26 +92,6 @@ type ApiResolver interface {
 	// Stakers resolves a list of staker information from SFC smart contract.
 	Stakers() ([]*Staker, error)
 
-	// Delegation resolves details of a delegator by its address.
-	Delegation(context.Context, *struct {
-		Address common.Address
-		Staker  hexutil.Big
-	}) (*Delegation, error)
-
-	// DelegationsOf a list of delegations information of a staker.
-	DelegationsOf(context.Context, *struct {
-		Staker hexutil.Big
-		Cursor *Cursor
-		Count  int32
-	}) (*DelegationList, error)
-
-	// DelegationsByAddress a list of own delegations by the account address.
-	DelegationsByAddress(context.Context, *struct {
-		Address common.Address
-		Cursor  *Cursor
-		Count   int32
-	}) (*DelegationList, error)
-
 	// Price resolves price details of the Ncogearthchain blockchain token for the given target symbols.
 	Price(*struct{ To string }) (types.Price, error)
 

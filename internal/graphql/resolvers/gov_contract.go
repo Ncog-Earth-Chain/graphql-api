@@ -125,33 +125,22 @@ func (gc *GovernanceContract) CanVote(ctx context.Context, args struct{ From com
 }
 
 // sfcDelegationsBy resolves delegations of the SFC type.
-func (gc *GovernanceContract) sfcDelegationsBy(ctx context.Context, addr common.Address) ([]common.Address, error) {
-	// get SFC delegations list
-	dl, err := repository.R().DelegationsByAddressAll(ctx, &addr)
-	if err != nil {
-		return nil, err
-	}
-
-	// make the active delegations list
-	res := make([]common.Address, 0)
-	for _, d := range dl {
-		// is the delegation ok for voting?
-		if 0 == d.AmountDelegated.ToInt().Uint64() {
-			log.Debugf("delegation to %d from address %s is deactivated", d.ToStakerId, addr.String())
-			continue
-		}
-		res = append(res, d.ToStakerAddress)
-	}
-
-	// log delegations found
-	log.Debugf("%d delegations on %s", len(res), addr.String())
-	return res, nil
+//
+// SFC stake delegation is not offered on this chain (the delegation table has been removed), so an
+// address holds no SFC delegations and this list is always empty. SFC-stake-weighted governance
+// voting therefore has no delegated recipients to resolve; the field is kept so the governance
+// schema is unchanged for when delegation is reintroduced.
+func (gc *GovernanceContract) sfcDelegationsBy(_ context.Context, _ common.Address) ([]common.Address, error) {
+	return []common.Address{}, nil
 }
 
 // sfcCanVote resolves if a given address can vote in SFC governance context.
-func (gc *GovernanceContract) sfcCanVote(ctx context.Context, addr common.Address) (bool, error) {
-	// even validators are actually delegating to themself on SFCv3
-	return repository.R().IsDelegating(ctx, &addr)
+//
+// Eligibility was defined by SFC stake delegation (validators self-delegate on SFCv3). With stake
+// delegation removed there are no delegations to confer voting rights through this mechanism, so
+// this returns false. Kept as a field so the governance schema is stable for a later reintroduction.
+func (gc *GovernanceContract) sfcCanVote(_ context.Context, _ common.Address) (bool, error) {
+	return false, nil
 }
 
 // ProposalFee resolves the fee required by the Governance contract to allow
