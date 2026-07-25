@@ -113,6 +113,15 @@ type Query {
     # the total amount of collected rewards is being presented.
     sfcRewardsCollectedAmount(delegator: Address, staker: BigInt, since: Long, until: Long): BigInt!
 
+    # rewardClaims lists the SFC reward claims of the given address, newest first.
+    # These were previously reachable only under a delegation; exposed at the root so the
+    # reward-claims history remains queryable now that the delegation surface is gone.
+    rewardClaims(address: Address!, cursor: Cursor, count: Int = 25): RewardClaimList!
+
+    # withdrawRequests lists the withdraw (un-delegation) requests of the given address.
+    # Exposed at the root for the same reason as rewardClaims above.
+    withdrawRequests(address: Address!, cursor: Cursor, count: Int = 50): [WithdrawRequest!]!
+
     # logs provides event logs matching the given filters, newest first.
     #
     # Every filter combination here is served by an index. address alone, address with

@@ -122,6 +122,20 @@ type ApiResolver interface {
 		Until     *hexutil.Uint64
 	}) (hexutil.Big, error)
 
+	// RewardClaims resolves the SFC reward claims of the given address.
+	RewardClaims(context.Context, struct {
+		Address common.Address
+		Cursor  *Cursor
+		Count   int32
+	}) (*RewardClaimList, error)
+
+	// WithdrawRequests resolves the withdraw (un-delegation) requests of the given address.
+	WithdrawRequests(context.Context, struct {
+		Address common.Address
+		Cursor  *Cursor
+		Count   int32
+	}) ([]WithdrawRequest, error)
+
 	// SendTransaction sends raw signed and RLP encoded transaction to the blockchain.
 	SendTransaction(*struct{ Tx hexutil.Bytes }) (*Transaction, error)
 

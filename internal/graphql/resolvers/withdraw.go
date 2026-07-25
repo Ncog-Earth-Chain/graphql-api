@@ -6,8 +6,36 @@ import (
 	"ncogearthchain-api-graphql/internal/repository"
 	"ncogearthchain-api-graphql/internal/types"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
+
+// WithdrawRequests resolves the withdraw (un-delegation) requests of the given address, across all
+// validators.
+//
+// Withdraw requests were previously reachable only under a delegation (Delegation.withdrawRequests).
+// The stake-delegation surface has been removed, so this root query keeps them queryable. A nil
+// validator filter means "requests to any validator".
+func (rs *rootResolver) WithdrawRequests(ctx context.Context, args struct {
+	Address common.Address
+	Cursor  *Cursor
+	Count   int32
+}) ([]WithdrawRequest, error) {
+	// limit query size; the count can be either positive or negative to control direction
+	args.Count = listLimitCount(args.Count, listMaxEdgesPerRequest)
+
+	wr, err := repository.R().WithdrawRequests(ctx, &args.Address, nil, (*string)(args.Cursor), args.Count)
+	if err != nil {
+		log.Errorf("can not get withdraw requests of %s; %s", args.Address.String(), err.Error())
+		return nil, err
+	}
+
+	list := make([]WithdrawRequest, len(wr.Collection))
+	for i, req := range wr.Collection {
+		list[i] = NewWithdrawRequest(req)
+	}
+	return list, nil
+}
 
 // WithdrawRequest represents resolvable partial withdraw request
 // from either stake or delegation structure.
