@@ -30,6 +30,17 @@ const blsBlockBufferCapacity = 1000
 // blsReScanHysteresis is the number of blocks we wait from dispatcher until a re-scan kicks in.
 const blsReScanHysteresis = 100
 
+// blsIdleStallLimit is how many consecutive idle observations may pass with blocks outstanding and
+// NO dispatch progress before we stop trusting the real-time feed and resume scanning.
+//
+// While idle the scanner relies on the new-heads subscription to deliver blocks; the hysteresis above
+// is only meant as a large-gap safety net. If that subscription is unavailable or silently dies (an
+// HTTP-only endpoint cannot provide one at all), nothing advances the dispatcher, and waiting for the
+// head to run 100 blocks ahead can mean many hours of a frozen index on a slow chain -- during which
+// node-backed queries still look healthy, so the stall is easy to miss. Observations are one minute
+// apart while idle, so this trades ~3 minutes of latency for a guarantee that the index cannot freeze.
+const blsIdleStallLimit = 3
+
 // blkScanner implements scanner loading previous/unknown blockchain blocks.
 type blkScanner struct {
 	service
@@ -44,6 +55,12 @@ type blkScanner struct {
 	next           uint64
 	to             uint64
 	done           uint64
+
+	// idleLastDone / idleStalls detect a stalled real-time feed while idle: if blocks are outstanding
+	// and `done` does not move across blsIdleStallLimit observations, the subscription is not
+	// delivering and we resume scanning instead of waiting out blsReScanHysteresis.
+	idleLastDone uint64
+	idleStalls   int
 }
 
 // name returns the name of the service used by orchestrator.
@@ -162,14 +179,60 @@ func (bls *blkScanner) observe() bool {
 	if bls.onIdle && target < bls.done+blsReScanHysteresis {
 		bls.next = bls.done
 		bls.from = bls.done
+
+		// Guard against a dead real-time feed. Idling is only correct while the new-heads subscription
+		// keeps the dispatcher moving; if blocks are outstanding and `done` has not advanced for several
+		// observations, nothing is delivering them, so resume the active scan rather than waiting for the
+		// head to run blsReScanHysteresis blocks ahead.
+		if bls.idleStallDetected(target) {
+			log.Warningf("block scanner stalled on idle: %d block(s) behind head #%d with no dispatch "+
+				"in %d checks; resuming scan (is the new-heads subscription alive?)",
+				target-bls.done, target, blsIdleStallLimit)
+			bls.to = target
+			return false
+		}
+
 		log.Infof("block scanner idling at #%d, head at #%d", bls.next, target)
 		return true
 	}
+
+	// scanning actively — the stall counters only apply to the idle path
+	bls.idleStalls = 0
+	bls.idleLastDone = bls.done
 
 	// adjust target block number; log the progress of the scan
 	bls.to = target
 	log.Infof("block scanner at #%d of <#%d, #%d>, #%d dispatched", bls.next, bls.from, bls.to, bls.done)
 	return bls.to < bls.next
+}
+
+// idleStallDetected advances the idle stall counters for the observed chain head and reports whether
+// the real-time feed looks dead — i.e. blocks are outstanding yet the dispatcher has not moved across
+// blsIdleStallLimit consecutive observations.
+//
+// Kept free of any repository/network access so the state machine is unit-testable on its own; the
+// caller supplies the observed head.
+func (bls *blkScanner) idleStallDetected(target uint64) bool {
+	// nothing outstanding — the feed is keeping up (or we are at the head)
+	if target <= bls.done {
+		bls.idleStalls = 0
+		bls.idleLastDone = bls.done
+		return false
+	}
+
+	// blocks are outstanding; count an observation only if the dispatcher made no progress
+	if bls.done == bls.idleLastDone {
+		bls.idleStalls++
+	} else {
+		bls.idleStalls = 0
+	}
+	bls.idleLastDone = bls.done
+
+	if bls.idleStalls >= blsIdleStallLimit {
+		bls.idleStalls = 0
+		return true
+	}
+	return false
 }
 
 // updateState change scanner state if needed.
