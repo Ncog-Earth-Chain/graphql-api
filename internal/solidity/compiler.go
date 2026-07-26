@@ -11,16 +11,42 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
 //go:generate sh ./tools/compile_releases.sh "../../../solidity"
 
-// CompilerManager manages multiple Solidity compiler versions
+// CompilerManager manages multiple Solidity compiler versions.
+//
+// mu guards compilers. One repository instance is shared process-wide
+// (repository.R(), a sync.Once singleton), and graphql-go resolves a request's root fields
+// concurrently -- AvailableCompilerVersions returns an error, which marks the field Async,
+// so a single HTTP POST aliasing that field N times fans out across up to MaxParallelism
+// (default 10) goroutines, all of them walking every entry of solidityReleases and writing
+// this map. Without the lock the Go runtime detects the collision and calls fatal(), which
+// no panic handler can recover: the whole API process dies. Reproduced with
+// "fatal error: concurrent map writes" from 16 goroutines against this map.
 type CompilerManager struct {
 	basePath    string
+	mu          sync.RWMutex
 	compilers   map[string]string
 	defaultPath string
+}
+
+// lookupCompiler reads the resolved-path cache under the read lock.
+func (cm *CompilerManager) lookupCompiler(version string) (string, bool) {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	path, ok := cm.compilers[version]
+	return path, ok
+}
+
+// rememberCompiler records a resolved path under the write lock.
+func (cm *CompilerManager) rememberCompiler(version, path string) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	cm.compilers[version] = path
 }
 
 // NewCompilerManager creates a new compiler manager
@@ -42,9 +68,21 @@ func (cm *CompilerManager) GetCompilerPath(version string) (string, error) {
 	// Normalize version format (remove 'v' prefix if present)
 	normalizedVersion := strings.TrimPrefix(version, "v")
 
-	// Check if we have this version cached
-	if path, exists := cm.compilers[normalizedVersion]; exists {
+	if path, ok := cm.resolveLocal(normalizedVersion); ok {
 		return path, nil
+	}
+
+	// If not found, try to download and install it
+	return cm.downloadAndInstallCompiler(normalizedVersion)
+}
+
+// resolveLocal reports where an already-installed compiler for this version lives, WITHOUT
+// reaching the network. Split out of GetCompilerPath so availability can be asked as a
+// question rather than as an instruction to install -- see IsVersionSupported.
+func (cm *CompilerManager) resolveLocal(normalizedVersion string) (string, bool) {
+	// Check if we have this version cached
+	if path, exists := cm.lookupCompiler(normalizedVersion); exists {
+		return path, true
 	}
 
 	// Try to find the compiler in the base path
@@ -52,21 +90,19 @@ func (cm *CompilerManager) GetCompilerPath(version string) (string, error) {
 
 	// Check if the compiler exists and is executable
 	if _, err := exec.LookPath(compilerPath); err == nil {
-		cm.compilers[normalizedVersion] = compilerPath
-		return compilerPath, nil
+		cm.rememberCompiler(normalizedVersion, compilerPath)
+		return compilerPath, true
 	}
 
 	// Try alternative naming patterns
-	alternativePaths := cm.getAlternativePaths(normalizedVersion)
-	for _, altPath := range alternativePaths {
+	for _, altPath := range cm.getAlternativePaths(normalizedVersion) {
 		if _, err := exec.LookPath(altPath); err == nil {
-			cm.compilers[normalizedVersion] = altPath
-			return altPath, nil
+			cm.rememberCompiler(normalizedVersion, altPath)
+			return altPath, true
 		}
 	}
 
-	// If not found, try to download and install it
-	return cm.downloadAndInstallCompiler(normalizedVersion)
+	return "", false
 }
 
 // buildCompilerPath builds the expected compiler path for the given version
@@ -134,7 +170,7 @@ func (cm *CompilerManager) downloadAndInstallCompiler(version string) (string, e
 	}
 
 	// Cache the path
-	cm.compilers[version] = targetPath
+	cm.rememberCompiler(version, targetPath)
 
 	return targetPath, nil
 }
@@ -206,9 +242,20 @@ func (cm *CompilerManager) testCompiler(compilerPath string) error {
 }
 
 // IsVersionSupported checks if a specific Solidity version is supported
+// IsVersionSupported reports whether this version is ALREADY INSTALLED. It deliberately does
+// not install anything.
+//
+// It used to call GetCompilerPath, which falls through to downloadAndInstallCompiler. Since
+// GetAvailableVersions loops over every entry of solidityReleases, the unauthenticated
+// GraphQL field `availableCompilerVersions` made the server attempt ~64 sequential solc
+// downloads from github.com -- roughly a gigabyte -- each with the 5-minute client timeout
+// below, on any instance whose compiler directory was cold. Measured: with the map race
+// fixed so the process no longer died first, a single test doing this ran past 600 seconds
+// entirely inside HTTP/2 requests to GitHub. Asking WHAT IS AVAILABLE must not be a request
+// to go and fetch it.
 func (cm *CompilerManager) IsVersionSupported(version string) bool {
-	_, err := cm.GetCompilerPath(version)
-	return err == nil
+	_, ok := cm.resolveLocal(strings.TrimPrefix(version, "v"))
+	return ok
 }
 
 // GetAvailableVersions returns a list of available compiler versions
