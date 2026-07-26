@@ -63,7 +63,7 @@ func (nec *NecBridge) Transaction(hash *common.Hash) (*types.Transaction, error)
 
 	// call for data
 	var trx types.Transaction
-	err := nec.rpc.Call(&trx, "nec_getTransactionByHash", hash)
+	err := nec.rpc.Call(&trx, "eth_getTransactionByHash", hash)
 	if err != nil {
 		nec.log.Error("transaction could not be extracted")
 		return nil, err
@@ -82,7 +82,7 @@ func (nec *NecBridge) Transaction(hash *common.Hash) (*types.Transaction, error)
 		}
 
 		// call for the transaction receipt data
-		err := nec.rpc.Call(&rec, "nec_getTransactionReceipt", hash)
+		err := nec.rpc.Call(&rec, "eth_getTransactionReceipt", hash)
 		if err != nil {
 			nec.log.Errorf("can not get receipt for transaction %s", hash)
 			return nil, err

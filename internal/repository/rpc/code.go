@@ -9,7 +9,7 @@ import (
 func (nec *NecBridge) ContractCode(addr *common.Address) ([]byte, error) {
 	var code string
 	// Fetch code at latest block
-	if err := nec.rpc.Call(&code, "nec_getCode", addr.Hex(), "latest"); err != nil {
+	if err := nec.rpc.Call(&code, "eth_getCode", addr.Hex(), "latest"); err != nil {
 		nec.log.Errorf("can not get code of contract [%s]", addr.Hex())
 		return nil, err
 	}
@@ -20,7 +20,7 @@ func (nec *NecBridge) ContractCode(addr *common.Address) ([]byte, error) {
 // The slot should be provided as a 32-byte hash (padded hex string), e.g. EIP-1967 IMPLEMENTATION_SLOT.
 func (nec *NecBridge) StorageAt(addr *common.Address, slot common.Hash) ([]byte, error) {
 	var data string
-	if err := nec.rpc.Call(&data, "nec_getStorageAt", addr.Hex(), slot.Hex(), "latest"); err != nil {
+	if err := nec.rpc.Call(&data, "eth_getStorageAt", addr.Hex(), slot.Hex(), "latest"); err != nil {
 		nec.log.Errorf("can not get storage at slot %s for [%s]", slot.Hex(), addr.Hex())
 		return nil, err
 	}
@@ -34,7 +34,7 @@ func (nec *NecBridge) Call(addr *common.Address, data []byte) ([]byte, error) {
 		To   string `json:"to"`
 		Data string `json:"data"`
 	}{To: addr.Hex(), Data: hexutil.Encode(data)}
-	if err := nec.rpc.Call(&out, "nec_call", arg, "latest"); err != nil {
+	if err := nec.rpc.Call(&out, "eth_call", arg, "latest"); err != nil {
 		nec.log.Errorf("can not perform call on [%s]", addr.Hex())
 		return nil, err
 	}

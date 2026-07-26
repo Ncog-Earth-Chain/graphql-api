@@ -22,7 +22,7 @@ import (
 func (nec *NecBridge) AccountBalance(addr *common.Address) (*hexutil.Big, error) {
 	// use RPC to make the call
 	var balance string
-	err := nec.rpc.Call(&balance, "nec_getBalance", addr.Hex(), "latest")
+	err := nec.rpc.Call(&balance, "eth_getBalance", addr.Hex(), "latest")
 	if err != nil {
 		nec.log.Errorf("can not get balance of account [%s]", addr.Hex())
 		return nil, err
@@ -41,7 +41,7 @@ func (nec *NecBridge) AccountBalance(addr *common.Address) (*hexutil.Big, error)
 // AccountNonce returns the total number of transaction of account from Forest node.
 func (nec *NecBridge) AccountNonce(addr *common.Address) (*hexutil.Uint64, error) {
 	var nonce hexutil.Uint64
-	err := nec.rpc.Call(&nonce, "nec_getTransactionCount", addr.Hex(), "latest")
+	err := nec.rpc.Call(&nonce, "eth_getTransactionCount", addr.Hex(), "latest")
 	if err != nil {
 		nec.log.Errorf("can not get number of transaction of account [%s]", addr.Hex())
 		return nil, err
