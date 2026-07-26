@@ -9,6 +9,21 @@
 doc/config*
 doc/deploy*
 
+# The real config, wherever the loader looks for it.
+#
+# internal/config/load.go:180 adds "." to the search path and keys.go:6 names the file
+# "apiserver", so a config placed in the REPO ROOT is loaded automatically -- and
+# doc/postgres-cutover.md:38 documents exactly that filename carrying a live Postgres DSN.
+# Without these lines the natural setup (copy the example, fill in the real password,
+# `git add -A`) commits production credentials. The ignores above only covered doc/.
+/apiserver.json
+/apiserver.yaml
+/apiserver.yml
+/apiserver.toml
+.env
+.env.*
+!.env.example
+
 # Test binary, built with `go test -c`
 *.test
 
