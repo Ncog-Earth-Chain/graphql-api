@@ -4,6 +4,7 @@ import (
 	"context"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/types"
+	"strings"
 	"testing"
 	"time"
 
@@ -572,5 +573,78 @@ func TestIncompleteBlockLeavesNoTraceAndDoesNotAdvance(t *testing.T) {
 	}
 	if healed != 2 {
 		t.Errorf("healed block 4 holds %d transactions, want 2", healed)
+	}
+}
+
+// TestWatermarkScanIsBoundedByTheWatermark pins the one property that decides whether this
+// indexer can follow a long chain at all.
+//
+// advanceContiguousHead runs inside EVERY block's ingest transaction. It used to search for
+// the first gap from block 1, which plans as a hash anti-join over two full scans of `block`,
+// so the cost of ingesting ONE block grew with the length of the WHOLE chain and ingesting
+// the chain was quadratic. Measured on PostgreSQL 16 at 2,002,001 blocks: 1029 ms per call,
+// against 4.5 ms for the bounded form -- and the unbounded one keeps growing while the
+// bounded one does not. Extrapolated, the unbounded form crosses the 30 s statement_timeout
+// near 60M blocks, at which point ingest stops permanently.
+//
+// The guard is on the PLAN, not the clock, because a wall-time assertion on a small test
+// database proves nothing. If someone reintroduces the unbounded scan, the index condition
+// disappears and this fails.
+func TestWatermarkScanIsBoundedByTheWatermark(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	// A short chain is enough: we are asserting the shape of the plan, not its duration.
+	for i := uint64(1); i <= 8; i++ {
+		if err := s.StoreBlock(ctx, &BlockData{Block: mkBlock(i)}); err != nil {
+			t.Fatalf("store block %d: %v", i, err)
+		}
+	}
+
+	head, err := s.ContiguousHead(ctx)
+	if err != nil {
+		t.Fatalf("ContiguousHead: %v", err)
+	}
+	if head != 8 {
+		t.Fatalf("watermark is %d, want 8", head)
+	}
+
+	rows, err := s.pool.Query(ctx, `
+		EXPLAIN (COSTS OFF)
+		WITH gap AS (
+		    SELECT COALESCE(MIN(number + 1), $1::BIGINT + 1) AS first_missing
+		    FROM   block b
+		    WHERE  b.number >= $1::BIGINT
+		      AND  NOT EXISTS (
+		               SELECT 1 FROM block n
+		               WHERE  n.number >= $1::BIGINT AND n.number = b.number + 1)
+		)
+		SELECT * FROM gap`, int64(head))
+	if err != nil {
+		t.Fatalf("explain: %v", err)
+	}
+	defer rows.Close()
+
+	var plan strings.Builder
+	for rows.Next() {
+		var line string
+		if err := rows.Scan(&line); err != nil {
+			t.Fatalf("scan plan: %v", err)
+		}
+		plan.WriteString(line)
+		plan.WriteString("\n")
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("plan rows: %v", err)
+	}
+
+	// The watermark must reach the index as a bound. Without it PostgreSQL reads every
+	// row of block_pkey on both sides of the anti-join -- which is exactly the quadratic
+	// behaviour this test exists to prevent.
+	if !strings.Contains(plan.String(), "Index Cond") {
+		t.Errorf("the watermark scan is not bounded by an index condition; it will read the whole block table on every ingested block.\nplan:\n%s", plan.String())
+	}
+	if strings.Contains(plan.String(), "Seq Scan on block") {
+		t.Errorf("the watermark scan sequentially scans block; it must be bounded by the watermark.\nplan:\n%s", plan.String())
 	}
 }

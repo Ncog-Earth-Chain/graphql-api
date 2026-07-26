@@ -369,18 +369,64 @@ func (s *Store) writeLogs(ctx context.Context, q Querier, t *types.Transaction, 
 // past a block that had not fully landed. Computing it from the block table means it is
 // true by construction: if a gap exists, the watermark simply does not pass it, and the
 // scanner keeps seeing work to do rather than skipping over the hole forever.
+// It scans only FORWARD FROM THE CURRENT WATERMARK, and that bound is what makes this
+// affordable. Searching from block 1 every time is a hash anti-join over two full scans of
+// `block`, so the cost of ingesting one block grows with the length of the whole chain and
+// the cost of ingesting the chain is quadratic. Measured on PostgreSQL 16 with 2,002,001
+// blocks: 951 ms PER INGESTED BLOCK, already spilling to 16 temp batches. A chain that
+// produces a block a second needs this under a second merely to keep pace, so the indexer
+// fell behind at ~2M blocks and, extrapolating the linear per-block growth, every ingest
+// transaction would exceed the 30 s statement_timeout at ~60M blocks and ingest would stop
+// for good. Bounded, the same call is a short index-only walk of the unverified tail.
+//
+// The bound is sound because the watermark is monotonic (GREATEST, below) and means
+// "every block from 1 to value is present". Blocks at or below it have already been
+// proven contiguous, so re-examining them can never move it. Starting the scan AT the
+// watermark -- not above it -- keeps the anchor row in the scan, so a watermark of N with
+// N+1 absent still evaluates the NOT EXISTS on N and correctly holds the value at N.
+//
+// This does not weaken the guarantee the gap tests pin down: the watermark still cannot
+// cross a hole, because the first missing block at or above the watermark is exactly the
+// hole the unbounded form would have found first. A gap BELOW the watermark cannot exist
+// while the value is only ever raised, and if one were ever introduced the unbounded form
+// would not have repaired it either -- GREATEST never lowers the value.
 func (s *Store) advanceContiguousHead(ctx context.Context, q Querier) error {
-	_, err := q.Exec(ctx, `
+	// The watermark is read first and passed as a BIND PARAMETER rather than computed in a
+	// CTE inside the statement. That is not cosmetic: `cur` had to be referenced three
+	// times, so PostgreSQL materialised it, and a materialised CTE cannot serve as an index
+	// bound. The bounded-looking query still planned as a parallel hash anti-join reading
+	// all 11,193 buffers of block_pkey -- exactly what the bound was meant to avoid. With a
+	// real parameter the planner emits `Index Cond: (number >= $1)` and a nested-loop anti
+	// join: 13 buffers, 0.04 ms, against 11,193 buffers and 951 ms for the unbounded form
+	// on the same 2,002,001-block table.
+	head, err := s.counter(ctx, q, "contiguous_head")
+	if err != nil {
+		return fmt.Errorf("can not read the ingest watermark: %w", err)
+	}
+	if head < 0 {
+		head = 0
+	}
+
+	_, err = q.Exec(ctx, `
 		WITH gap AS (
-		    -- the lowest block number that is absent; the watermark stops just below it
-		    SELECT COALESCE(MIN(number + 1), 1) AS first_missing
+		    -- the lowest block number at or above the watermark whose successor is absent;
+		    -- the watermark stops just below it
+		    SELECT COALESCE(MIN(number + 1), $1::BIGINT + 1) AS first_missing
 		    FROM   block b
-		    WHERE  NOT EXISTS (SELECT 1 FROM block n WHERE n.number = b.number + 1)
+		    WHERE  b.number >= $1::BIGINT
+		      AND  NOT EXISTS (
+		               SELECT 1 FROM block n
+		               -- BOTH sides carry the bound. Constraining only the outer scan lets
+		               -- the planner build the anti-join over every row in the table, which
+		               -- is where the cost actually sat. A successor of a block at or above
+		               -- the watermark is itself above it, so this excludes nothing.
+		               WHERE  n.number >= $1::BIGINT
+		                 AND  n.number = b.number + 1)
 		)
 		UPDATE meta_counter
 		SET    value = GREATEST(value, (SELECT first_missing - 1 FROM gap)),
 		       updated_at = now()
-		WHERE  key = 'contiguous_head'`)
+		WHERE  key = 'contiguous_head'`, head)
 	if err != nil {
 		return fmt.Errorf("can not advance the ingest watermark: %w", err)
 	}
