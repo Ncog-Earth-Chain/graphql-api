@@ -227,6 +227,14 @@ func (br *NecBridge) TraceTransaction(ctx context.Context, txHash common.Hash, p
 		err = br.rpc.CallContext(ctx, &result, "debug_traceTransaction", txHash)
 	}
 	if err != nil {
+		// Tracing is served by the node's OPTIONAL `debug` namespace (and namespaces are
+		// per-transport here). An endpoint that does not expose it cannot answer the question at
+		// all, which is different from "the trace is empty" -- report (nil, nil) so callers can
+		// render "not determinable" instead of an error or a misleading empty list.
+		if isMethodUnavailable(err) {
+			br.log.Debugf("debug_traceTransaction unavailable on this endpoint; internal transactions not determinable for %s", txHash.String())
+			return nil, nil
+		}
 		return nil, err
 	}
 	return result, nil

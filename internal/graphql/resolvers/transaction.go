@@ -201,13 +201,47 @@ func NewInternalTransaction(itx *types.InternalTransaction) *InternalTransaction
 	return &InternalTransaction{*itx}
 }
 
-// InternalTransactions resolves the list of internal transactions for this transaction.
-func (trx *Transaction) InternalTransactions(ctx context.Context) ([]*InternalTransaction, error) {
-	result, err := repository.R().TraceTransaction(ctx, trx.Hash, map[string]interface{}{
-		"tracer": "callTracer",
+// trace runs debug_traceTransaction for this transaction, at most once per resolved transaction
+// however many fields ask for it. A nil result with a nil error means the connected node does not
+// serve the optional `debug` namespace, so nothing about internal calls can be determined.
+func (trx *Transaction) trace(ctx context.Context) (interface{}, error) {
+	val, err, _ := trx.cg.Do("trace", func() (interface{}, error) {
+		return repository.R().TraceTransaction(ctx, trx.Hash, map[string]interface{}{
+			"tracer": "callTracer",
+		})
 	})
 	if err != nil {
 		return nil, err
+	}
+	return val, nil
+}
+
+// TracingAvailable reports whether the connected node could trace this transaction at all.
+//
+// This exists because an empty internalTransactions list is ambiguous: it means either "this
+// transaction genuinely made no internal calls" or "nobody could tell". graphql-go v1.4 renders a
+// nil Go slice and an empty one identically as [], so the distinction cannot live in that field --
+// read this flag alongside it. False => internalTransactions is [] for lack of a tracer, and must
+// NOT be presented as "no internal transactions".
+func (trx *Transaction) TracingAvailable(ctx context.Context) (bool, error) {
+	result, err := trx.trace(ctx)
+	if err != nil {
+		return false, err
+	}
+	return result != nil, nil
+}
+
+// InternalTransactions resolves the list of internal transactions for this transaction.
+//
+// Always read together with tracingAvailable -- see the note there on why [] is ambiguous.
+func (trx *Transaction) InternalTransactions(ctx context.Context) ([]*InternalTransaction, error) {
+	result, err := trx.trace(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// The node does not serve `debug`. Nothing is determinable; tracingAvailable reports false.
+	if result == nil {
+		return []*InternalTransaction{}, nil
 	}
 
 	// Geth callTracer output: top-level map with "calls"
@@ -235,7 +269,7 @@ func (trx *Transaction) InternalTransactions(ctx context.Context) ([]*InternalTr
 				}
 			}
 		} else if _, ok := v["structLogs"].([]interface{}); ok {
-			// Not supported for internal txs, return empty
+			// structLogs carries no call frames, so nothing can be determined from it.
 			return []*InternalTransaction{}, nil
 		}
 	case []interface{}:

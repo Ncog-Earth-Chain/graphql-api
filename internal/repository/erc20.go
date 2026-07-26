@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"ncogearthchain-api-graphql/internal/config"
 	"ncogearthchain-api-graphql/internal/repository/cache"
 	"ncogearthchain-api-graphql/internal/types"
@@ -47,30 +48,50 @@ func (p *proxy) Erc20Token(addr *common.Address) (*types.Erc20Token, error) {
 
 // loadErc20TokenDetails loads details of the given ERC20 token using ERC20
 // contract calls.
+//
+// It fails when the address answers NONE of name/symbol/decimals, i.e. when it does not implement
+// the ERC-20 interface at all. Without that check every failure was swallowed into a placeholder
+// (name := the address itself, symbol := "-", decimals := 0) and the function always succeeded --
+// so erc20Token(anyAddress) resolved to a plausible-looking token record for a plain EOA, a DDB
+// contract, anything. Callers use a non-nil result as "this IS an ERC-20", so that has to mean it.
+//
+// Any ONE of the three answering is enough: real tokens do omit fields (MKR's name/symbol are
+// bytes32 and fail a string ABI decode), and the placeholder for a genuinely missing field is fine
+// once we know the contract is a token.
 func (p *proxy) loadErc20TokenDetails(token *types.Erc20Token) (*types.Erc20Token, error) {
 	var err error
+	answered := 0
 
 	// get the name
 	token.Name, err = p.rpc.Erc20Name(&token.Address)
 	if err != nil {
-		p.log.Errorf("ERC20 token name not recognized at %s; %s", token.Address.String(), err.Error())
+		p.log.Debugf("ERC20 token name not recognized at %s; %s", token.Address.String(), err.Error())
 		token.Name = token.Address.String()
+	} else {
+		answered++
 	}
 
 	// get symbol
 	token.Symbol, err = p.rpc.Erc20Symbol(&token.Address)
 	if err != nil {
-		p.log.Errorf("ERC20 token symbol not recognized at %s; %s", token.Address.String(), err.Error())
+		p.log.Debugf("ERC20 token symbol not recognized at %s; %s", token.Address.String(), err.Error())
 		token.Symbol = "-"
+	} else {
+		answered++
 	}
 
 	// get decimals
 	token.Decimals, err = p.rpc.Erc20Decimals(&token.Address)
 	if err != nil {
-		p.log.Errorf("ERC20 token decimals not recognized at %s; %s", token.Address.String(), err.Error())
+		p.log.Debugf("ERC20 token decimals not recognized at %s; %s", token.Address.String(), err.Error())
 		token.Decimals = 0
+	} else {
+		answered++
 	}
 
+	if answered == 0 {
+		return nil, fmt.Errorf("address %s does not implement ERC-20", token.Address.String())
+	}
 	return token, nil
 }
 

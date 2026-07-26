@@ -84,7 +84,18 @@ type Transaction {
 
     # internalTransactions provides a list of internal transactions (calls, creates, etc.)
     # executed as part of this transaction.
+    #
+    # ALWAYS read together with tracingAvailable. An empty list on its own is ambiguous: it means
+    # either "no internal calls were made" or "nothing could be determined". Tracing requires the
+    # node's optional debug namespace, and a node started without it can answer nothing here.
     internalTransactions: [InternalTransaction!]!
+
+    # tracingAvailable reports whether the connected node could trace this transaction at all.
+    #
+    # False means internalTransactions is empty for lack of a tracer (the node does not serve
+    # debug_traceTransaction), NOT because the transaction made no internal calls. Clients must
+    # not present an empty list as "no internal transactions" while this is false.
+    tracingAvailable: Boolean!
 
     # chainId is the chain this transaction was signed for.
     #

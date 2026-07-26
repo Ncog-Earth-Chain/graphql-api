@@ -72,11 +72,14 @@ func (nec *NecBridge) Erc20Decimals(token *common.Address) (int32, error) {
 		return 0, err
 	}
 
-	// get the token name
+	// get the token decimals
 	deci, err := contract.Decimals(nil)
 	if err != nil {
-		nec.log.Errorf("ERC20 token %s decimals not available; %s", token.String(), err.Error())
-		return 0, nil
+		// Return the error, not (0, nil). Swallowing it made "decimals is 0" indistinguishable from
+		// "this address has no decimals() at all", so callers that use a successful load to decide
+		// whether an address IS an ERC-20 always got yes — for EOAs and non-token contracts alike.
+		nec.log.Debugf("ERC20 token %s decimals not available; %s", token.String(), err.Error())
+		return 0, err
 	}
 
 	return int32(deci), nil
