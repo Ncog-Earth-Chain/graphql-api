@@ -18,9 +18,25 @@ import (
 	"math/big"
 	"ncogearthchain-api-graphql/internal/types"
 
+	"strings"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
+
+// isMethodUnavailable reports whether an RPC error means the endpoint simply does not serve the
+// method — JSON-RPC -32601, which go-ethereum surfaces as a plain error string. Namespaces are
+// per-transport on this node (an HTTP endpoint may expose `abft` while its WebSocket endpoint does
+// not), so an optional metric has to tell "this endpoint can't answer" apart from a real failure.
+func isMethodUnavailable(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "does not exist") ||
+		strings.Contains(msg, "method not found") ||
+		strings.Contains(msg, "not available")
+}
 
 // ValidatorDowntime pulls information about validator downtime from the RPC interface.
 func (nec *NecBridge) ValidatorDowntime(valID *hexutil.Big) (uint64, uint64, error) {
@@ -30,6 +46,14 @@ func (nec *NecBridge) ValidatorDowntime(valID *hexutil.Big) (uint64, uint64, err
 		Time   hexutil.Uint64 `json:"offlineTime"`
 	}
 	if err := nec.rpc.Call(&dt, "abft_getDowntime", valID); err != nil {
+		// Downtime is a display-only metric served by the OPTIONAL `abft` namespace. A node that does
+		// not expose it (e.g. a WebSocket endpoint started with --ws.api "eth,net,web3,..." and no
+		// abft) must not take down the whole validator/staking page: report zero and carry on. Real
+		// failures are still logged. Only the "method unavailable" case is swallowed.
+		if isMethodUnavailable(err) {
+			nec.log.Debugf("abft_getDowntime unavailable on this endpoint; reporting zero downtime for validator #%d", valID.ToInt().Uint64())
+			return 0, 0, nil
+		}
 		nec.log.Errorf("failed to get downtime of validator #%d; %s", valID.ToInt().Uint64(), err.Error())
 		return 0, 0, err
 	}
@@ -42,6 +66,11 @@ func (nec *NecBridge) ValidatorEpochUptime(valID *hexutil.Big) (uint64, error) {
 	// use rather the public API, it should be faster since it does not involve contract call
 	var ut hexutil.Uint64
 	if err := nec.rpc.Call(&ut, "abft_getEpochUptime", valID); err != nil {
+		// same optional-namespace handling as ValidatorDowntime above
+		if isMethodUnavailable(err) {
+			nec.log.Debugf("abft_getEpochUptime unavailable on this endpoint; reporting zero uptime for validator #%d", valID.ToInt().Uint64())
+			return 0, nil
+		}
 		nec.log.Errorf("failed to get epoch uptime of validator #%d; %s", valID.ToInt().Uint64(), err.Error())
 		return 0, err
 	}
