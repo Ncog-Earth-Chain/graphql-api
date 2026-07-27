@@ -57,4 +57,17 @@ func TestTokenTransferCountIsExactOnlyWhereItIsCheap(t *testing.T) {
 	if narrowExact != 0 {
 		t.Errorf("an unused token address matched %d transfers, want 0", narrowExact)
 	}
+
+	// The number that actually reaches TotalCount must be EXACT for a small result set,
+	// whatever the filter. The planner's floor estimate on a near-empty table is one or two
+	// rows, so returning the estimate unconditionally reported "2 transfers" against an empty
+	// list -- and since IsStart/IsEnd test this value for zero, the empty list would also have
+	// claimed further pages.
+	total, err := s.tokenTransactionTotal(ctx, broad)
+	if err != nil {
+		t.Fatalf("total (std only): %v", err)
+	}
+	if total != exact {
+		t.Errorf("reported total is %d but the exact count is %d; a small result set must be counted, not estimated", total, exact)
+	}
 }

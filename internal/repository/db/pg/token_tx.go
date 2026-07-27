@@ -329,6 +329,44 @@ func (s *Store) TokenTransactionCountEstimated(ctx context.Context, f *Filter) (
 	return uint64(plans[0].Plan.PlanRows), nil
 }
 
+// tokenTransactionTotal returns the count that feeds TotalCount, exact whenever exactness is
+// affordable.
+//
+// The problem it solves: TokenTransactions ran an exact count(*) before every page, whatever
+// the filter. Every token_tx index leads with `std`, so the global transfer feed -- narrowed
+// only by standard -- counted substantially the whole table on each page fetch, and on an EVM
+// chain ERC-20 transfers are most of the rows there ever are. That cost grows with the table
+// forever and is paid per page view.
+//
+// It asks the planner first (EXPLAIN without ANALYZE: a plan, not a scan) and only falls back
+// to the estimate when the planner says the result set is genuinely large. Below the
+// threshold an exact count is a small index range and costs nothing worth saving, so the
+// query is counted properly.
+//
+// Choosing on the ESTIMATE rather than on the filter shape is what keeps this honest at both
+// ends. Branching on "is there a token/account filter?" looked equivalent but was not: on a
+// near-empty table the planner's floor estimate is one or two rows, so the global feed
+// reported totalCount 2 against zero results -- and, worse, Total is what IsStart/IsEnd test
+// for zero, so an empty list would have claimed further pages. Deciding on size means small
+// result sets are always exact, whatever filter produced them, and the estimate is used only
+// where the true number is too large for the difference to be visible.
+func (s *Store) tokenTransactionTotal(ctx context.Context, f *Filter) (uint64, error) {
+	est, err := s.TokenTransactionCountEstimated(ctx, f)
+	if err != nil {
+		return 0, err
+	}
+	if est > tokenTxExactCountLimit {
+		return est, nil
+	}
+	return s.TokenTransactionCountFiltered(ctx, f)
+}
+
+// tokenTxExactCountLimit is the estimated result size above which the total is reported from
+// the planner's estimate instead of being counted. Below it the exact count is an index range
+// of at most this many rows, which is not a cost worth trading accuracy for; above it the
+// exact count is the unbounded per-page scan this exists to avoid.
+const tokenTxExactCountLimit = 50000
+
 // TokenTransactions pages through token transfers matching the criteria, newest first.
 //
 // Replaces Erc20Transactions and the whole ercTrxListInit / CollectRangeMarks / BorderPk /
@@ -359,19 +397,7 @@ func (s *Store) TokenTransactions(ctx context.Context, c TokenTxCriteria, cursor
 		return nil, err
 	}
 
-	// Exact where the filter makes it cheap, estimated where it does not.
-	//
-	// A token, token id or account narrows the scan to one index range that is small in
-	// practice, so counting it is the affordable, exact answer -- and it is the number a user
-	// looking at one token or one account actually cares about. Narrowed only by standard,
-	// the "range" is most of the table, and an exact count there is an unbounded scan on
-	// every page fetch of the global feed.
-	var total uint64
-	if c.Token != nil || c.TokenId != nil || c.Account != nil {
-		total, err = s.TokenTransactionCountFiltered(ctx, f)
-	} else {
-		total, err = s.TokenTransactionCountEstimated(ctx, f)
-	}
+	total, err := s.tokenTransactionTotal(ctx, f)
 	if err != nil {
 		return nil, err
 	}
