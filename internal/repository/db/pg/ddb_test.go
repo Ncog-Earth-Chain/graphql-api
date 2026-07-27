@@ -221,3 +221,85 @@ func TestDdbContractCountSurvivesReScan(t *testing.T) {
 		t.Errorf("op_count = %d after three ingests, want 1 -- a maintained counter would read 3", opCount)
 	}
 }
+
+// TestDdbFirstOperationIsCounted pins the statement ORDER inside writeDdbCommit.
+//
+// op_count is maintained by an AFTER trigger on ddb_operation (00012_ddb_op_count.sql), and a
+// trigger increment is a plain UPDATE. An UPDATE matching no row is not an error, so if the
+// operation were written before the ddb_contract row existed, the FIRST operation of every
+// contract would increment nothing and every contract would undercount by one -- silently,
+// forever, and invisibly in any test that only ever stores a second operation.
+//
+// writeDdbCommit therefore folds the contract before inserting the operation. Swap those two
+// statements back and this fails with op_count 0.
+func TestDdbFirstOperationIsCounted(t *testing.T) {
+	s := testStore(t)
+	cleanDB(t, s)
+	ctx := context.Background()
+
+	contract := common.HexToAddress("0xcccc000000000000000000000000000000000f01")
+	if err := s.StoreBlock(ctx, &BlockData{
+		Block:        mkBlock(1),
+		Transactions: []*types.Transaction{mkDdbTx(1, 0, &contract, nil)},
+	}); err != nil {
+		t.Fatalf("ingest: %v", err)
+	}
+
+	var opCount int64
+	if err := s.pool.QueryRow(ctx,
+		`SELECT op_count FROM ddb_contract WHERE contract_addr = $1`, AddrVal(contract)).
+		Scan(&opCount); err != nil {
+		t.Fatalf("read op_count: %v", err)
+	}
+	if opCount != 1 {
+		t.Errorf("op_count = %d after the contract's FIRST operation, want 1", opCount)
+	}
+}
+
+// TestDdbContractCountFallsWhenAnOperationIsPurged is the case the DERIVED count got wrong,
+// and it fails against the old code.
+//
+// op_count was recomputed inside foldDdbContract, which runs only when a DDB commit arrives.
+// So a reorg that replaced a DDB commit with an ordinary transfer deleted the ddb_operation
+// row -- purgeBlockRows covers ddb_operation -- while ddb_contract, which is domain-keyed and
+// deliberately not purged, kept an op_count that still counted the operation. It stayed stale
+// until some later commit for the SAME contract happened to trigger a recount, which for an
+// abandoned contract is never.
+//
+// The trigger decrements on the purge itself, so the count follows the rows it summarises.
+func TestDdbContractCountFallsWhenAnOperationIsPurged(t *testing.T) {
+	s := testStore(t)
+	cleanDB(t, s)
+	ctx := context.Background()
+
+	contract := common.HexToAddress("0xcccc000000000000000000000000000000000f02")
+
+	// Block 1 carries a DDB commit.
+	if err := s.StoreBlock(ctx, &BlockData{
+		Block:        mkBlock(1),
+		Transactions: []*types.Transaction{mkDdbTx(1, 0, &contract, nil)},
+	}); err != nil {
+		t.Fatalf("ingest with the commit: %v", err)
+	}
+
+	// The same height is re-ingested WITHOUT it, as a reorg would deliver.
+	if err := s.StoreBlock(ctx, &BlockData{Block: mkBlock(1)}); err != nil {
+		t.Fatalf("re-ingest without the commit: %v", err)
+	}
+
+	var opCount int64
+	var rows int
+	if err := s.pool.QueryRow(ctx, `
+		SELECT (SELECT op_count FROM ddb_contract WHERE contract_addr = $1),
+		       (SELECT count(*) FROM ddb_operation WHERE contract_addr = $1::address)`,
+		AddrVal(contract)).Scan(&opCount, &rows); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	if rows != 0 {
+		t.Fatalf("the reorg left %d operation rows, want 0", rows)
+	}
+	if opCount != 0 {
+		t.Errorf("op_count = %d after its only operation was reorged away, want 0 -- the count is asserting a history that is gone", opCount)
+	}
+}

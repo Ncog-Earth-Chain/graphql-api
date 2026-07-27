@@ -453,8 +453,16 @@ func TestPurgeCoversEveryBlockKeyedTable(t *testing.T) {
 
 		// Also domain-keyed, but unlike the two above this one is SAFE to leave stale:
 		// it is a materialized fold of ddb_operation, which IS purged and IS the
-		// authoritative history. A rebuild recomputes it exactly, so a reorg can leave it
-		// briefly ahead of the operations it summarises without losing anything.
+		// authoritative history. A rebuild recomputes it exactly.
+		//
+		// One column is no longer left stale at all: op_count is maintained by the AFTER
+		// trigger on ddb_operation (00012_ddb_op_count.sql), so the purge decrements it in
+		// the same statement that removes the rows. That closed a real bug -- the old
+		// recount ran only when a DDB commit arrived, so a reorg that replaced a commit
+		// with an ordinary transfer left the count asserting an operation that no longer
+		// existed, possibly forever. TestDdbContractCountFallsWhenAnOperationIsPurged
+		// covers it. The descriptive fields (name, author, version) are still folded and
+		// still merely converge.
 		"ddb_contract": "materialized fold of ddb_operation, which is purged and authoritative",
 	}
 

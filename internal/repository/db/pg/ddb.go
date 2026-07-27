@@ -28,6 +28,21 @@ func (s *Store) writeDdbCommit(ctx context.Context, q Querier, t *types.Transact
 
 	ts := t.TimeStamp.UTC()
 
+	// THE FOLD RUNS FIRST, AND THE ORDER IS LOAD-BEARING.
+	//
+	// op_count on ddb_contract is maintained by an AFTER trigger on ddb_operation
+	// (00012_ddb_op_count.sql). A trigger increment is a plain UPDATE, and an UPDATE that
+	// matches no row is not an error -- so if the operation were written before the contract
+	// row existed, the very first operation of every contract would increment nothing and
+	// each contract would undercount by one, forever and silently.
+	//
+	// Folding first creates the contract row (op_count DEFAULT 0), and the operation insert
+	// that follows takes it to 1. TestDdbFirstOperationIsCounted pins this: it fails if these
+	// two statements are ever swapped back.
+	if err := s.foldDdbContract(ctx, q, d, blockNumber, txIndex, ts); err != nil {
+		return err
+	}
+
 	if _, err := q.Exec(ctx, `
 		INSERT INTO ddb_operation (block_number, tx_index, tx_hash, request_id, requester,
 		                           op_type, schema_name, contract_addr, contract_name,
@@ -88,7 +103,7 @@ func (s *Store) writeDdbCommit(ctx context.Context, q Querier, t *types.Transact
 		return fmt.Errorf("can not store DDB endorsement from %s: %w", t.Hash.String(), err)
 	}
 
-	return s.foldDdbContract(ctx, q, d, blockNumber, txIndex, ts)
+	return nil
 }
 
 // foldDdbContract maintains the current-state view of a data contract.
@@ -106,8 +121,12 @@ func (s *Store) foldDdbContract(ctx context.Context, q Querier, d *types.DdbComm
 		INSERT INTO ddb_contract (contract_addr, db_name, contract_name, author,
 		                          latest_version, first_block, last_block, last_tx_index,
 		                          op_count, created_at, updated_at)
+		-- op_count is DEFAULT 0 here and is never written by this statement; the trigger on
+		-- ddb_operation owns it. It used to be a (SELECT count(*) ...) subquery, which PostgreSQL
+		-- evaluates while building the proposed tuple -- i.e. on every commit, not just the
+		-- one that creates the row -- and which was half of the O(M^2) ingest cost.
 		VALUES ($1,$2,$3,$4,$5,$6,$6,$7,
-		        (SELECT count(*) FROM ddb_operation WHERE contract_addr = $1::address),
+		        DEFAULT,
 		        $8,$8)
 		ON CONFLICT (contract_addr) DO UPDATE SET
 		    -- COALESCE on every folded field: a later operation that does not restate the
@@ -128,12 +147,11 @@ func (s *Store) foldDdbContract(ctx context.Context, q Querier, d *types.DdbComm
 		            THEN GREATEST(EXCLUDED.last_tx_index, ddb_contract.last_tx_index)
 		        ELSE ddb_contract.last_tx_index
 		    END,
-		    -- DERIVED, not incremented. An increment double-counts on re-scan: the same
-		    -- block ingested twice would add twice, and nothing would detect the drift.
-		    -- Counting ddb_operation makes it a function of the stored operations, so it
-		    -- cannot disagree with them -- the same reasoning that made AccountMarkActivity
-		    -- a no-op in favour of the account_stat view.
-		    op_count       = (SELECT count(*) FROM ddb_operation WHERE contract_addr = EXCLUDED.contract_addr),
+		    -- op_count is DELIBERATELY ABSENT. It is maintained by the AFTER trigger on
+		    -- ddb_operation (00012_ddb_op_count.sql), which keeps it a function of the stored
+		    -- operations -- the property this used to get by recounting them -- without the
+		    -- O(M) recount per commit that made ingest quadratic. Writing it here as well
+		    -- would fight the trigger.
 		    updated_at     = EXCLUDED.updated_at`,
 		AddrVal(*d.ContractAddress),
 		nullableText(deriveDbName(d.ContractName, *d.ContractAddress)),
