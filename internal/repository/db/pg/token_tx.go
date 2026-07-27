@@ -2,6 +2,7 @@ package pg
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"math/big"
@@ -280,6 +281,54 @@ func (s *Store) TokenTransactionCountFiltered(ctx context.Context, f *Filter) (u
 	return uint64(n), nil
 }
 
+// TokenTransactionCountEstimated asks the PLANNER how many rows the filter matches, without
+// running the query.
+//
+// Used for the one filter shape where an exact count is not affordable: a list narrowed only
+// by token standard. Every token_tx index leads with `std`, so `WHERE std = 0` is a range over
+// substantially the whole table -- on an EVM chain, ERC-20 transfers are most of the rows
+// there ever are. Counting them exactly is a full index scan on EVERY page fetch of the
+// global transfer feed, and it grows with the table forever.
+//
+// The estimate is the planner's own row estimate for the real predicate, so it tracks the
+// filter rather than being a whole-table number wearing a filtered label. It costs a plan, not
+// a scan. This is the same trade the rest of this file already makes -- TokenTransactionCount
+// above is reltuples, and account/transaction headline counts are estimates too -- applied to
+// the filtered case that needed it.
+func (s *Store) TokenTransactionCountEstimated(ctx context.Context, f *Filter) (uint64, error) {
+	where, args := f.Where(0)
+
+	// EXPLAIN without ANALYZE plans the statement and does not execute it.
+	rows, err := s.pool.Query(ctx, `EXPLAIN (FORMAT JSON) SELECT 1 FROM token_tx `+where, args...)
+	if err != nil {
+		return 0, fmt.Errorf("can not estimate token transfer count: %w", err)
+	}
+	defer rows.Close()
+
+	var raw []byte
+	if rows.Next() {
+		if err := rows.Scan(&raw); err != nil {
+			return 0, fmt.Errorf("can not read the token transfer estimate: %w", err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("can not read the token transfer estimate: %w", err)
+	}
+
+	var plans []struct {
+		Plan struct {
+			PlanRows float64 `json:"Plan Rows"`
+		} `json:"Plan"`
+	}
+	if err := json.Unmarshal(raw, &plans); err != nil || len(plans) == 0 {
+		return 0, fmt.Errorf("can not parse the token transfer estimate: %w", err)
+	}
+	if plans[0].Plan.PlanRows < 0 {
+		return 0, nil
+	}
+	return uint64(plans[0].Plan.PlanRows), nil
+}
+
 // TokenTransactions pages through token transfers matching the criteria, newest first.
 //
 // Replaces Erc20Transactions and the whole ercTrxListInit / CollectRangeMarks / BorderPk /
@@ -310,7 +359,19 @@ func (s *Store) TokenTransactions(ctx context.Context, c TokenTxCriteria, cursor
 		return nil, err
 	}
 
-	total, err := s.TokenTransactionCountFiltered(ctx, f)
+	// Exact where the filter makes it cheap, estimated where it does not.
+	//
+	// A token, token id or account narrows the scan to one index range that is small in
+	// practice, so counting it is the affordable, exact answer -- and it is the number a user
+	// looking at one token or one account actually cares about. Narrowed only by standard,
+	// the "range" is most of the table, and an exact count there is an unbounded scan on
+	// every page fetch of the global feed.
+	var total uint64
+	if c.Token != nil || c.TokenId != nil || c.Account != nil {
+		total, err = s.TokenTransactionCountFiltered(ctx, f)
+	} else {
+		total, err = s.TokenTransactionCountEstimated(ctx, f)
+	}
 	if err != nil {
 		return nil, err
 	}
