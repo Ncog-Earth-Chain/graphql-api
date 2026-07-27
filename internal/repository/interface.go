@@ -175,6 +175,12 @@ type Repository interface {
 	// by a hash loaded directly from the node.
 	LoadTransaction(hash *common.Hash) (*types.Transaction, error)
 
+	// IndexedTransaction serves a transaction to the READ path, preferring the local
+	// index and falling back to the node for anything not indexed yet. Distinct from
+	// Transaction, which the INGEST path uses and which must stay node-authoritative so
+	// a re-ingest cannot read back the row it is about to replace.
+	IndexedTransaction(ctx context.Context, hash *common.Hash) (*types.Transaction, error)
+
 	// Transaction returns a transaction at Ncogearthchain blockchain by a hash, nil if not found.
 	Transaction(*common.Hash) (*types.Transaction, error)
 

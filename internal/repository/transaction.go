@@ -71,6 +71,51 @@ func (p *proxy) Transaction(hash *common.Hash) (*types.Transaction, error) {
 	return trx, nil
 }
 
+// IndexedTransaction serves a transaction to the READ path, preferring the local index.
+//
+// Separate from Transaction above, and deliberately so. Transaction is what the INGEST path
+// calls (svc/dispatch_blk.go loadTxs), and it must stay node-authoritative: a re-ingest --
+// a reorg replacing a block's contents, or a gap heal -- would otherwise read back the very
+// row it is about to replace and re-store it unchanged, defeating the delete-then-insert
+// that makes re-ingest a repair.
+//
+// Why the read path wants the index instead: Block.TxList resolves one transaction per hash
+// in the block, and Transaction costs TWO serial JSON-RPC round trips each
+// (eth_getTransactionByHash + eth_getTransactionReceipt, rpc/transaction.go). A block page
+// therefore multiplied out to hundreds of node calls for data Postgres already holds,
+// indexed on the primary key.
+//
+// Every field the GraphQL Transaction type exposes survives the substitution; that was
+// checked field by field rather than assumed. The columns scanTransaction does not fill are
+// Logs, PubKey, LargeInput, TrxIndex and DDB -- and none of them back a resolver: `logs` is
+// served from tx_log through its own root query, `pubKey` is not in the schema at all
+// (deliberately -- 00002_block_tx.sql explains why signatures and public keys are not
+// stored), LargeInput is json:"-", TrxIndex has no consumer, and `ddb` resolves through
+// DdbOperationAt(blockNumber, index), both of which ARE populated.
+func (p *proxy) IndexedTransaction(ctx context.Context, hash *common.Hash) (*types.Transaction, error) {
+	if hash == nil {
+		return nil, fmt.Errorf("no transaction hash given")
+	}
+
+	if trx := p.cache.PullTransaction(hash); trx != nil {
+		return trx, nil
+	}
+
+	// A database error must not turn a readable transaction into a failed request: the node
+	// can still answer. Log it and fall through.
+	trx, err := p.pg.Transaction(ctx, hash)
+	if err != nil {
+		p.log.Errorf("can not read transaction %s from the index; falling back to the node: %s",
+			hash.String(), err.Error())
+	} else if trx != nil {
+		return trx, nil
+	}
+
+	// Not indexed yet -- above the ingest watermark, or pending. The node is authoritative
+	// for those, and Transaction caches what it loads.
+	return p.Transaction(hash)
+}
+
 // LoadTransaction returns a transaction at Ncogearthchain blockchain
 // by a hash loaded directly from the node.
 func (p *proxy) LoadTransaction(hash *common.Hash) (*types.Transaction, error) {

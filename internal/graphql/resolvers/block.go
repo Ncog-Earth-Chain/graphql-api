@@ -2,6 +2,7 @@
 package resolvers
 
 import (
+	"context"
 	"ncogearthchain-api-graphql/internal/repository"
 	"ncogearthchain-api-graphql/internal/types"
 
@@ -56,13 +57,26 @@ func (blk *Block) TxHashList() []common.Hash {
 }
 
 // TxList resolves list of transaction details of the transactions bundled in the block.
-func (blk *Block) TxList() ([]*Transaction, error) {
+// Served from the local index, not the node.
+//
+// This is the widest read amplification in the API: one transaction per hash in the block,
+// resolved once per BLOCK of a block page. Through repository.Transaction each of those
+// costs TWO serial JSON-RPC round trips (eth_getTransactionByHash +
+// eth_getTransactionReceipt), so `blocks(count:250){edges{block{txList{hash}}}}` multiplied
+// out to tens of thousands of node calls from one small POST -- for data Postgres already
+// holds, indexed on the primary key. IndexedTransaction reads the index and falls back to
+// the node only for what is not indexed yet (above the ingest watermark, or pending).
+//
+// ctx is threaded so the loop dies with the request rather than running on after the client
+// or the resolver timeout has gone. TxList is a method on Block, not on the ApiResolver
+// interface, so the signature change is local.
+func (blk *Block) TxList(ctx context.Context) ([]*Transaction, error) {
 	// make the container
 	txs := make([]*Transaction, len(blk.Txs))
 
 	// loop the hashes and extract transactions
 	for i, hash := range blk.Txs {
-		trx, err := repository.R().Transaction(hash)
+		trx, err := repository.R().IndexedTransaction(ctx, hash)
 		if err != nil {
 			return nil, err
 		}
