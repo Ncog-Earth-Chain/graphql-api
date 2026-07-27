@@ -173,9 +173,14 @@ func (or *orchestrator) healGaps() {
 		log.Errorf("gap heal: can not read ingest watermark; %s", err.Error())
 		return
 	}
-	last, err := repo.LastKnownBlock(ctx)
+	// StoredBlockHeight, NOT LastKnownBlock. LastKnownBlock is `return s.ContiguousHead(ctx)`
+	// (pg/config.go:36-38), so this compared the watermark against itself: `last` and `head`
+	// were always equal, the guard below was unconditionally true, and MissingBlocks was never
+	// reached. The entire heal path was dead code, which is precisely the failure it exists to
+	// prevent -- a hole older than the scanner's rescan window is permanent without it.
+	last, err := repo.StoredBlockHeight(ctx)
 	if err != nil {
-		log.Errorf("gap heal: can not read last known block; %s", err.Error())
+		log.Errorf("gap heal: can not read the highest stored block; %s", err.Error())
 		return
 	}
 	// The watermark sits just below the first missing block, so a gap can only exist when the

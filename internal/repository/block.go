@@ -42,9 +42,24 @@ func (p *proxy) LastKnownBlock(ctx context.Context) (uint64, error) {
 }
 
 // ContiguousHead returns the highest block below which nothing is missing -- the ingest
-// watermark. Gaps to heal live between this and LastKnownBlock.
+// watermark. Gaps to heal live between this and StoredBlockHeight.
 func (p *proxy) ContiguousHead(ctx context.Context) (uint64, error) {
 	return p.pg.ContiguousHead(ctx)
+}
+
+// StoredBlockHeight returns the HIGHEST BLOCK PRESENT in the index, gaps included.
+//
+// Distinct from BlockHeight above, which asks the NODE for the chain head, and from
+// LastKnownBlock, which is the ingest watermark -- pg/config.go:8-22 spells out why
+// conflating those two is what let gaps become permanent under MongoDB.
+//
+// It exists because the gap-heal loop needs the upper end of the range that may contain
+// holes, and there was no way to ask for it: LastKnownBlock is literally
+// `return s.ContiguousHead(ctx)` (pg/config.go:36-38), so healGaps compared the watermark
+// against itself and its `if last <= head+1 { return }` guard was unconditionally true.
+// The whole heal path was unreachable.
+func (p *proxy) StoredBlockHeight(ctx context.Context) (uint64, error) {
+	return p.pg.BlockHeight(ctx)
 }
 
 // MissingBlocks lists gaps in the stored range [from, to] (bounded by limit), so a heal loop

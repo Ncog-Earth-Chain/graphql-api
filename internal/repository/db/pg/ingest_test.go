@@ -4,6 +4,7 @@ import (
 	"context"
 	"math/big"
 	"ncogearthchain-api-graphql/internal/types"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -641,10 +642,68 @@ func TestWatermarkScanIsBoundedByTheWatermark(t *testing.T) {
 	// The watermark must reach the index as a bound. Without it PostgreSQL reads every
 	// row of block_pkey on both sides of the anti-join -- which is exactly the quadratic
 	// behaviour this test exists to prevent.
-	if !strings.Contains(plan.String(), "Index Cond") {
-		t.Errorf("the watermark scan is not bounded by an index condition; it will read the whole block table on every ingested block.\nplan:\n%s", plan.String())
+	// Assert on the RANGE bound specifically, not merely on the presence of an "Index Cond".
+	// The unbounded form also produces one -- the anti-join's inner lookup plans as
+	// `Index Cond: (number = (b.number + 1))` -- so a bare substring check passes against the
+	// very query this test exists to reject. What distinguishes the bounded form is a
+	// half-open range condition on the OUTER scan: `Index Cond: (number >= $1)`.
+	if !regexp.MustCompile(`Index Cond: \(number >=`).MatchString(plan.String()) {
+		t.Errorf("the watermark scan is not bounded by the watermark; it will read the whole block table on every ingested block.\nplan:\n%s", plan.String())
 	}
-	if strings.Contains(plan.String(), "Seq Scan on block") {
-		t.Errorf("the watermark scan sequentially scans block; it must be bounded by the watermark.\nplan:\n%s", plan.String())
+}
+
+// TestStoredHeightExceedsWatermarkAcrossAGap pins the two numbers the gap-heal loop needs to
+// tell apart.
+//
+// svc/orchestrator.go healGaps re-queues blocks missing between the ingest watermark and the
+// highest stored block. It read that upper bound from LastKnownBlock -- which is literally
+// `return s.ContiguousHead(ctx)` (config.go:36-38), the SAME value as the lower bound. So its
+// `if last <= head+1 { return }` guard was unconditionally true and MissingBlocks was never
+// called: the heal path was dead code, and a hole older than the scanner's rescan window
+// stayed permanent, which is the exact MongoDB failure this indexer was rebuilt to avoid.
+//
+// The distinction is the whole point (see the comment at config.go:8-22): BlockHeight is how
+// far the scanner has REACHED, ContiguousHead is how far it has reached with NOTHING MISSING
+// BEHIND IT. With a gap present they MUST differ. Against the old code the two calls returned
+// the same number and the final assertion here fails.
+func TestStoredHeightExceedsWatermarkAcrossAGap(t *testing.T) {
+	s := testStore(t)
+	cleanDB(t, s)
+	ctx := context.Background()
+
+	// 1,2,3 then 5 -- block 4 is the hole.
+	for _, n := range []uint64{1, 2, 3, 5} {
+		if err := s.StoreBlock(ctx, &BlockData{Block: mkBlock(n)}); err != nil {
+			t.Fatalf("store block %d: %v", n, err)
+		}
+	}
+
+	head, err := s.ContiguousHead(ctx)
+	if err != nil {
+		t.Fatalf("ContiguousHead: %v", err)
+	}
+	if head != 3 {
+		t.Fatalf("watermark is %d, want 3 (block 4 is missing)", head)
+	}
+
+	height, err := s.BlockHeight(ctx)
+	if err != nil {
+		t.Fatalf("BlockHeight: %v", err)
+	}
+	if height != 5 {
+		t.Fatalf("stored height is %d, want 5", height)
+	}
+
+	// The guard healGaps actually evaluates. If these are equal there is no range to search.
+	if height <= head+1 {
+		t.Fatalf("stored height %d is not above watermark+1 (%d), so the heal loop would bail out and never look for the gap", height, head+1)
+	}
+
+	missing, err := s.MissingBlocks(ctx, head+1, height, 64)
+	if err != nil {
+		t.Fatalf("MissingBlocks: %v", err)
+	}
+	if len(missing) != 1 || missing[0] != 4 {
+		t.Errorf("MissingBlocks(%d, %d) = %v, want [4]", head+1, height, missing)
 	}
 }

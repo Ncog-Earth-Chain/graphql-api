@@ -66,6 +66,10 @@ type Repository interface {
 	// LastKnownBlock returns number of the last block known to the repository.
 	LastKnownBlock(ctx context.Context) (uint64, error)
 
+	// StoredBlockHeight returns the highest block present in the index, gaps included.
+	// This is NOT the ingest watermark and NOT the chain head; see the implementation.
+	StoredBlockHeight(ctx context.Context) (uint64, error)
+
 	// ContiguousHead returns the highest block below which nothing is missing (ingest watermark).
 	ContiguousHead(ctx context.Context) (uint64, error)
 
