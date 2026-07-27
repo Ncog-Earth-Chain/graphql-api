@@ -71,5 +71,35 @@ func (p *proxy) MaintainPartitions(ctx context.Context, head uint64) error {
 	for _, name := range dropped {
 		p.log.Noticef("pruned gas-price partition past %d-month retention: %s", gasPriceRetentionMonths, name)
 	}
+
+	// Report what the runway actually looks like afterwards.
+	//
+	// partition_health() shipped with the partition machinery in 00004 and nothing ever
+	// called it, so the condition this whole job exists to prevent -- rows landing in the
+	// catch-all DEFAULT partition because the runway ran out -- was visible only to someone
+	// running psql. That is how a wedged runway could sit behind an error line repeated
+	// every 12 hours and be missed. A failure to READ health must not fail the maintenance
+	// pass that just succeeded, so it is logged and swallowed.
+	health, err := p.pg.PartitionHealth(ctx)
+	if err != nil {
+		p.log.Errorf("can not read partition health: %s", err.Error())
+		return nil
+	}
+	for _, h := range health {
+		if h.DefaultRows > 0 {
+			// Not Noticef: rows in the default partition are correct and queryable but
+			// unprunable and unindexed by range, and they are the precursor to the wedge.
+			p.log.Warningf("%s has %d row(s) in its DEFAULT partition (%d partition(s) of runway ahead); "+
+				"range-filtered queries scan all of them",
+				h.Table, h.DefaultRows, h.PartitionsAhead)
+		}
+		if h.PartitionsAhead <= 0 {
+			p.log.Errorf("%s has NO partition runway ahead; further rows will land in its default partition", h.Table)
+		}
+		if h.OrphanAttached > 0 || h.OrphanDetached > 0 {
+			p.log.Warningf("%s has %d attached and %d detached partition(s) missing from partition_registry",
+				h.Table, h.OrphanAttached, h.OrphanDetached)
+		}
+	}
 	return nil
 }

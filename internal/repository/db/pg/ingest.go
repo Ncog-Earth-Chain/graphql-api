@@ -445,19 +445,26 @@ func (s *Store) ContiguousHead(ctx context.Context) (uint64, error) {
 	return uint64(v), nil
 }
 
-// ensureBlockPartitionsMaxRounds bounds the ensure loop. The SQL creates at most
-// ahead_target partitions per call and converges in a handful of rounds; this is a
-// defensive stop so a logic error can never spin forever.
-const ensureBlockPartitionsMaxRounds = 1024
+// ensureBlockPartitionsMaxRounds bounds the ensure loop.
+//
+// Since 00013 the SQL creates exactly ONE partition per call -- that is the transaction
+// boundary, so a range that cannot be created leaves the ranges below it committed instead
+// of rolling them back -- which means a round is now a partition rather than a batch of
+// ahead_target. At the configured 1,000,000-block width the old 1024 would have capped a
+// from-scratch rebuild at block ~1.02e9 instead of the ~4.09e9 it allowed before. This is a
+// defensive stop against a logic error spinning forever, not a runway limit, so it is set
+// where it cannot bind first: 8192 rounds is 8.19e9 blocks.
+const ensureBlockPartitionsMaxRounds = 8192
 
 // EnsureBlockPartitions creates any missing block-range partitions for a partitioned
 // table up to the runway configured ahead of head, returning the number created.
 //
 // The migration seeds partitions once and nothing else extends them; without this the
 // table eventually writes every row into its DEFAULT partition, which cannot be pruned
-// and defeats the per-partition indexes. Each SQL call is bounded to ahead_target new
-// partitions so its ACCESS EXCLUSIVE lock on the parent is never held for an unbounded
-// run, so we loop until it reports nothing left to create. Idempotent once covered.
+// and defeats the per-partition indexes. Each SQL call creates exactly one partition and
+// commits it on its own, so we loop until it reports nothing left to create; rows already
+// sitting in the DEFAULT partition at a range being covered are moved into the new
+// partition by that same call (00013). Idempotent once covered.
 func (s *Store) EnsureBlockPartitions(ctx context.Context, table string, head uint64) (int, error) {
 	total := 0
 	for round := 0; round < ensureBlockPartitionsMaxRounds; round++ {
@@ -473,6 +480,46 @@ func (s *Store) EnsureBlockPartitions(ctx context.Context, table string, head ui
 	}
 	return total, fmt.Errorf("block partition creation for %s did not converge after %d rounds",
 		table, ensureBlockPartitionsMaxRounds)
+}
+
+// PartitionHealth is one row of partition_health(): the runway left on a partitioned table
+// and the rows that fell outside it.
+type PartitionHealth struct {
+	Table           string
+	PartitionsAhead int64
+	DefaultRows     int64
+	OrphanAttached  int64
+	OrphanDetached  int64
+}
+
+// PartitionHealth reports, per partitioned table, how much partition runway is left and how
+// many rows sit where no per-partition index reaches them.
+//
+// partition_health() shipped in migration 00004 and had NO Go caller, so the one condition
+// the maintenance job exists to prevent was observable only to someone running psql by hand
+// -- which is how a wedged runway could stay invisible behind a log line repeated every 12
+// hours. DefaultRows is the number that matters: those rows are correct and queryable, but
+// they live in the catch-all partition, so an address- or topic-filtered log query scans all
+// of them instead of pruning to one block range.
+func (s *Store) PartitionHealth(ctx context.Context) ([]PartitionHealth, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT table_name, partitions_ahead, default_rows, orphan_attached, orphan_detached
+		FROM   partition_health()`)
+	if err != nil {
+		return nil, fmt.Errorf("can not read partition health: %w", err)
+	}
+	defer rows.Close()
+
+	var out []PartitionHealth
+	for rows.Next() {
+		var h PartitionHealth
+		if err := rows.Scan(&h.Table, &h.PartitionsAhead, &h.DefaultRows,
+			&h.OrphanAttached, &h.OrphanDetached); err != nil {
+			return nil, err
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
 }
 
 // MissingBlocks lists gaps in the stored range, so they can be healed by re-scanning.
