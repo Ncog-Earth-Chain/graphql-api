@@ -178,31 +178,45 @@ func (bld *blockDispatcher) loadTxs(blk *types.Block) ([]*types.Transaction, boo
 		return nil, true
 	}
 
-	txs := make([]*types.Transaction, 0, len(blk.Txs))
+	// BATCHED, not one at a time. This loop was the indexer's throughput ceiling: each
+	// repo.Transaction cost two SEQUENTIAL JSON-RPC round trips
+	// (eth_getTransactionByHash then eth_getTransactionReceipt), so a block cost 2N round
+	// trips and the chain cost twice its transaction count. Latency, not PostgreSQL, was
+	// what bound it -- the database sustains ~2,372 transaction writes per second here,
+	// while 1/(2 x RTT) is about 1,000/s on a unix socket and 50/s across a 10 ms link. At
+	// the measured 626 bytes per row a terabyte of `tx` is ~1.76 billion transactions, so
+	// the serial loader put a full backfill at roughly three weeks even colocated.
+	//
+	// LoadTransactions issues a fixed two round trips per chunk however many transactions
+	// the chunk holds.
+	hashes := make([]common.Hash, len(blk.Txs))
 	for i, th := range blk.Txs {
-		log.Debugf("loading trx #%d from block #%d", i, blk.Number)
+		hashes[i] = *th
+	}
 
-		trx := bld.load(blk, th)
+	txs, err := repo.LoadTransactions(bgCtx(), hashes)
+	if err != nil {
+		// Unchanged semantics, and load-bearing: a block that cannot be loaded WHOLE is not
+		// dispatched, so the scanner comes back for it. Recording a partial block as complete
+		// is what made gaps permanent under MongoDB.
+		log.Errorf("block #%d incomplete: %s; the block will be retried", blk.Number, err.Error())
+		return nil, false
+	}
+	if len(txs) != len(blk.Txs) {
+		log.Errorf("block #%d incomplete: node returned %d of %d transactions; the block will be retried",
+			blk.Number, len(txs), len(blk.Txs))
+		return nil, false
+	}
+
+	for i, trx := range txs {
 		if trx == nil {
 			log.Errorf("block #%d incomplete: transaction %s could not be loaded; the block will be retried",
-				blk.Number, th.String())
+				blk.Number, blk.Txs[i].String())
 			return nil, false
 		}
-		txs = append(txs, trx)
+		// The block carries the authoritative timestamp; the receipt does not have one.
+		// Previously applied by load() per transaction.
+		trx.TimeStamp = time.Unix(int64(blk.TimeStamp), 0)
 	}
 	return txs, true
-}
-
-// load a transaction detail from repository, if possible.
-func (bld *blockDispatcher) load(blk *types.Block, th *common.Hash) *types.Transaction {
-	// get transaction
-	trx, err := repo.Transaction(th)
-	if err != nil {
-		log.Errorf("transaction %s detail not available; %s", th.String(), err.Error())
-		return nil
-	}
-
-	// update time stamp using the block data
-	trx.TimeStamp = time.Unix(int64(blk.TimeStamp), 0)
-	return trx
 }

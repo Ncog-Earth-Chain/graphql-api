@@ -175,6 +175,12 @@ type Repository interface {
 	// by a hash loaded directly from the node.
 	LoadTransaction(hash *common.Hash) (*types.Transaction, error)
 
+	// LoadTransactions loads a set of transactions from the node in BATCHED JSON-RPC
+	// calls -- a fixed two round trips per chunk rather than two per transaction. The
+	// ingest path's loader; results are positional and any unanswerable hash fails the
+	// whole call, so a partial block is never mistaken for a complete one.
+	LoadTransactions(ctx context.Context, hashes []common.Hash) ([]*types.Transaction, error)
+
 	// IndexedTransaction serves a transaction to the READ path, preferring the local
 	// index and falling back to the node for anything not indexed yet. Distinct from
 	// Transaction, which the INGEST path uses and which must stay node-authoritative so

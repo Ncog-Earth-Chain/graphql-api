@@ -37,7 +37,12 @@ func (nec *NecBridge) Erc20Name(token *common.Address) (string, error) {
 	// get the token name
 	name, err := contract.Name(nil)
 	if err != nil {
-		nec.log.Errorf("ERC20 token %s name not available; %s", token.String(), err.Error())
+		// Debugf, not Errorf. Since loadErc20TokenDetails started using "answers none of
+		// name/symbol/decimals" to decide whether an address IS an ERC-20, probing a
+		// non-token is the ordinary path rather than a fault -- one backfill of 641 blocks
+		// logged 69 of these at ERROR for contracts that simply are not tokens. At scale that
+		// is pure noise drowning real errors.
+		nec.log.Debugf("ERC20 token %s name not available; %s", token.String(), err.Error())
 		return "", err
 	}
 
@@ -56,7 +61,8 @@ func (nec *NecBridge) Erc20Symbol(token *common.Address) (string, error) {
 	// get the token name
 	symbol, err := contract.Symbol(nil)
 	if err != nil {
-		nec.log.Errorf("ERC20 token %s symbol not available; %s", token.String(), err.Error())
+		// see the note on name above
+		nec.log.Debugf("ERC20 token %s symbol not available; %s", token.String(), err.Error())
 		return "", err
 	}
 
