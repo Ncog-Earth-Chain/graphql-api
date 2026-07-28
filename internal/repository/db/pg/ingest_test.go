@@ -26,7 +26,7 @@ import (
 // A claim like "this fixes permanent gaps" is worth nothing unless the gap is actually
 // constructed and the watermark observed refusing to cross it. That is what these do.
 
-func testStore(t *testing.T) *Store {
+func testStore(t testing.TB) *Store {
 	t.Helper()
 
 	pool := testPool(t)
@@ -618,33 +618,10 @@ func TestWatermarkScanIsBoundedByTheWatermark(t *testing.T) {
 		t.Fatalf("watermark is %d, want 8", head)
 	}
 
-	rows, err := s.pool.Query(ctx, `
-		EXPLAIN (COSTS OFF)
-		WITH gap AS (
-		    SELECT COALESCE(MIN(number + 1), $1::BIGINT + 1) AS first_missing
-		    FROM   block b
-		    WHERE  b.number >= $1::BIGINT
-		      AND  NOT EXISTS (
-		               SELECT 1 FROM block n
-		               WHERE  n.number >= $1::BIGINT AND n.number = b.number + 1)
-		)
-		SELECT * FROM gap`, int64(head))
+	// THE PRODUCTION CTE, not a copy of it. See contiguousHeadGapCTE.
+	plan, err := explainPlan(ctx, s, int64(head), contiguousHeadGapCTE+` SELECT * FROM gap`)
 	if err != nil {
 		t.Fatalf("explain: %v", err)
-	}
-	defer rows.Close()
-
-	var plan strings.Builder
-	for rows.Next() {
-		var line string
-		if err := rows.Scan(&line); err != nil {
-			t.Fatalf("scan plan: %v", err)
-		}
-		plan.WriteString(line)
-		plan.WriteString("\n")
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatalf("plan rows: %v", err)
 	}
 
 	// The watermark must reach the index as a bound. Without it PostgreSQL reads every
@@ -655,9 +632,63 @@ func TestWatermarkScanIsBoundedByTheWatermark(t *testing.T) {
 	// `Index Cond: (number = (b.number + 1))` -- so a bare substring check passes against the
 	// very query this test exists to reject. What distinguishes the bounded form is a
 	// half-open range condition on the OUTER scan: `Index Cond: (number >= $1)`.
-	if !regexp.MustCompile(`Index Cond: \(number >=`).MatchString(plan.String()) {
-		t.Errorf("the watermark scan is not bounded by the watermark; it will read the whole block table on every ingested block.\nplan:\n%s", plan.String())
+	if !regexp.MustCompile(`Index Cond: \(number >=`).MatchString(plan) {
+		t.Errorf("the watermark scan is not bounded by the watermark; it will read the whole block table on every ingested block.\nplan:\n%s", plan)
 	}
+
+	// The guard must still REJECT the unbounded form, or it proves nothing. This is the
+	// query as it stood before the fix: no watermark predicate at all.
+	unbounded, err := explainPlan(ctx, s, int64(head), `
+		WITH gap AS (
+		    SELECT COALESCE(MIN(number + 1), $1::BIGINT + 1) AS first_missing
+		    FROM   block b
+		    WHERE  NOT EXISTS (
+		               SELECT 1 FROM block n
+		               WHERE  n.number = b.number + 1)
+		)
+		SELECT * FROM gap`)
+	if err != nil {
+		t.Fatalf("explain unbounded: %v", err)
+	}
+	if regexp.MustCompile(`Index Cond: \(number >=`).MatchString(unbounded) {
+		t.Errorf("the assertion also matches the UNBOUNDED query, so it cannot detect a regression.\nplan:\n%s", unbounded)
+	}
+}
+
+// explainPlan returns the query plan as text, with sequential scans disabled.
+//
+// Both statements run on ONE session, inside a transaction, and that is the whole point.
+// The planner picks a sequential scan for a table of a few rows no matter how well it is
+// indexed, so a plan-shape assertion against a small fixture is otherwise a coin flip that
+// depends on the table's statistics. Disabling seqscan makes the shape depend only on
+// whether the query CAN use the index as a bound, which is what the caller is asserting.
+//
+// SET LOCAL rather than SET, and pool.InTx rather than pool.Query, because the pool hands
+// out a different connection per call: a bare SET would land on one session and the EXPLAIN
+// on another, leaving the setting with no effect and the test silently back to guessing.
+func explainPlan(ctx context.Context, s *Store, head int64, query string) (string, error) {
+	var plan strings.Builder
+	err := s.pool.InTx(ctx, func(ctx context.Context, tx Tx) error {
+		if _, err := tx.Exec(ctx, `SET LOCAL enable_seqscan = off`); err != nil {
+			return err
+		}
+		rows, err := tx.Query(ctx, `EXPLAIN (COSTS OFF) `+query, head)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var line string
+			if err := rows.Scan(&line); err != nil {
+				return err
+			}
+			plan.WriteString(line)
+			plan.WriteString("\n")
+		}
+		return rows.Err()
+	})
+	return plan.String(), err
 }
 
 // TestStoredHeightExceedsWatermarkAcrossAGap pins the two numbers the gap-heal loop needs to

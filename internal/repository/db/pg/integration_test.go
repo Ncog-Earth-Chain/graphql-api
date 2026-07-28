@@ -19,7 +19,9 @@ import (
 //
 // Set EXPLORER_TEST_DSN to run them; they skip otherwise, so `go test ./...` stays
 // green on a machine with no database.
-func testPool(t *testing.T) *pgxpool.Pool {
+// testPool takes a testing.TB rather than a *testing.T so benchmarks can use it too; it
+// only ever calls methods common to both.
+func testPool(t testing.TB) *pgxpool.Pool {
 	t.Helper()
 
 	dsn := os.Getenv("EXPLORER_TEST_DSN")

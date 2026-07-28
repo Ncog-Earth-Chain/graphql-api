@@ -63,18 +63,8 @@ func (s *Store) StoreBlock(ctx context.Context, data *BlockData) error {
 			return err
 		}
 
-		for _, trx := range data.Transactions {
-			if trx == nil {
-				// A nil here means a transaction the loader could not fetch. Under
-				// MongoDB this was skipped silently and the block still counted as
-				// complete, which is precisely how permanent gaps were created. Fail
-				// the block instead: an incomplete block must not be recorded as whole.
-				return fmt.Errorf("block %d has a transaction that could not be loaded; refusing to record the block as complete",
-					uint64(data.Block.Number))
-			}
-			if err := s.writeTransaction(ctx, tx, trx); err != nil {
-				return err
-			}
+		if err := s.writeTransactions(ctx, tx, data.Transactions, uint64(data.Block.Number)); err != nil {
+			return err
 		}
 
 		// Advance the watermark last, inside the same transaction, and only as far as
@@ -179,90 +169,194 @@ func purgedTables() map[string]bool {
 	return out
 }
 
-// writeTransaction stores one transaction, its logs and its account edges.
-func (s *Store) writeTransaction(ctx context.Context, q Querier, t *types.Transaction) error {
-	if t.BlockNumber == nil || t.Index == nil {
-		return fmt.Errorf("transaction %s has no block position; only mined transactions are stored", t.Hash.String())
+// txInsertSQL upserts one transaction row.
+//
+// ON CONFLICT (hash) DO UPDATE rather than DO NOTHING, and it cannot be relaxed to a plain
+// COPY: purgeBlockRows clears rows by block_number, so a transaction that MOVES to a
+// different height in a reorg still has its old row present under the old block when the
+// new one is written. The upsert is what re-points it. Logs and account edges have no such
+// hazard -- they are keyed by block_number, so the purge always reaches them.
+const txInsertSQL = `
+	INSERT INTO tx (hash, block_number, tx_index, block_hash, from_addr, to_addr,
+	                value_wei, nonce, gas_limit, gas_used, gas_cumulative,
+	                gas_price_wei, input, tx_type, chain_id, sig_version,
+	                status, created_contract, ts, is_ddb, ddb_contract)
+	VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+	ON CONFLICT (hash) DO UPDATE SET
+	    block_number     = EXCLUDED.block_number,
+	    tx_index         = EXCLUDED.tx_index,
+	    block_hash       = EXCLUDED.block_hash,
+	    gas_used         = EXCLUDED.gas_used,
+	    gas_cumulative   = EXCLUDED.gas_cumulative,
+	    status           = EXCLUDED.status,
+	    created_contract = EXCLUDED.created_contract,
+	    ts               = EXCLUDED.ts,
+	    is_ddb           = EXCLUDED.is_ddb,
+	    ddb_contract     = EXCLUDED.ddb_contract`
+
+// edgeInsertSQL records one account's participation in one transaction.
+const edgeInsertSQL = `
+	INSERT INTO tx_account (address, block_number, tx_index, roles)
+	VALUES ($1,$2,$3,$4)
+	ON CONFLICT (address, block_number, tx_index)
+	DO UPDATE SET roles = tx_account.roles | EXCLUDED.roles`
+
+// maxBatchStatements bounds how many statements are pipelined before being flushed.
+//
+// pgx buffers an entire batch in memory and writes it as one payload, so an unbounded
+// batch makes peak memory a function of the largest block the chain ever produces. The
+// flush point is per statement rather than per transaction because a single transaction
+// contributes a variable number of them.
+const maxBatchStatements = 1024
+
+// writeTransactions stores every transaction of a block: the transaction rows, their
+// account edges, their DDB commit records and their logs.
+//
+// The unit of work is the BLOCK, not the transaction. Writing row-at-a-time measured a
+// ceiling of roughly 2,372 tx/s, and the limit was not PostgreSQL -- it was the round trip
+// per statement, of which each transaction cost two or three (one for tx, one or two for
+// its account edges, plus a COPY for its logs). Pipelining them collapses that to a
+// constant few round trips per block regardless of how many transactions it carries.
+//
+// The SQL and its conflict semantics are unchanged from the row-at-a-time version, which
+// is deliberate: this is a latency fix, not a behaviour change, and the ingest path is
+// where a subtle difference would silently corrupt the index rather than fail loudly.
+func (s *Store) writeTransactions(ctx context.Context, q Querier, txs []*types.Transaction, blockNumber uint64) error {
+	if len(txs) == 0 {
+		return nil
 	}
 
-	value, err := Wei((*big.Int)(&t.Value))
-	if err != nil {
-		return fmt.Errorf("transaction %s value: %w", t.Hash.String(), err)
-	}
-	gasPrice, err := Wei((*big.Int)(&t.GasPrice))
-	if err != nil {
-		return fmt.Errorf("transaction %s gas price: %w", t.Hash.String(), err)
-	}
+	batch := &pgx.Batch{}
+	// owners[i] is the transaction that queued statement i, so a failure deep inside a
+	// pipelined batch still names the transaction that caused it.
+	owners := make([]*types.Transaction, 0, len(txs)*2)
+	logRows := make([][]any, 0, len(txs))
 
-	blockNumber := int64(*t.BlockNumber)
-	txIndex := int32(*t.Index)
-
-	// is_ddb marks a DDB commit transaction. The authoritative signal is the decoded
-	// dual-consensus record (t.DDB), the same one writeDdbCommit gates on -- not the
-	// destination address. The previous predicate ANDed "creates a contract" with "is
-	// addressed to the DDB system contract", which cannot both hold (a contract-creation
-	// transaction has no recipient), so the flag was always false and its partial index
-	// tx_ddb_idx was permanently empty. ddb_contract carries the data-contract address the
-	// commit targets, when it names one.
-	isDDB := t.DDB != nil
-	var ddbContract []byte
-	if isDDB {
-		ddbContract = Addr(t.DDB.ContractAddress)
-	}
-
-	_, err = q.Exec(ctx, `
-		INSERT INTO tx (hash, block_number, tx_index, block_hash, from_addr, to_addr,
-		                value_wei, nonce, gas_limit, gas_used, gas_cumulative,
-		                gas_price_wei, input, tx_type, chain_id, sig_version,
-		                status, created_contract, ts, is_ddb, ddb_contract)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
-		ON CONFLICT (hash) DO UPDATE SET
-		    block_number     = EXCLUDED.block_number,
-		    tx_index         = EXCLUDED.tx_index,
-		    block_hash       = EXCLUDED.block_hash,
-		    gas_used         = EXCLUDED.gas_used,
-		    gas_cumulative   = EXCLUDED.gas_cumulative,
-		    status           = EXCLUDED.status,
-		    created_contract = EXCLUDED.created_contract,
-		    ts               = EXCLUDED.ts,
-		    is_ddb           = EXCLUDED.is_ddb,
-		    ddb_contract     = EXCLUDED.ddb_contract`,
-		HashVal(t.Hash),
-		blockNumber,
-		txIndex,
-		Hash(t.BlockHash),
-		AddrVal(t.From),
-		Addr(t.To),
-		value,
-		int64(t.Nonce),
-		int64(t.Gas),
-		nullableInt64(t.GasUsed),
-		nullableInt64(t.CumulativeGasUsed),
-		gasPrice,
-		[]byte(t.InputData),
-		0,
-		nullableBig(t.ChainID),
-		nullableUint16(t.SigVersion),
-		txStatus(t.Status),
-		Addr(t.ContractAddress),
-		t.TimeStamp.UTC(),
-		isDDB,
-		ddbContract,
-	)
-	if err != nil {
-		return fmt.Errorf("can not store transaction %s: %w", t.Hash.String(), err)
+	flush := func() error {
+		if batch.Len() == 0 {
+			return nil
+		}
+		res := q.SendBatch(ctx, batch)
+		// Every queued result must be consumed before the connection can be used
+		// again, including after a failure -- Close alone would leave the rest
+		// unread and the error attributed to the wrong statement.
+		var firstErr error
+		for i := 0; i < batch.Len(); i++ {
+			if _, err := res.Exec(); err != nil && firstErr == nil {
+				firstErr = fmt.Errorf("can not store transaction %s: %w",
+					owners[i].Hash.String(), err)
+			}
+		}
+		if err := res.Close(); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("can not complete writes for block %d: %w", blockNumber, err)
+		}
+		batch = &pgx.Batch{}
+		owners = owners[:0]
+		return firstErr
 	}
 
-	if err := s.writeAccountEdges(ctx, q, t, blockNumber, txIndex); err != nil {
+	for _, t := range txs {
+		if t == nil {
+			// A nil here means a transaction the loader could not fetch. Under
+			// MongoDB this was skipped silently and the block still counted as
+			// complete, which is precisely how permanent gaps were created. Fail
+			// the block instead: an incomplete block must not be recorded as whole.
+			return fmt.Errorf("block %d has a transaction that could not be loaded; refusing to record the block as complete",
+				blockNumber)
+		}
+		if t.BlockNumber == nil || t.Index == nil {
+			return fmt.Errorf("transaction %s has no block position; only mined transactions are stored", t.Hash.String())
+		}
+
+		value, err := Wei((*big.Int)(&t.Value))
+		if err != nil {
+			return fmt.Errorf("transaction %s value: %w", t.Hash.String(), err)
+		}
+		gasPrice, err := Wei((*big.Int)(&t.GasPrice))
+		if err != nil {
+			return fmt.Errorf("transaction %s gas price: %w", t.Hash.String(), err)
+		}
+
+		txBlockNumber := int64(*t.BlockNumber)
+		txIndex := int32(*t.Index)
+
+		// is_ddb marks a DDB commit transaction. The authoritative signal is the decoded
+		// dual-consensus record (t.DDB), the same one writeDdbCommit gates on -- not the
+		// destination address. The previous predicate ANDed "creates a contract" with "is
+		// addressed to the DDB system contract", which cannot both hold (a contract-creation
+		// transaction has no recipient), so the flag was always false and its partial index
+		// tx_ddb_idx was permanently empty. ddb_contract carries the data-contract address the
+		// commit targets, when it names one.
+		isDDB := t.DDB != nil
+		var ddbContract []byte
+		if isDDB {
+			ddbContract = Addr(t.DDB.ContractAddress)
+		}
+
+		batch.Queue(txInsertSQL,
+			HashVal(t.Hash),
+			txBlockNumber,
+			txIndex,
+			Hash(t.BlockHash),
+			AddrVal(t.From),
+			Addr(t.To),
+			value,
+			int64(t.Nonce),
+			int64(t.Gas),
+			nullableInt64(t.GasUsed),
+			nullableInt64(t.CumulativeGasUsed),
+			gasPrice,
+			[]byte(t.InputData),
+			0,
+			nullableBig(t.ChainID),
+			nullableUint16(t.SigVersion),
+			txStatus(t.Status),
+			Addr(t.ContractAddress),
+			t.TimeStamp.UTC(),
+			isDDB,
+			ddbContract,
+		)
+		owners = append(owners, t)
+
+		for addr, role := range accountRoles(t) {
+			batch.Queue(edgeInsertSQL, AddrVal(addr), txBlockNumber, txIndex, role)
+			owners = append(owners, t)
+		}
+
+		logRows = appendLogRows(logRows, t, txBlockNumber, txIndex)
+
+		if batch.Len() >= maxBatchStatements {
+			if err := flush(); err != nil {
+				return err
+			}
+		}
+	}
+
+	if err := flush(); err != nil {
 		return err
 	}
 
-	// The DDB record, when this is a commit transaction. Inside the block's transaction,
-	// so the dual-consensus proof and the transaction that carried it commit together.
-	if err := s.writeDdbCommit(ctx, q, t, blockNumber, txIndex); err != nil {
-		return err
+	// One COPY for the whole block rather than one per transaction. Safe against
+	// duplicates because purgeBlockRows has already cleared this block's logs -- COPY
+	// has no ON CONFLICT, so the delete-then-copy order is load-bearing.
+	if len(logRows) > 0 {
+		if _, err := q.CopyFrom(ctx, pgx.Identifier{"tx_log"}, txLogColumns, pgx.CopyFromRows(logRows)); err != nil {
+			return fmt.Errorf("can not store logs for block %d: %w", blockNumber, err)
+		}
 	}
-	return s.writeLogs(ctx, q, t, blockNumber, txIndex)
+
+	// The DDB records, for those transactions that carry one. Kept per-transaction
+	// because writeDdbCommit returns immediately when the transaction is not a DDB
+	// commit, so ordinary traffic pays nothing, and because a commit fans out into
+	// several ordered statements whose sequence is load-bearing. Inside the block's
+	// transaction, so the dual-consensus proof and the transaction that carried it
+	// commit together.
+	for _, t := range txs {
+		if err := s.writeDdbCommit(ctx, q, t, int64(*t.BlockNumber), int32(*t.Index)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // account edge roles, kept as a bitmask so one row covers an address that is both sender
@@ -272,48 +366,40 @@ const (
 	roleRecipient = 1 << 1
 )
 
-// writeAccountEdges records which accounts a transaction touches.
+// accountRoles reports which accounts a transaction touches, and in what capacity.
 //
 // This edge table is what makes an account's transaction history one index scan. The
 // alternative -- filtering the transaction table with (from = $1 OR to = $1) -- cannot be
 // served by a single index, so PostgreSQL either scans or combines two index scans with a
 // sort, and it is the single most requested page in an explorer.
 //
-// A self-transfer produces ONE row with both role bits set, not two rows, so it appears
-// once in the account's history.
-func (s *Store) writeAccountEdges(ctx context.Context, q Querier, t *types.Transaction, blockNumber int64, txIndex int32) error {
+// A self-transfer produces ONE entry with both role bits set, not two, so it appears once
+// in the account's history. That merge happening HERE rather than in the database is also
+// what keeps (address, block_number, tx_index) unique within a block.
+func accountRoles(t *types.Transaction) map[common.Address]int16 {
 	roles := map[common.Address]int16{}
 	roles[t.From] |= roleSender
 	if t.To != nil {
 		roles[*t.To] |= roleRecipient
 	}
-
-	for addr, role := range roles {
-		if _, err := q.Exec(ctx, `
-			INSERT INTO tx_account (address, block_number, tx_index, roles)
-			VALUES ($1,$2,$3,$4)
-			ON CONFLICT (address, block_number, tx_index)
-			DO UPDATE SET roles = tx_account.roles | EXCLUDED.roles`,
-			AddrVal(addr), blockNumber, txIndex, role); err != nil {
-			return fmt.Errorf("can not store account edge for %s: %w", addr.String(), err)
-		}
-	}
-	return nil
+	return roles
 }
 
-// writeLogs stores a transaction's event logs.
+// txLogColumns is the COPY column list for tx_log, in the order appendLogRows emits.
+var txLogColumns = []string{
+	"block_number", "log_index", "tx_index", "tx_hash", "address",
+	"topic0", "topic1", "topic2", "topic3", "topic_count",
+	"data", "removed", "ts",
+}
+
+// appendLogRows appends one transaction's event logs to a block-level COPY buffer.
 //
 // Logs were persisted under MongoDB but embedded inside the transaction document and
 // indexed by nothing, so the explorer paid full write amplification on its largest
 // collection and could not answer a single log query. As their own table with indexes on
 // address and topic they become queryable, which is the largest missing feature in the
 // API after DDB visibility.
-func (s *Store) writeLogs(ctx context.Context, q Querier, t *types.Transaction, blockNumber int64, txIndex int32) error {
-	if len(t.Logs) == 0 {
-		return nil
-	}
-
-	rows := make([][]any, 0, len(t.Logs))
+func appendLogRows(rows [][]any, t *types.Transaction, blockNumber int64, txIndex int32) [][]any {
 	for _, l := range t.Logs {
 		// Topics are stored as four discrete columns rather than an array. EVM logs
 		// carry at most four (one event signature plus three indexed parameters), so
@@ -341,24 +427,7 @@ func (s *Store) writeLogs(ctx context.Context, q Querier, t *types.Transaction, 
 			t.TimeStamp.UTC(),
 		})
 	}
-
-	// COPY rather than one INSERT per log. A busy block can carry thousands of logs,
-	// and the per-statement round trip dominates at that volume.
-	//
-	// Safe against duplicates because purgeBlockRows has already cleared this block's
-	// logs -- COPY has no ON CONFLICT, so the delete-then-copy order is load-bearing.
-	_, err := q.CopyFrom(ctx,
-		pgx.Identifier{"tx_log"},
-		[]string{
-			"block_number", "log_index", "tx_index", "tx_hash", "address",
-			"topic0", "topic1", "topic2", "topic3", "topic_count",
-			"data", "removed", "ts",
-		},
-		pgx.CopyFromRows(rows))
-	if err != nil {
-		return fmt.Errorf("can not store logs for transaction %s: %w", t.Hash.String(), err)
-	}
-	return nil
+	return rows
 }
 
 // advanceContiguousHead moves the watermark to the highest block N such that every block
@@ -407,22 +476,7 @@ func (s *Store) advanceContiguousHead(ctx context.Context, q Querier) error {
 		head = 0
 	}
 
-	_, err = q.Exec(ctx, `
-		WITH gap AS (
-		    -- the lowest block number at or above the watermark whose successor is absent;
-		    -- the watermark stops just below it
-		    SELECT COALESCE(MIN(number + 1), $1::BIGINT + 1) AS first_missing
-		    FROM   block b
-		    WHERE  b.number >= $1::BIGINT
-		      AND  NOT EXISTS (
-		               SELECT 1 FROM block n
-		               -- BOTH sides carry the bound. Constraining only the outer scan lets
-		               -- the planner build the anti-join over every row in the table, which
-		               -- is where the cost actually sat. A successor of a block at or above
-		               -- the watermark is itself above it, so this excludes nothing.
-		               WHERE  n.number >= $1::BIGINT
-		                 AND  n.number = b.number + 1)
-		)
+	_, err = q.Exec(ctx, contiguousHeadGapCTE+`
 		UPDATE meta_counter
 		SET    value = GREATEST(value, (SELECT first_missing - 1 FROM gap)),
 		       updated_at = now()
@@ -432,6 +486,28 @@ func (s *Store) advanceContiguousHead(ctx context.Context, q Querier) error {
 	}
 	return nil
 }
+
+// contiguousHeadGapCTE finds the lowest block at or above the watermark ($1) whose
+// successor is absent -- the point the watermark must stop just below.
+//
+// It is a named constant rather than inline SQL so that the test guarding its plan shape
+// can EXPLAIN THIS EXACT TEXT. Asserting on a copy pasted into the test file would keep
+// passing after someone edited the query here, which is the one thing that guard exists
+// to catch.
+const contiguousHeadGapCTE = `
+	WITH gap AS (
+	    SELECT COALESCE(MIN(number + 1), $1::BIGINT + 1) AS first_missing
+	    FROM   block b
+	    WHERE  b.number >= $1::BIGINT
+	      AND  NOT EXISTS (
+	               SELECT 1 FROM block n
+	               -- BOTH sides carry the bound. Constraining only the outer scan lets
+	               -- the planner build the anti-join over every row in the table, which
+	               -- is where the cost actually sat. A successor of a block at or above
+	               -- the watermark is itself above it, so this excludes nothing.
+	               WHERE  n.number >= $1::BIGINT
+	                 AND  n.number = b.number + 1)
+	)`
 
 // ContiguousHead reports the highest block below which nothing is missing.
 func (s *Store) ContiguousHead(ctx context.Context) (uint64, error) {
@@ -654,6 +730,6 @@ func (s *Store) StoreTransaction(ctx context.Context, blk *types.Block, trx *typ
 		if err := s.writeBlock(ctx, tx, blk, 0); err != nil {
 			return err
 		}
-		return s.writeTransaction(ctx, tx, trx)
+		return s.writeTransactions(ctx, tx, []*types.Transaction{trx}, uint64(blk.Number))
 	})
 }
