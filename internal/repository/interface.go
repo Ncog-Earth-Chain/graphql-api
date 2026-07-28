@@ -94,6 +94,14 @@ type Repository interface {
 	// If the block is not found, ErrBlockNotFound error is returned.
 	BlockByHash(*common.Hash) (*types.Block, error)
 
+	// IndexedBlockByNumber returns a block for the READ path: index first, node fallback.
+	// BlockByNumber stays node-authoritative because the scanner uses it to fetch blocks
+	// it is about to ingest.
+	IndexedBlockByNumber(ctx context.Context, num *hexutil.Uint64) (*types.Block, error)
+
+	// IndexedBlockByHash returns a block by hash for the READ path, index first.
+	IndexedBlockByHash(ctx context.Context, hash *common.Hash) (*types.Block, error)
+
 	// Blocks pulls list of blocks starting on the specified block number
 	// and going up, or down based on count number.
 	Blocks(context.Context, *uint64, int32) (*types.BlockList, error)

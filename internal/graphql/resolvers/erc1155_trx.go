@@ -1,6 +1,7 @@
 package resolvers
 
 import (
+	"context"
 	"ncogearthchain-api-graphql/internal/repository"
 	"ncogearthchain-api-graphql/internal/types"
 
@@ -23,9 +24,9 @@ func (trx *ERC1155Transaction) TrxHash() common.Hash {
 }
 
 // Transaction resolves an instance of the transaction executing the ERC1155 call.
-func (trx *ERC1155Transaction) Transaction() (*Transaction, error) {
+func (trx *ERC1155Transaction) Transaction(ctx context.Context) (*Transaction, error) {
 	// get the transaction from repo
-	tx, err := repository.R().Transaction(&trx.TokenTransaction.Transaction)
+	tx, err := repository.R().IndexedTransaction(ctx, &trx.TokenTransaction.Transaction)
 	if err != nil {
 		return nil, err
 	}

@@ -235,7 +235,7 @@ func (op *DdbOperation) Endorsement() *DdbEndorsement {
 
 // Transaction resolves the commit transaction that carried this operation.
 func (op *DdbOperation) Transaction(ctx context.Context) (*Transaction, error) {
-	trx, err := repository.R().Transaction(&op.DdbOperation.TxHash)
+	trx, err := repository.R().IndexedTransaction(ctx, &op.DdbOperation.TxHash)
 	if err != nil || trx == nil {
 		return nil, err
 	}

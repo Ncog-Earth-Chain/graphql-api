@@ -103,6 +103,56 @@ func (p *proxy) BlockByHash(hash *common.Hash) (*types.Block, error) {
 	return p.getBlock(hash.String(), p.rpc.BlockByHash)
 }
 
+// IndexedBlockByNumber returns a block for the READ path: from the index when it is there,
+// from the node when it is not.
+//
+// Separate from BlockByNumber rather than replacing it, for the same reason
+// IndexedTransaction is separate from Transaction: the SCANNER calls BlockByNumber to fetch
+// the blocks it is about to ingest (svc/scan_blk.go, svc/orchestrator.go). Serving those
+// from the index would be circular -- the indexer would read back whatever it had already
+// written and could never discover a block it had missed, or notice one that changed under
+// a reorg.
+//
+// A nil number means "latest", which is deliberately left with the node: the head is the one
+// height whose contents are still moving, and the index is by definition behind it.
+func (p *proxy) IndexedBlockByNumber(ctx context.Context, num *hexutil.Uint64) (*types.Block, error) {
+	if num == nil {
+		return p.BlockByNumber(nil)
+	}
+
+	blk, err := p.pg.Block(ctx, uint64(*num))
+	if err != nil {
+		return nil, err
+	}
+	if blk != nil {
+		return blk, nil
+	}
+
+	// Not indexed yet -- above the ingest watermark, or a gap still to be healed.
+	return p.BlockByNumber(num)
+}
+
+// IndexedBlockByHash returns a block by hash for the READ path, index first.
+//
+// By hash rather than by (number - 1) for a parent, even though the number is cheaper: the
+// parent hash names one specific block, while the height names whichever block currently
+// occupies it. Across a reorg those differ, and following the height would quietly walk into
+// a chain the child was never part of.
+func (p *proxy) IndexedBlockByHash(ctx context.Context, hash *common.Hash) (*types.Block, error) {
+	if hash == nil {
+		return p.BlockByHash(nil)
+	}
+
+	blk, err := p.pg.BlockByHash(ctx, hash)
+	if err != nil {
+		return nil, err
+	}
+	if blk != nil {
+		return blk, nil
+	}
+	return p.BlockByHash(hash)
+}
+
 // getBlock gets a block of given tag from cache, or from a repository pull function.
 func (p *proxy) getBlock(tag string, pull func(*string) (*types.Block, error)) (*types.Block, error) {
 	// inform what we do

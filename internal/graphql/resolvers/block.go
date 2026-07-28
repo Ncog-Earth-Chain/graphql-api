@@ -24,25 +24,32 @@ func NewBlock(blk *types.Block) *Block {
 }
 
 // Block resolves blockchain block by number or by hash. If neither is provided, the most recent block is given.
-func (rs *rootResolver) Block(args *struct {
+//
+// Served from the index, which holds every block on its primary key, falling back to the
+// node only for the head and for heights the indexer has not reached.
+func (rs *rootResolver) Block(ctx context.Context, args *struct {
 	Number *hexutil.Uint64
 	Hash   *common.Hash
 }) (*Block, error) {
 	// do we have the number, or hash is not given?
 	if args.Number != nil || args.Hash == nil {
-		b, err := repository.R().BlockByNumber(args.Number)
+		b, err := repository.R().IndexedBlockByNumber(ctx, args.Number)
 		return NewBlock(b), err
 	}
 
 	// simply pull the block by hash
-	b, err := repository.R().BlockByHash(args.Hash)
+	b, err := repository.R().IndexedBlockByHash(ctx, args.Hash)
 	return NewBlock(b), err
 }
 
 // Parent resolves parent block information to the given block.
-func (blk *Block) Parent() (*Block, error) {
+//
+// Once per block edge, so on a block page this fired as many times as the page was wide --
+// each an eth_getBlockByHash for a block that is, almost always, another row of the very
+// page being rendered.
+func (blk *Block) Parent(ctx context.Context) (*Block, error) {
 	// get the parent block by hash
-	parent, err := repository.R().BlockByHash(&blk.ParentHash)
+	parent, err := repository.R().IndexedBlockByHash(ctx, &blk.ParentHash)
 	return NewBlock(parent), err
 }
 

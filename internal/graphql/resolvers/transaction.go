@@ -28,7 +28,7 @@ func NewTransaction(trx *types.Transaction) *Transaction {
 }
 
 // Transaction resolves blockchain transaction by transaction hash.
-func (rs *rootResolver) Transaction(args *struct{ Hash common.Hash }) (tx *Transaction, err error) {
+func (rs *rootResolver) Transaction(ctx context.Context, args *struct{ Hash common.Hash }) (tx *Transaction, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Criticalf("transaction loader crashed on %s", args.Hash.String())
@@ -38,7 +38,7 @@ func (rs *rootResolver) Transaction(args *struct{ Hash common.Hash }) (tx *Trans
 	}()
 
 	// get the transaction from repository
-	trx, err := repository.R().Transaction(&args.Hash)
+	trx, err := repository.R().IndexedTransaction(ctx, &args.Hash)
 	if err != nil {
 		log.Warningf("can not get transaction %s", args.Hash)
 		return nil, err
@@ -92,14 +92,17 @@ func (trx *Transaction) Recipient(ctx context.Context) (*Account, error) {
 }
 
 // Block resolves block the transaction is bundled in, nil if it's pending and not added to a block yet.
-func (trx *Transaction) Block() (*Block, error) {
+// Served from the index. This is a per-EDGE resolver on every transaction list, so it fired
+// once per transaction on the page, each time an eth_getBlockByNumber for a row the block
+// table holds on its primary key.
+func (trx *Transaction) Block(ctx context.Context) (*Block, error) {
 	// no recipient available
 	if trx.BlockNumber == nil {
 		return nil, nil
 	}
 
 	// get the sender by address
-	blk, err := repository.R().BlockByNumber(trx.BlockNumber)
+	blk, err := repository.R().IndexedBlockByNumber(ctx, trx.BlockNumber)
 	if err != nil {
 		return nil, err
 	}

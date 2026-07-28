@@ -45,7 +45,7 @@ type ApiResolver interface {
 	VerifyProxyContract(context.Context, *struct{ Address common.Address }) (*VerifyProxyResult, error)
 
 	// Block resolves blockchain block by number or by hash. If neither is provided, the most recent block is given.
-	Block(*struct {
+	Block(ctx context.Context, args *struct {
 		Number *hexutil.Uint64
 		Hash   *common.Hash
 	}) (*Block, error)
@@ -57,7 +57,7 @@ type ApiResolver interface {
 	}) (*BlockList, error)
 
 	// Transaction resolves blockchain transaction by hash.
-	Transaction(*struct{ Hash common.Hash }) (*Transaction, error)
+	Transaction(ctx context.Context, args *struct{ Hash common.Hash }) (*Transaction, error)
 
 	// Transactions resolves list of blockchain transactions encapsulated in a listable structure.
 	Transactions(context.Context, *struct {

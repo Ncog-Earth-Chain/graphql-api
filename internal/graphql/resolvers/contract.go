@@ -112,8 +112,8 @@ func NewContract(con *types.Contract) *Contract {
 }
 
 // DeployedBy resolves the deployment transaction of the contract.
-func (con *Contract) DeployedBy() (*Transaction, error) {
-	tr, err := repository.R().Transaction(&con.TransactionHash)
+func (con *Contract) DeployedBy(ctx context.Context) (*Transaction, error) {
+	tr, err := repository.R().IndexedTransaction(ctx, &con.TransactionHash)
 	return NewTransaction(tr), err
 }
 

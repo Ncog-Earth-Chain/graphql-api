@@ -121,7 +121,7 @@ func (l *Log) Timestamp() hexutil.Uint64 { return l.Log.TimeStamp }
 
 // Transaction resolves the transaction that emitted this log.
 func (l *Log) Transaction(ctx context.Context) (*Transaction, error) {
-	trx, err := repository.R().Transaction(&l.Log.TxHash)
+	trx, err := repository.R().IndexedTransaction(ctx, &l.Log.TxHash)
 	if err != nil || trx == nil {
 		return nil, err
 	}
