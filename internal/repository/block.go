@@ -163,103 +163,23 @@ func (p *proxy) blockByTag(tag *string) (*types.Block, error) {
 	return block, nil
 }
 
-// initBlockList finds and returns the first block of the list and initializes the list internals accordingly.
-func (p *proxy) initBlockList(num *uint64, count int32) (*types.Block, *types.BlockList, error) {
-	// start from the latest block by default
-	var tag = rpc.BlockTypeLatest
-
-	// we may want to start from bottom, or specific block instead
-	if num == nil && count < 0 {
-		tag = rpc.BlockTypeEarliest
-	} else if num != nil {
-		tag = hexutil.EncodeUint64(*num)
-	}
-
-	// inform what we are about to do
-	p.log.Debugf("initializing a new blocks list using tag [%s]", tag)
-
-	// get the latest block to start from
-	fb, err := p.blockByTag(&tag)
-	if err != nil {
-		p.log.Critical("the starting block not found in the blockchain")
-		return nil, nil, err
-	}
-
-	// make sure the first block is valid
-	if fb == nil {
-		p.log.Critical("the starting block is not valid")
-		return nil, nil, fmt.Errorf("received invalid first block of the list")
-	}
-
-	// inform what we are about to do
-	p.log.Debugf("block list starts with block [%s]", fb.Number.String())
-
-	// prep an empty list marking already clear boundaries for missing block cursor/number
-	list := types.BlockList{
-		Collection: make([]*types.Block, 0),
-		IsStart:    num == nil && count > 0,
-		IsEnd:      num == nil && count < 0,
-	}
-
-	return fb, &list, nil
-}
-
-// pullBlocks pulls specified list of blocks from repository and calculates boundary situation.
-func (p *proxy) pullBlocks(num *uint64, count int32, toPull int32, current *types.Block, list *types.BlockList) {
-	// prep the scan vars
-	var next *types.Block
-	var tag hexutil.Uint64
-	var err error
-
-	// loop to pull all the blocks requested
-	for i := int32(0); i < toPull; i++ {
-		// do we have any next block waiting to be used?
-		if next != nil {
-			// update the list with the current pending block only if it's valid for the list
-			if num == nil || uint64(current.Number) != *num {
-				list.Collection = append(list.Collection, current)
-			}
-
-			// move search to next block
-			current = next
-		}
-
-		// we always have a <current> block; either from successful initBlockList, or from previous scan iteration
-		// we assume blocks are always consecutive; if not, the search will stop on the gap gracefully
-		if count > 0 {
-			tag = hexutil.Uint64(uint64(current.Number) - 1)
-		} else {
-			tag = hexutil.Uint64(uint64(current.Number) + 1)
-		}
-
-		// try to get next block; break the loop on search issue; in that case <next> will be nil
-		next, err = p.BlockByNumber(&tag)
-		if err != nil {
-			break
-		}
-	}
-
-	// update the list with the last pending block only if it's valid for the list
-	if num == nil || uint64(current.Number) != *num {
-		list.Collection = append(list.Collection, current)
-	}
-
-	// return the result
-	list.IsStart, list.IsEnd = checkBlocksListBoundary(count, next, list)
-}
-
-// checkListBoundary verifies if the list of blocks is on one of the edges.
-func checkBlocksListBoundary(count int32, next *types.Block, list *types.BlockList) (bool, bool) {
-	return list.IsStart || (count < 0 && next == nil), list.IsEnd || (count > 0 && next == nil)
-}
-
 // Blocks pulls list of blocks starting on the specified block number and going up, or down based on count number.
 // If the initial block number is not provided, we start on top, or bottom based on count value.
 //
 // No-number boundaries are handled as follows:
 //   - For positive count we start from the most recent block and scan to older blocks.
 //   - For negative count we start from the first block and scan to newer blocks.
-func (p *proxy) Blocks(num *uint64, count int32) (*types.BlockList, error) {
+//
+// It is served from the local index. Walking the node instead cost one
+// eth_getBlockByNumber PER BLOCK, serially: a 25-block page was ~28 round trips and the
+// API's own 250 cap made it ~253, from one small POST, for rows PostgreSQL holds on its
+// primary key. This was the last node-walking list in the API; `transactions` and
+// `block.txList` were moved earlier.
+//
+// Like `transactions`, it does NOT fall back to the node when the index lags: the ring cache
+// covers the head, and beyond that the index is the source of truth for historical data.
+// Reintroducing a per-block walk as a fallback would restore exactly the cost being removed.
+func (p *proxy) Blocks(ctx context.Context, num *uint64, count int32) (*types.BlockList, error) {
 	// nothing to load?
 	if count == 0 {
 		return nil, fmt.Errorf("nothing to do, zero blocks requested")
@@ -268,38 +188,41 @@ func (p *proxy) Blocks(num *uint64, count int32) (*types.BlockList, error) {
 	// fast blocks list from the rings available?
 	if num == nil && count > 0 && count < cache.BlockRingCacheSize {
 		bl, err := p.RecentBlocks(int(count))
-		if err == nil {
+		// A ring that has not been filled yet returns FEWER blocks than asked for, and a
+		// short page here is indistinguishable from "the chain has no more". Only take the
+		// fast path when it actually answered the question.
+		if err == nil && bl != nil && len(bl.Collection) == int(count) {
 			return bl, nil
 		}
 	}
 
-	// slow block list
-	return p.makeBlocksList(num, count)
-}
-
-// makeBlocksList creates a block list for defined blocks range.
-func (p *proxy) makeBlocksList(num *uint64, count int32) (*types.BlockList, error) {
-	// init the list
-	current, list, err := p.initBlockList(num, count)
+	rows, err := p.pg.BlockList(ctx, num, count)
 	if err != nil {
 		return nil, err
 	}
 
-	// how many to pull at most
-	toPull := count
-	if count < 0 {
-		toPull = -count
+	// The store returns one row past the page when more exist; that probe is what
+	// distinguishes an exactly-full page from the last one.
+	page := count
+	if page < 0 {
+		page = -page
+	}
+	hasMore := len(rows) > int(page)
+	if hasMore {
+		rows = rows[:page]
 	}
 
-	// if in the middle we try to pull one extra block to find out if we reached aan end
-	if num != nil {
-		toPull++
+	// Boundary flags exactly as the removed node walk computed them: a no-cursor request
+	// starts at whichever end its direction implies, and the far end is reached when the
+	// scan finds nothing beyond the page. Preserved deliberately -- these drive
+	// hasNextPage/hasPreviousPage, so a change here is visible to every paging client.
+	list := &types.BlockList{
+		Collection: rows,
+		IsStart:    (num == nil && count > 0) || (count < 0 && !hasMore),
+		IsEnd:      (num == nil && count < 0) || (count > 0 && !hasMore),
 	}
 
-	// get specified list of block from repository
-	p.pullBlocks(num, count, toPull, current, list)
-
-	// if we scanned from bottom up, we need to reverse the list so newer blocks are on top
+	// A negative count scans upward; the list is presented newest-first either way.
 	if count < 0 {
 		list.Reverse()
 	}

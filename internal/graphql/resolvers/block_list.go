@@ -2,6 +2,8 @@
 package resolvers
 
 import (
+	"context"
+	"fmt"
 	"ncogearthchain-api-graphql/internal/repository"
 	"ncogearthchain-api-graphql/internal/types"
 
@@ -29,7 +31,10 @@ func NewBlockList(blocks *types.BlockList, totalCount *hexutil.Big) *BlockList {
 }
 
 // Blocks resolves list of blockchain blocks encapsulated in a listable structure.
-func (rs *rootResolver) Blocks(args *struct {
+//
+// ctx is threaded so the query dies with the request rather than running on after the client
+// or the resolver timeout has gone.
+func (rs *rootResolver) Blocks(ctx context.Context, args *struct {
 	Cursor *Cursor
 	Count  int32
 }) (*BlockList, error) {
@@ -38,7 +43,11 @@ func (rs *rootResolver) Blocks(args *struct {
 	if args.Cursor != nil {
 		val, err := hexutil.DecodeUint64(string(*args.Cursor))
 		if err != nil {
-			log.Errorf("invalid block cursor [%s]; %s", args.Cursor, err.Error())
+			// Fail, rather than log and carry on. The error branch used to fall through
+			// with val still zero, so a malformed cursor silently paged from GENESIS and
+			// returned a plausible page of the wrong blocks -- indistinguishable, to the
+			// caller, from having reached the end of the chain.
+			return nil, fmt.Errorf("invalid block cursor [%s]", string(*args.Cursor))
 		}
 		num = &val
 	}
@@ -54,7 +63,7 @@ func (rs *rootResolver) Blocks(args *struct {
 	args.Count = listLimitCount(args.Count, listMaxEdgesPerRequest)
 
 	// get the block list from repository
-	bl, err := repository.R().Blocks(num, args.Count)
+	bl, err := repository.R().Blocks(ctx, num, args.Count)
 	if err != nil {
 		log.Errorf("can not get blocks list; %s", err.Error())
 		return nil, err

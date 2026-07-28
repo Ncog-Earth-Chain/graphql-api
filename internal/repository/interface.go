@@ -96,7 +96,7 @@ type Repository interface {
 
 	// Blocks pulls list of blocks starting on the specified block number
 	// and going up, or down based on count number.
-	Blocks(*uint64, int32) (*types.BlockList, error)
+	Blocks(context.Context, *uint64, int32) (*types.BlockList, error)
 
 	// CacheBlock puts a block to the internal block ring cache.
 	CacheBlock(blk *types.Block)

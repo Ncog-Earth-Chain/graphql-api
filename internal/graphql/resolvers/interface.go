@@ -51,7 +51,7 @@ type ApiResolver interface {
 	}) (*Block, error)
 
 	// Blocks resolves list of blockchain blocks encapsulated in a listable structure.
-	Blocks(*struct {
+	Blocks(ctx context.Context, args *struct {
 		Cursor *Cursor
 		Count  int32
 	}) (*BlockList, error)
