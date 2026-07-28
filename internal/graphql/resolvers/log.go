@@ -18,10 +18,16 @@ type Log struct{ types.Log }
 type LogList struct {
 	list []*types.Log
 
-	// asked is the page size the client requested. A short page means there is nothing
-	// further in the direction of travel, which is how hasNext/hasPrevious is derived
-	// without a count.
+	// asked is the page size the client requested.
 	asked int32
+
+	// Page boundaries, settled once at construction by trimProbePage. They used to be
+	// inferred here from a short page, which cannot distinguish an exactly-full last page
+	// from a full one with more behind it -- and counting logs matching a filter, the
+	// alternative, would scan every matching row on the largest table in the database.
+	// The store now fetches one row past the page instead, which answers it exactly.
+	hasNext bool
+	hasPrev bool
 }
 
 // LogListEdge resolves one entry with its cursor.
@@ -66,7 +72,8 @@ func (rs *rootResolver) Logs(ctx context.Context, args struct {
 		log.Errorf("can not get logs; %s", err.Error())
 		return nil, err
 	}
-	return &LogList{list: rows, asked: args.Count}, nil
+	page, hasNext, hasPrev := trimProbePage(rows, args.Count, args.Cursor != nil)
+	return &LogList{list: page, asked: args.Count, hasNext: hasNext, hasPrev: hasPrev}, nil
 }
 
 // Edges resolves the page entries.
@@ -80,9 +87,10 @@ func (ll *LogList) Edges() []LogListEdge {
 
 // PageInfo resolves the page boundaries.
 //
-// Derived from whether the page came back short rather than from a count: counting logs
-// matching a filter would scan every matching row on the largest table in the database,
-// and this answers the only question a paging client actually has.
+// The flags come from the probe row the store fetches past the page, not from a count:
+// counting logs matching a filter would scan every matching row on the largest table in the
+// database, and the probe answers the only question a paging client actually has for the
+// cost of one extra row.
 func (ll *LogList) PageInfo() (*ListPageInfo, error) {
 	if len(ll.list) == 0 {
 		return NewListPageInfo(nil, nil, false, false)
@@ -92,8 +100,7 @@ func (ll *LogList) PageInfo() (*ListPageInfo, error) {
 	last := ll.list[len(ll.list)-1]
 	lastCur := Cursor(pg.LogCursor(uint64(last.BlockNumber), uint(last.Index)))
 
-	short := int32(len(ll.list)) < absCount(ll.asked)
-	return NewListPageInfo(&first, &lastCur, !short, false)
+	return NewListPageInfo(&first, &lastCur, ll.hasNext, ll.hasPrev)
 }
 
 // Cursor resolves the pagination cursor of a log.

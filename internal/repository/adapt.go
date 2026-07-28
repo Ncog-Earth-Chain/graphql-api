@@ -29,14 +29,18 @@ func derefCursor(c *string) string {
 // buildTransactionList wraps a page of transactions with the pagination state the
 // GraphQL layer expects.
 //
-// TotalIsExact is true because the count comes from tx_account, keyed by address, which
-// makes it an index-only scan. That is the concrete payoff of the edge table: MongoDB
-// counted an $or over the whole transaction collection with a 500 ms budget, and on
-// timeout reported the CHAIN's total as the account's.
-func buildTransactionList(rows []*types.Transaction, total uint64, count int32, cursor string) *types.TransactionList {
+// `exact` is a parameter rather than a constant because the two callers differ, and it used
+// to be hardcoded true for both. An ACCOUNT's total is exact -- it counts tx_account, keyed
+// by address, which is an index-only scan, and that is the concrete payoff of the edge table
+// (MongoDB counted an $or over the whole transaction collection with a 500 ms budget, and on
+// timeout reported the CHAIN's total as the account's). The CHAIN-wide total is
+// pg_class.reltuples, an estimate that is deliberately not a count(*) over the largest table
+// in the database. Reporting totalCountIsExact: true over that estimate told clients the
+// number was something it was not.
+func buildTransactionList(rows []*types.Transaction, total uint64, count int32, cursor string, exact bool) *types.TransactionList {
 	list := &types.TransactionList{
 		Total:        total,
-		TotalIsExact: true,
+		TotalIsExact: exact,
 	}
 
 	// The store fetches one row beyond the page so "a further page exists" can be answered
@@ -95,13 +99,14 @@ func (p *proxy) burnTotal(ctx context.Context) (int64, error) {
 
 // buildContractList wraps a page of contracts with pagination state.
 //
-// The count is exact when filtered to verified contracts, because contract_verified_idx
-// is PARTIAL on that predicate and so touches only verified rows; unfiltered it is an
-// estimate, matching what the MongoDB path actually did.
-func buildContractList(rows []*types.Contract, total uint64, count int32, cursor string) *types.ContractList {
+// The count is exact when filtered to verified contracts, because contract_verified_idx is
+// PARTIAL on that predicate and so touches only verified rows; unfiltered it is a
+// pg_class.reltuples estimate. The flag now says which, having previously been hardcoded
+// true immediately below a comment describing both cases.
+func buildContractList(rows []*types.Contract, total uint64, count int32, cursor string, exact bool) *types.ContractList {
 	list := &types.ContractList{
 		Total:        total,
-		TotalIsExact: true,
+		TotalIsExact: exact,
 	}
 
 	// See buildTransactionList: the store fetches one extra row so `more` answers the leading

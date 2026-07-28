@@ -109,7 +109,11 @@ func (s *Store) DdbOperations(ctx context.Context, c DdbOpCriteria, cursor strin
 		sql += ` WHERE ` + where
 	}
 	sql += ` ` + keysetOn("o", ddbOpKeyset).OrderBy(page.Reverse) + ` LIMIT $` + itoa(len(args)+1)
-	args = append(args, page.Limit)
+	// One row PAST the page, as every sibling list store does. Without it a caller can
+	// only guess "is there more" from whether the page came back short, which is wrong
+	// for an exactly-full final page -- and every full page is exactly full here, since
+	// the API's per-request cap is below this store's own maximum.
+	args = append(args, page.Limit+1)
 
 	rows, err := s.pool.Query(ctx, sql, args...)
 	if err != nil {
@@ -117,7 +121,7 @@ func (s *Store) DdbOperations(ctx context.Context, c DdbOpCriteria, cursor strin
 	}
 	defer rows.Close()
 
-	out := make([]*types.DdbOperation, 0, page.Limit)
+	out := make([]*types.DdbOperation, 0, page.Limit+1)
 	for rows.Next() {
 		op, err := scanDdbOperation(rows)
 		if err != nil {
@@ -181,7 +185,11 @@ func (s *Store) DdbContracts(ctx context.Context, cursor string, count int32) ([
 
 	sql := `SELECT ` + ddbContractColumns + ` FROM ddb_contract` + where +
 		` ` + ddbContractKeyset.OrderBy(page.Reverse) + ` LIMIT $` + itoa(len(args)+1)
-	args = append(args, page.Limit)
+	// One row PAST the page, as every sibling list store does. Without it a caller can
+	// only guess "is there more" from whether the page came back short, which is wrong
+	// for an exactly-full final page -- and every full page is exactly full here, since
+	// the API's per-request cap is below this store's own maximum.
+	args = append(args, page.Limit+1)
 
 	rows, err := s.pool.Query(ctx, sql, args...)
 	if err != nil {
@@ -189,7 +197,7 @@ func (s *Store) DdbContracts(ctx context.Context, cursor string, count int32) ([
 	}
 	defer rows.Close()
 
-	out := make([]*types.DdbContract, 0, page.Limit)
+	out := make([]*types.DdbContract, 0, page.Limit+1)
 	for rows.Next() {
 		c, err := scanDdbContract(rows)
 		if err != nil {

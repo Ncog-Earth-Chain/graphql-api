@@ -102,7 +102,8 @@ func (p *proxy) AccountTransactions(ctx context.Context, addr *common.Address, r
 		return nil, err
 	}
 
-	return buildTransactionList(list, total, count, derefCursor(cursor)), nil
+	// Exact: AccountTransactionCount is a count(*), narrowed the same way the page is.
+	return buildTransactionList(list, total, count, derefCursor(cursor), true), nil
 }
 
 // AccountsActive returns total number of accounts known to repository.

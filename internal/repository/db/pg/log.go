@@ -108,7 +108,11 @@ func (s *Store) Logs(ctx context.Context, c LogCriteria, cursor string, count in
 		sql += ` WHERE ` + where
 	}
 	sql += ` ` + logKeyset.OrderBy(page.Reverse) + ` LIMIT $` + itoa(len(args)+1)
-	args = append(args, page.Limit)
+	// One row PAST the page, as every sibling list store does. Without it a caller can
+	// only guess "is there more" from whether the page came back short, which is wrong
+	// for an exactly-full final page -- and every full page is exactly full here, since
+	// the API's per-request cap is below this store's own maximum.
+	args = append(args, page.Limit+1)
 
 	rows, err := s.pool.Query(ctx, sql, args...)
 	if err != nil {
@@ -116,7 +120,7 @@ func (s *Store) Logs(ctx context.Context, c LogCriteria, cursor string, count in
 	}
 	defer rows.Close()
 
-	out := make([]*types.Log, 0, page.Limit)
+	out := make([]*types.Log, 0, page.Limit+1)
 	for rows.Next() {
 		lr, err := scanLog(rows)
 		if err != nil {

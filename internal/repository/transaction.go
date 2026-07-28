@@ -233,7 +233,9 @@ func (p *proxy) Transactions(ctx context.Context, cursor *string, count int32) (
 	if err != nil {
 		return nil, err
 	}
-	return buildTransactionList(rows, total, count, derefCursor(cursor)), nil
+	// NOT exact: TransactionsCount reads pg_class.reltuples rather than counting the
+	// largest table in the database on every request.
+	return buildTransactionList(rows, total, count, derefCursor(cursor), false), nil
 }
 
 // StoreGasPricePeriod stores the given gas price period data in the persistent storage

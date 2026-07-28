@@ -23,8 +23,10 @@ type DdbContract struct{ types.DdbContract }
 
 // DdbOperationList resolves a page of operations.
 type DdbOperationList struct {
-	list  []*types.DdbOperation
-	asked int32
+	list    []*types.DdbOperation
+	asked   int32
+	hasNext bool
+	hasPrev bool
 }
 
 // DdbOperationListEdge resolves one entry with its cursor.
@@ -74,7 +76,8 @@ func (rs *rootResolver) DdbOperations(ctx context.Context, args struct {
 		log.Errorf("can not get DDB operations; %s", err.Error())
 		return nil, err
 	}
-	return &DdbOperationList{list: rows, asked: args.Count}, nil
+	page, hasNext, hasPrev := trimProbePage(rows, args.Count, args.Cursor != nil)
+	return &DdbOperationList{list: page, asked: args.Count, hasNext: hasNext, hasPrev: hasPrev}, nil
 }
 
 // DdbContracts resolves the known data contracts, most recently active first, paginated.
@@ -89,7 +92,8 @@ func (rs *rootResolver) DdbContracts(ctx context.Context, args struct {
 		log.Errorf("can not get DDB contracts; %s", err.Error())
 		return nil, err
 	}
-	return &DdbContractList{list: rows, asked: args.Count}, nil
+	page, hasNext, hasPrev := trimProbePage(rows, args.Count, args.Cursor != nil)
+	return &DdbContractList{list: page, asked: args.Count, hasNext: hasNext, hasPrev: hasPrev}, nil
 }
 
 // DdbContract resolves a single data contract by its address, or nil if unknown.
@@ -112,8 +116,10 @@ func (rs *rootResolver) DdbContract(ctx context.Context, args struct {
 
 // DdbContractList resolves a page of data contracts.
 type DdbContractList struct {
-	list  []*types.DdbContract
-	asked int32
+	list    []*types.DdbContract
+	asked   int32
+	hasNext bool
+	hasPrev bool
 }
 
 // DdbContractListEdge resolves one contract with its cursor.
@@ -141,8 +147,7 @@ func (dl *DdbContractList) PageInfo() (*ListPageInfo, error) {
 	l := dl.list[len(dl.list)-1]
 	last := Cursor(pg.DdbContractCursor(uint64(l.LastBlock), uint64(l.LastTxIndex)))
 
-	short := int32(len(dl.list)) < absCount(dl.asked)
-	return NewListPageInfo(&first, &last, !short, false)
+	return NewListPageInfo(&first, &last, dl.hasNext, dl.hasPrev)
 }
 
 // Cursor resolves an edge's pagination cursor.
@@ -171,8 +176,7 @@ func (dl *DdbOperationList) PageInfo() (*ListPageInfo, error) {
 	l := dl.list[len(dl.list)-1]
 	last := Cursor(pg.DdbOperationCursor(uint64(l.BlockNumber), uint64(l.TxIndex)))
 
-	short := int32(len(dl.list)) < absCount(dl.asked)
-	return NewListPageInfo(&first, &last, !short, false)
+	return NewListPageInfo(&first, &last, dl.hasNext, dl.hasPrev)
 }
 
 // Cursor resolves an edge's pagination cursor.
