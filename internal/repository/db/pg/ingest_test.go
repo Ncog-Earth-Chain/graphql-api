@@ -61,6 +61,12 @@ func cleanDB(t *testing.T, s *Store) {
 	for _, q := range []string{
 		"DELETE FROM tx_log", "DELETE FROM tx_account", "DELETE FROM tx",
 		"DELETE FROM ddb_operation", "DELETE FROM ddb_endorsement", "DELETE FROM ddb_contract",
+		// contract belongs here for the same reason as the rest -- the ingest path writes
+		// it -- and its absence was a live cross-test hazard rather than a tidiness issue:
+		// contract carries UNIQUE (block_number, tx_index, deploy_seq), so rows left by one
+		// test collide with the next test's fixture even when every address differs.
+		// contract_verification cascades on delete, so it needs no separate statement.
+		"DELETE FROM contract",
 		"DELETE FROM block",
 		"UPDATE meta_counter SET value = 0 WHERE key = 'contiguous_head'",
 	} {

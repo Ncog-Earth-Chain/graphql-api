@@ -63,7 +63,27 @@ func (st Staker) IsStakeLocked() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return lock != nil && 0 > zeroInt.Cmp(lock.LockedAmount.ToInt()) && uint64(lock.LockedUntil) < uint64(time.Now().UTC().Unix()), nil
+	return stakeIsLocked(lock, time.Now().UTC()), nil
+}
+
+// stakeIsLocked reports whether a delegation lock is in force at a given moment.
+//
+// Split out of IsStakeLocked so the predicate can be tested at all: the resolver reaches
+// the lock through the global repository.R(), which a unit test cannot stand up, and this
+// is the half that was wrong.
+//
+// The time comparison used to read LockedUntil < now, which is true precisely when the
+// lock has EXPIRED -- so the API reported "locked" for every stake whose lock had already
+// run out, and "unlocked" for every stake actually under lock. A lock is in force while
+// its end is still in the FUTURE.
+//
+// The amount test is correct as written: 0 > Cmp(amount) means amount > 0. It matches
+// LockedUntil and LockedFromEpoch, which gate on the amount alone.
+func stakeIsLocked(lock *types.DelegationLock, now time.Time) bool {
+	if lock == nil || 0 <= zeroInt.Cmp(lock.LockedAmount.ToInt()) {
+		return false
+	}
+	return uint64(lock.LockedUntil) > uint64(now.Unix())
 }
 
 // LockedUntil resolves the end time of delegation.

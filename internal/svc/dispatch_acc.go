@@ -91,8 +91,23 @@ func (acd *accDispatcher) process(acc *eventAcc) error {
 		return repo.AccountMarkActivity(acc.addr, uint64(acc.blk.TimeStamp))
 	}
 
-	// is this a simple wallet/account?
-	if acc.trx.ContractAddress != nil {
+	// Is THIS ACCOUNT the contract the transaction created?
+	//
+	// The test used to be `acc.trx.ContractAddress != nil`, which is a property of the
+	// TRANSACTION, not of the account being processed. pushAccounts queues the sender, the
+	// recipient and the created contract from one transaction, all carrying that same
+	// *types.Transaction (see dispatch_trx.go), so on any contract-creating transaction all
+	// three took this branch and each got a contract row written for it.
+	//
+	// It showed up as isDDB being true for a plain wallet: for a DDB commit the recipient is
+	// the DDB sentinel and ContractAddress is the data contract, so detectContract found no
+	// ERC interface on the sender's code-less address, fell through to the generic contract
+	// path, and set IsDDB from trx.To -- tagging the sender, an EOA, as a DDB contract.
+	//
+	// Comparing the addresses is the direct statement of the intent. acc.act being
+	// AccountTypeContract would be equivalent today, since pushAccounts is the only producer
+	// and sets it on exactly this account, but that couples the check to the caller.
+	if acc.trx.ContractAddress != nil && *acc.trx.ContractAddress == *acc.addr {
 		err := acd.processContract(acc)
 		if err != nil {
 			return err
