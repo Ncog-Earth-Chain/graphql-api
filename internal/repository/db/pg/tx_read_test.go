@@ -162,7 +162,7 @@ func TestTransactionsByAccountUsesTheEdgeTable(t *testing.T) {
 		t.Fatalf("store: %v", err)
 	}
 
-	got, err := s.TransactionsByAccount(ctx, &alice, "", 25)
+	got, err := s.TransactionsByAccount(ctx, &alice, nil, "", 25)
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
@@ -171,7 +171,7 @@ func TestTransactionsByAccountUsesTheEdgeTable(t *testing.T) {
 	}
 
 	// carol appears in exactly one
-	got, err = s.TransactionsByAccount(ctx, &carol, "", 25)
+	got, err = s.TransactionsByAccount(ctx, &carol, nil, "", 25)
 	if err != nil {
 		t.Fatalf("read carol: %v", err)
 	}

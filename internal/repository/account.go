@@ -89,12 +89,15 @@ func (p *proxy) AccountTransactions(ctx context.Context, addr *common.Address, r
 	// tx_account is keyed by address, which makes counting an account's transactions an
 	// index-only scan rather than the $or over the whole transaction collection that
 	// MongoDB needed (and that could time out and report the CHAIN's total instead).
-	list, err := p.pg.TransactionsByAccount(ctx, addr, derefCursor(cursor), count)
+	//
+	// `rec` narrows both, and must narrow both identically -- it used to be accepted here
+	// and never passed on, so the schema advertised a filter that silently did nothing.
+	list, err := p.pg.TransactionsByAccount(ctx, addr, rec, derefCursor(cursor), count)
 	if err != nil {
 		return nil, err
 	}
 
-	total, err := p.pg.AccountTransactionCount(ctx, addr)
+	total, err := p.pg.AccountTransactionCount(ctx, addr, rec)
 	if err != nil {
 		return nil, err
 	}

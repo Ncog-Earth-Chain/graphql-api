@@ -177,14 +177,27 @@ func (s *Store) AccountCount(ctx context.Context) (uint64, error) {
 // the address. The MongoDB equivalent counted an $or over the transaction collection,
 // which no single index could serve -- which is why it had a 500 ms budget and a fallback
 // that reported the WHOLE CHAIN's transaction count when it timed out.
-func (s *Store) AccountTransactionCount(ctx context.Context, addr *common.Address) (uint64, error) {
+// When recipient is set the count MUST narrow the same way TransactionsByAccount does.
+// A total describing a wider set than the page it accompanies is the defect this pairing
+// exists to avoid: the list would show the filtered transactions while totalCount reported
+// the account's whole history, and paging would promise rows that never arrive.
+func (s *Store) AccountTransactionCount(ctx context.Context, addr *common.Address, recipient *common.Address) (uint64, error) {
 	if addr == nil {
 		return 0, fmt.Errorf("no account address given")
 	}
 
+	sql := `SELECT count(*) FROM tx_account WHERE address = $1`
+	args := []any{AddrVal(*addr)}
+
+	if recipient != nil {
+		// Served by tx_from_to_idx, the same index that serves the page, so this is a
+		// genuinely selective count rather than a walk of everything the account touched.
+		sql = `SELECT count(*) FROM tx WHERE from_addr = $1 AND to_addr = $2`
+		args = append(args, AddrVal(*recipient))
+	}
+
 	var n int64
-	if err := s.pool.QueryRow(ctx,
-		`SELECT count(*) FROM tx_account WHERE address = $1`, AddrVal(*addr)).Scan(&n); err != nil {
+	if err := s.pool.QueryRow(ctx, sql, args...).Scan(&n); err != nil {
 		return 0, fmt.Errorf("can not count transactions for %s: %w", addr.String(), err)
 	}
 	return uint64(n), nil

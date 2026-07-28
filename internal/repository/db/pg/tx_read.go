@@ -89,9 +89,14 @@ func (s *Store) TransactionsCount(ctx context.Context) (uint64, error) {
 // PostgreSQL would either scan the table or combine two index scans and sort -- on the
 // single most requested page in an explorer. The edge table makes it one index scan on
 // (address, block_number, tx_index), which is exactly the primary key.
-func (s *Store) TransactionsByAccount(ctx context.Context, addr *common.Address, cursor string, count int32) ([]*types.Transaction, error) {
+// When recipient is set the query leaves the edge table entirely and filters tx on
+// (from_addr, to_addr) instead -- see transactionsFromTo.
+func (s *Store) TransactionsByAccount(ctx context.Context, addr *common.Address, recipient *common.Address, cursor string, count int32) ([]*types.Transaction, error) {
 	if addr == nil {
 		return nil, fmt.Errorf("no account address given")
+	}
+	if recipient != nil {
+		return s.transactionsFromTo(ctx, *addr, *recipient, cursor, count)
 	}
 
 	page := NewPage(count, maxListLimit)
@@ -124,6 +129,53 @@ func (s *Store) TransactionsByAccount(ctx context.Context, addr *common.Address,
 
 	// Fetch one row past the page so buildTransactionList can tell "exactly full" from "more
 	// exist" without a second query; the probe row is trimmed before the page is returned.
+	args = append(args, page.Limit+1)
+
+	return s.queryTransactions(ctx, sql, args...)
+}
+
+// transactionsFromTo lists the transactions one account sent to another.
+//
+// This is what account.txList(recipient:) means, and until now the argument was accepted,
+// threaded through the repository and then dropped on the floor: the page and its total
+// both covered the account's ENTIRE history, so a caller filtering by counterparty got a
+// silently wrong answer rather than an error.
+//
+// It reads tx directly rather than going through the tx_account edge table. The edge table
+// is the right structure for "everything touching A" because no single index can serve
+// (from_addr = A OR to_addr = A), but that disjunction is not what is being asked here.
+// Filtering A's edges after the join would walk every edge A has -- unbounded for an
+// exchange or system address -- to find the few naming B. tx_from_to_idx is
+// (from_addr, to_addr, block_number DESC, tx_index DESC), so this predicate plus the keyset
+// order is an index scan over exactly the matching rows. That index has existed since the
+// schema was written, with the comment "Two-party filter (transactions from A to B)", and
+// had no caller.
+//
+// Sender-side only, which is what the field name says: a transaction "to B" that A merely
+// received would have to be addressed to A, so it can only appear when B == A, and a
+// self-transfer does still appear.
+func (s *Store) transactionsFromTo(ctx context.Context, from, to common.Address, cursor string, count int32) ([]*types.Transaction, error) {
+	page := NewPage(count, maxListLimit)
+
+	cur, err := DecodeCursor(cursor, 2)
+	if err != nil {
+		return nil, err
+	}
+
+	args := []any{AddrVal(from), AddrVal(to)}
+	where := "from_addr = $1 AND to_addr = $2"
+
+	if len(cur) == 2 {
+		pred, curArgs, err := txKeyset.After([]any{cur[0], int32(cur[1])}, page.Reverse, len(args))
+		if err != nil {
+			return nil, err
+		}
+		where += " AND " + pred
+		args = append(args, curArgs...)
+	}
+
+	sql := `SELECT ` + txColumns + ` FROM tx WHERE ` + where + ` ` +
+		txKeyset.OrderBy(page.Reverse) + ` LIMIT $` + itoa(len(args)+1)
 	args = append(args, page.Limit+1)
 
 	return s.queryTransactions(ctx, sql, args...)
