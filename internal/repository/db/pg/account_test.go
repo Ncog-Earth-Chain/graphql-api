@@ -201,7 +201,7 @@ func TestAccountTransactionCountIsExact(t *testing.T) {
 		t.Fatalf("store: %v", err)
 	}
 
-	n, err := s.AccountTransactionCount(ctx, &alice, nil)
+	n, _, err := s.AccountTransactionCount(ctx, &alice, nil)
 	if err != nil {
 		t.Fatalf("count: %v", err)
 	}

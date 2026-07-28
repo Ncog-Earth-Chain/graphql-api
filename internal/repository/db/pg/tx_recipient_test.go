@@ -51,7 +51,7 @@ func TestTransactionsByAccountRecipientFilter(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: page: %v", name, err)
 		}
-		total, err := s.AccountTransactionCount(ctx, &addr, rec)
+		total, _, err := s.AccountTransactionCount(ctx, &addr, rec)
 		if err != nil {
 			t.Fatalf("%s: count: %v", name, err)
 		}

@@ -177,30 +177,60 @@ func (s *Store) AccountCount(ctx context.Context) (uint64, error) {
 // the address. The MongoDB equivalent counted an $or over the transaction collection,
 // which no single index could serve -- which is why it had a 500 ms budget and a fallback
 // that reported the WHOLE CHAIN's transaction count when it timed out.
+// accountTxExactCountLimit bounds how many rows the exact count will walk.
+//
+// The count is an index-only scan, which is cheap PER ROW and unbounded in TOTAL: its cost
+// is the number of edges the address has. That is fine for an ordinary wallet and is not
+// fine for an exchange, a bridge or a system address, where it grows without limit while
+// being paid on EVERY page of EVERY request. The only thing standing behind it was the 30 s
+// statement_timeout, which turns a slow page into a failed one.
+//
+// Above this many rows the difference between "1,204,318" and "more than 50,000" is not
+// something a person reads off a page, so the count stops early and says so.
+const accountTxExactCountLimit = 50000
+
+// AccountTransactionCount returns the number of transactions touching an account, and
+// whether that number is exact.
+//
 // When recipient is set the count MUST narrow the same way TransactionsByAccount does.
 // A total describing a wider set than the page it accompanies is the defect this pairing
 // exists to avoid: the list would show the filtered transactions while totalCount reported
 // the account's whole history, and paging would promise rows that never arrive.
-func (s *Store) AccountTransactionCount(ctx context.Context, addr *common.Address, recipient *common.Address) (uint64, error) {
+//
+// The bound is applied by counting a LIMITed subquery rather than by counting and then
+// clamping -- clamping afterwards would already have paid the full cost. Postgres stops
+// reading the index once the inner LIMIT is met, so the work is bounded by the limit and
+// not by the account's size. Under the limit the answer is the true count and `exact` is
+// true; at the limit the caller gets a lower bound, which is precisely what
+// TransactionList.TotalCountIsExact=false already means to a client.
+func (s *Store) AccountTransactionCount(ctx context.Context, addr *common.Address, recipient *common.Address) (uint64, bool, error) {
 	if addr == nil {
-		return 0, fmt.Errorf("no account address given")
+		return 0, false, fmt.Errorf("no account address given")
 	}
 
-	sql := `SELECT count(*) FROM tx_account WHERE address = $1`
+	inner := `SELECT 1 FROM tx_account WHERE address = $1`
 	args := []any{AddrVal(*addr)}
 
 	if recipient != nil {
 		// Served by tx_from_to_idx, the same index that serves the page, so this is a
 		// genuinely selective count rather than a walk of everything the account touched.
-		sql = `SELECT count(*) FROM tx WHERE from_addr = $1 AND to_addr = $2`
+		inner = `SELECT 1 FROM tx WHERE from_addr = $1 AND to_addr = $2`
 		args = append(args, AddrVal(*recipient))
 	}
 
+	// One past the limit, so hitting the cap is distinguishable from landing exactly on it.
+	args = append(args, accountTxExactCountLimit+1)
+	sql := `SELECT count(*) FROM (` + inner + ` LIMIT $` + itoa(len(args)) + `) x`
+
 	var n int64
 	if err := s.pool.QueryRow(ctx, sql, args...).Scan(&n); err != nil {
-		return 0, fmt.Errorf("can not count transactions for %s: %w", addr.String(), err)
+		return 0, false, fmt.Errorf("can not count transactions for %s: %w", addr.String(), err)
 	}
-	return uint64(n), nil
+
+	if n > accountTxExactCountLimit {
+		return accountTxExactCountLimit, false, nil
+	}
+	return uint64(n), true, nil
 }
 
 // AccountsByType lists accounts of one type, most active first.

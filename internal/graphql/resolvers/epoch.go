@@ -2,6 +2,8 @@
 package resolvers
 
 import (
+	"context"
+	"fmt"
 	"ncogearthchain-api-graphql/internal/repository"
 	"ncogearthchain-api-graphql/internal/types"
 
@@ -14,16 +16,26 @@ type Epoch struct {
 }
 
 // Epoch resolves information about epoch of the given id.
-func (rs *rootResolver) Epoch(args *struct{ Id *hexutil.Uint64 }) (Epoch, error) {
-	epo, err := repository.R().Epoch(args.Id)
+//
+// Served from the index. A sealed epoch is an immutable row the scanner has already stored,
+// and reading it went to the SFC contract over RPC every time.
+func (rs *rootResolver) Epoch(ctx context.Context, args *struct{ Id *hexutil.Uint64 }) (Epoch, error) {
+	epo, err := repository.R().IndexedEpoch(ctx, args.Id)
 	if err != nil {
 		return Epoch{}, err
+	}
+	if epo == nil {
+		return Epoch{}, fmt.Errorf("epoch not found")
 	}
 	return Epoch{*epo}, nil
 }
 
 // Duration resolves the time length of the given epoch
-func (ep Epoch) Duration() hexutil.Uint64 {
+//
+// This doubles the cost of every epoch resolved, because the length of an epoch is only
+// knowable by comparing it with the one before -- so a page of epochs used to be two SFC
+// contract calls per row.
+func (ep Epoch) Duration(ctx context.Context) hexutil.Uint64 {
 	// no length for the first epochs
 	if uint64(ep.Id) < 2 {
 		return 0
@@ -31,8 +43,8 @@ func (ep Epoch) Duration() hexutil.Uint64 {
 
 	// get the previous epoch so we can compare end times
 	pid := uint64(ep.Id) - 1
-	prev, err := repository.R().Epoch((*hexutil.Uint64)(&pid))
-	if err != nil {
+	prev, err := repository.R().IndexedEpoch(ctx, (*hexutil.Uint64)(&pid))
+	if err != nil || prev == nil {
 		return 0
 	}
 

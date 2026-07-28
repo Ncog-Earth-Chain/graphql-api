@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -44,6 +45,27 @@ var epochKeyset = Keyset{Columns: []KeyColumn{{Name: "id", Dir: Desc}}}
 const epochColumns = `
 	id, EXTRACT(EPOCH FROM end_time)::BIGINT, fee, base_reward_weight,
 	tx_reward_weight, reward, stake, total_supply`
+
+// Epoch loads one sealed epoch by id.
+//
+// Returns (nil, nil) when absent, which is ordinary: an epoch the scanner has not recorded
+// yet, or one that is not sealed, simply is not here and the caller falls back to the node.
+//
+// This reader was the only thing missing from an otherwise complete picture -- the table,
+// the writer and the list query all existed, so every single-epoch read went to the SFC
+// contract over RPC for a row sitting on the primary key.
+func (s *Store) Epoch(ctx context.Context, id uint64) (*types.Epoch, error) {
+	row := s.pool.QueryRow(ctx, `SELECT `+epochColumns+` FROM epoch WHERE id = $1`, int64(id))
+
+	e, err := scanEpoch(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("can not load epoch %d: %w", id, err)
+	}
+	return e, nil
+}
 
 // AddEpoch stores an epoch if it is not already known.
 //

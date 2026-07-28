@@ -154,6 +154,11 @@ type Repository interface {
 	// Epoch returns the id of the current epoch.
 	Epoch(*hexutil.Uint64) (*types.Epoch, error)
 
+	// IndexedEpoch returns a sealed epoch for the READ path: index first, node fallback.
+	// Epoch stays node-authoritative because the epoch scanner uses it to fetch the epochs
+	// it is about to store.
+	IndexedEpoch(ctx context.Context, id *hexutil.Uint64) (*types.Epoch, error)
+
 	// CurrentSealedEpoch returns the data of the latest sealed epoch.
 	CurrentSealedEpoch() (*types.Epoch, error)
 

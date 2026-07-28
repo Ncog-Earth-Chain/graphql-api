@@ -75,7 +75,7 @@ type ApiResolver interface {
 	CurrentEpoch() (hexutil.Uint64, error)
 
 	// Epoch resolves information about epoch of the given id.
-	Epoch(*struct{ Id *hexutil.Uint64 }) (Epoch, error)
+	Epoch(ctx context.Context, args *struct{ Id *hexutil.Uint64 }) (Epoch, error)
 
 	// LastStakerId resolves the last staker id in Ncogearthchain blockchain.
 	LastStakerId() (hexutil.Uint64, error)

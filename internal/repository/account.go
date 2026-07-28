@@ -97,13 +97,14 @@ func (p *proxy) AccountTransactions(ctx context.Context, addr *common.Address, r
 		return nil, err
 	}
 
-	total, err := p.pg.AccountTransactionCount(ctx, addr, rec)
+	total, exact, err := p.pg.AccountTransactionCount(ctx, addr, rec)
 	if err != nil {
 		return nil, err
 	}
 
-	// Exact: AccountTransactionCount is a count(*), narrowed the same way the page is.
-	return buildTransactionList(list, total, count, derefCursor(cursor), true), nil
+	// The count is bounded, so a very active address reports a lower bound rather than
+	// walking every edge it has on every page. `exact` carries which of the two it is.
+	return buildTransactionList(list, total, count, derefCursor(cursor), exact), nil
 }
 
 // AccountsActive returns total number of accounts known to repository.

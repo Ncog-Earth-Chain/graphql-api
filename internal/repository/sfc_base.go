@@ -67,6 +67,44 @@ func (p *proxy) CurrentEpoch() (hexutil.Uint64, error) {
 	return p.rpc.CurrentEpoch()
 }
 
+// IndexedEpoch returns a sealed epoch for the READ path: from the index when it is there,
+// from the SFC contract when it is not.
+//
+// Separate from Epoch rather than replacing it, for the same reason IndexedTransaction and
+// IndexedBlockByNumber are separate. The epoch SCANNER calls Epoch to fetch the epochs it is
+// about to store (svc/scan_epochs.go), and CurrentSealedEpoch calls it for the head; serving
+// either from the index would be circular -- the scanner would read back what it had already
+// written and could never discover an epoch it had not yet recorded.
+//
+// A nil or zero id means "the current sealed epoch", whose identity has to be asked of the
+// chain, so that resolves through the node exactly as before.
+//
+// An epoch is immutable once sealed (AddEpoch is deliberately ON CONFLICT DO NOTHING), so
+// unlike a block there is no version of this row that can go stale underneath the reader.
+func (p *proxy) IndexedEpoch(ctx context.Context, id *hexutil.Uint64) (*types.Epoch, error) {
+	if id == nil || *id == 0 {
+		return p.Epoch(id)
+	}
+
+	// The in-memory cache is checked first either way; it is keyed by id and holds the
+	// same immutable record.
+	if ep := p.cache.PullEpoch(id); ep != nil {
+		return ep, nil
+	}
+
+	ep, err := p.pg.Epoch(ctx, uint64(*id))
+	if err != nil {
+		return nil, err
+	}
+	if ep != nil {
+		p.cache.PushEpoch(ep)
+		return ep, nil
+	}
+
+	// Not recorded yet -- ahead of the epoch scanner, or never sealed.
+	return p.Epoch(id)
+}
+
 // Epoch returns the structure of the current epoch.
 func (p *proxy) Epoch(id *hexutil.Uint64) (*types.Epoch, error) {
 	// get the current epoch if the id has not been provided
