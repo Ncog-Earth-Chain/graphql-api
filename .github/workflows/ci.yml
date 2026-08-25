@@ -29,13 +29,51 @@ jobs:
     env:
       EXPLORER_TEST_DSN: postgres://explorer:explorer@localhost:5432/nec_explorer?sslmode=disable
 
+    # go.mod does `replace github.com/ethereum/go-ethereum => ../ncog-evm`, so every step below has to
+    # run from a checkout that HAS a sibling ../ncog-evm. That is why this job checks out into a named
+    # path and defaults the working directory to it.
+    defaults:
+      run:
+        working-directory: graphql-api
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout graphql-api
+        uses: actions/checkout@v4
+        with:
+          path: graphql-api
+
+      # Required sibling for the `replace => ../ncog-evm` directive. Without it Go fails before doing
+      # anything useful: "replacement directory ../ncog-evm does not exist".
+      #
+      # This checkout was missing. The replace landed 2026-07-23 and this workflow 2026-07-24, so it
+      # was written a day after the directive existed and has never been able to build -- which is why
+      # nothing noticed when an upgrade in ncog-evm broke this repo's go.mod (see the tidy check below).
+      #
+      # Adjust `repository` if your ncog-evm lives elsewhere. If it is private, supply a PAT with read
+      # access via `token:` -- the default GITHUB_TOKEN only grants access to the current repository.
+      - name: Checkout ncog-evm (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/ncog-evm
+          path: ncog-evm
+          # token: ${{ secrets.NCOG_EVM_TOKEN }}
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version-file: graphql-api/go.mod
           cache: true
+          cache-dependency-path: graphql-api/go.sum
+
+      # The check that would have caught the last break, and the reason it is FIRST.
+      #
+      # A replace directive onto a sibling repository means a dependency upgrade over there silently
+      # invalidates this repo's indirect pins. That is not hypothetical: bumping circl 1.5.0 -> 1.6.3
+      # in ncog-evm left this go.mod stale, and `go build` then refused with "updates to go.mod
+      # needed" -- both binaries unbuildable, from a clean clone, with nothing reporting it.
+      #
+      # `go mod tidy -diff` fails without writing anything, so it is safe in CI.
+      - name: go.mod is tidy against the current sibling
+        run: go mod tidy -diff
 
       - name: Build
         run: go build ./...
