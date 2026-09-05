@@ -1,0 +1,57 @@
+# Runs the graphql-api compose stack (the API plus its own PostgreSQL) as a system service.
+#
+# INSTALL
+#   1. Put the repository (and its sibling ncog-evm/, which the build needs) somewhere stable,
+#      e.g. /opt/ncog/graphql-api and /opt/ncog/ncog-evm, and adjust WorkingDirectory below.
+#   2. Create /opt/ncog/graphql-api/.env from .env.example and fill in EXPLORER_PG_PASSWORD and
+#      NEC_NODE_RPC_URL. `chmod 600 .env` -- it holds a database password.
+#   3. Build the image once: `make image` (systemd is deliberately not asked to build; a unit that
+#      compiles Go on boot turns a network hiccup into a failed boot).
+#   4. install -m0644 deploy/systemd/ncog-apiserver.service /etc/systemd/system/
+#      systemctl daemon-reload && systemctl enable --now ncog-apiserver
+#
+# WHY Type=oneshot AND NOT Type=simple/exec
+# `docker compose up -d` returns immediately; there is no long-lived foreground process for
+# systemd to supervise, and the containers are supervised by dockerd's own `restart:
+# unless-stopped` policy. RemainAfterExit=yes is what makes `systemctl status` report the stack as
+# active after the start command has finished. Trying to hold `docker compose up` (no -d) in the
+# foreground instead gives systemd a process whose death does NOT mean the service died, which is
+# worse than not supervising it.
+#
+# `--wait` is the part that makes this unit honest: without it the unit reports success the moment
+# the containers are CREATED, and a stack that dies during startup boots "successfully". With it,
+# `up` blocks until every service with a healthcheck is healthy -- and both services here have
+# one -- so a start failure is a unit failure. It is also what lets another unit legitimately
+# order itself After=ncog-apiserver.service.
+
+[Unit]
+Description=NCOG Earth Chain GraphQL API (compose stack)
+Documentation=file:/opt/ncog/graphql-api/doc/container.md
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/ncog/graphql-api
+
+# The stack legitimately takes minutes on a first start: a fresh volume runs initdb, then the API
+# applies fourteen schema migrations before it begins listening. A default 90s start timeout would
+# kill it mid-migration, which is the one moment where being killed is expensive.
+TimeoutStartSec=900
+TimeoutStopSec=120
+
+ExecStart=/usr/bin/docker compose up -d --wait
+ExecStop=/usr/bin/docker compose down
+# `systemctl reload` re-applies the compose file after an .env or compose edit, without the
+# down/up gap that a restart would leave.
+ExecReload=/usr/bin/docker compose up -d --wait --remove-orphans
+
+# Restart only on failure, and slowly. A stack that cannot reach its node RPC will fail forever;
+# hammering it every second buries the reason in the journal.
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

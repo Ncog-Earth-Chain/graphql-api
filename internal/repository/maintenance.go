@@ -27,13 +27,28 @@ const (
 	txLogPartitionTable = "tx_log"
 )
 
-// Healthy reports API readiness: the PostgreSQL backend is reachable and the ingest
-// watermark is queryable. It returns the contiguous head (the highest block below which
-// nothing is missing) so a probe can also observe ingest progress. A load balancer should
-// cut over on this rather than issuing a real GraphQL query.
+// Healthy reports API readiness: PostgreSQL is reachable, the node RPC answers, and the
+// ingest watermark is queryable. It returns the contiguous head (the highest block below
+// which nothing is missing) so a probe can also observe ingest progress. A load balancer
+// should cut over on this rather than issuing a real GraphQL query.
+//
+// THE NODE PROBE IS NOT OPTIONAL, and leaving it out was measured to be actively
+// misleading. rpc.Dial over http:// is LAZY -- it connects on first use -- so an apiserver
+// pointed at a dead chain starts cleanly, logs "node connection open" against a black hole,
+// and this function returned 200 while every resolver answered "internal server error".
+// Everything downstream inherited that lie: the container reported healthy, `compose up
+// --wait` returned 0 in 13s, and the systemd unit that argues --wait "is the part that
+// makes this unit honest" would report active on a stack that can serve nothing. A load
+// balancer cutting over on /health -- which is exactly what the packaging tells operators
+// to do -- would route traffic straight to it.
 func (p *proxy) Healthy(ctx context.Context) (uint64, error) {
 	if err := p.pg.Ping(ctx); err != nil {
 		return 0, fmt.Errorf("database unreachable: %w", err)
+	}
+	// Bounded by the caller's context, which the health handler already gives a short
+	// deadline. BlockHeight is the cheapest call that proves the node is really answering.
+	if _, err := p.rpc.BlockHeight(); err != nil {
+		return 0, fmt.Errorf("node RPC unreachable: %w", err)
 	}
 	return p.pg.ContiguousHead(ctx)
 }

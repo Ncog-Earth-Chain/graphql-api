@@ -1,0 +1,203 @@
+# Build and package the NCOG Earth Chain GraphQL API server (`apiserver`) and the
+# schema migration tool (`migrate`).
+#
+# ---------------------------------------------------------------------------------------------
+# CONTEXT: the PARENT directory that holds BOTH sibling repos, i.e. the directory containing
+# graphql-api/ and ncog-evm/. graphql-api/go.mod carries
+#     replace github.com/ethereum/go-ethereum => ../ncog-evm
+# so ncog-evm must be inside the build context or the module graph cannot resolve. Build it as:
+#
+#     cd <the directory that contains graphql-api/ and ncog-evm/>
+#     docker build -f graphql-api/docker/Dockerfile.apiserver -t ncog-apiserver:latest .
+#
+# `make image` (in graphql-api/) does exactly this, and docker-compose.yml declares
+# `context: ..` for the same reason. Passing graphql-api/ itself as the context fails with
+#     failed to compute cache key: "/ncog-evm": not found
+#
+# THE .dockerignore FOR THIS BUILD IS Dockerfile.apiserver.dockerignore, NEXT TO THIS FILE.
+# That is not a stylistic choice. Docker normally reads <context-root>/.dockerignore, and the
+# context root here is shared with the node image, whose filter (../.dockerignore, installed
+# there by the node repo's `make ncogearthchain-image`) denies everything and re-admits only
+# ncogearthchain/ and ncog-evm/ -- graphql-api/ is excluded by it, so this build would fail on
+# the very first COPY. BuildKit resolves `<dockerfile-path>.dockerignore` in preference to the
+# context-root file, which lets the two images keep incompatible filters in the same context
+# without either repo overwriting the other's. Verified on this engine: with ../.dockerignore
+# present and excluding graphql-api/, `COPY graphql-api/go.mod` resolves.
+# The consequence: this file MUST be built through BuildKit (Docker 23+, or buildx). A legacy
+# builder would fall back to the context-root filter and fail to find graphql-api/.
+#
+# ---------------------------------------------------------------------------------------------
+# CGO: OFF, and that is a measured fact rather than an assumption. This module is NOT the node
+# module. The node needs cgo (duktape JS tracer + libsecp256k1) and therefore a glibc runtime;
+# this one does not:
+#     $ CGO_ENABLED=0 go build ./cmd/apiserver                             -> ok
+#     $ CGO_ENABLED=0 go list -deps ./cmd/apiserver | grep -i secp256k1    -> no match
+# The explorer reaches the chain over RPC and verifies nothing locally, and this chain's crypto
+# is ML-DSA via cloudflare/circl, which is pure Go. Nothing in the dependency graph pulls
+# go-ethereum's C secp256k1. So the output is a static binary and the runtime base is free.
+#
+# RUNTIME BASE: alpine, deliberately, over both distroless and debian.
+#   - Against debian-slim: nothing here links libc, so ~75 MB of runtime buys nothing.
+#   - Against distroless/static: this image needs a shell. The application is configured by a
+#     CONFIG FILE (viper; internal/config/load.go) and has no environment-variable binding at
+#     all -- no AutomaticEnv, no BindEnv anywhere in the tree. Containers are configured by
+#     environment, so entrypoint.sh renders the config file from the environment on start. A
+#     shell is also what makes the HEALTHCHECK a real application probe rather than a TCP
+#     connect. busybox supplies both, for ~8 MB.
+#
+# ---------------------------------------------------------------------------------------------
+# TOOLCHAIN: graphql-api/go.mod declares `go 1.25.7` and the official golang images ship
+# GOTOOLCHAIN=local, so the base image's own Go must ALREADY satisfy that -- it will not
+# download a newer toolchain. GO_VERSION is pinned to an exact patch for reproducibility; raise
+# it when go.mod's minimum moves past it.
+# ---------------------------------------------------------------------------------------------
+
+ARG GO_VERSION=1.25.14
+ARG ALPINE_VERSION=3.22
+
+
+FROM golang:${GO_VERSION}-alpine AS builder
+
+# -buildvcs=false because the .dockerignore strips both .git directories; without it `go build`
+# tries to stamp VCS info and dies on git's dubious-ownership check inside the container.
+ENV CGO_ENABLED=0 \
+    GOOS=linux \
+    GOFLAGS=-buildvcs=false
+
+ARG GOPROXY=https://proxy.golang.org,direct
+ENV GOPROXY=${GOPROXY}
+
+WORKDIR /src
+
+# Module graph first, so `go mod download` caches independently of the source tree and a
+# source-only edit does not re-download the world. BOTH go.mod/go.sum pairs are needed before
+# the download because of the ../ncog-evm replace -- go has to read the replacement's own
+# go.mod to resolve the module graph at all.
+COPY graphql-api/go.mod graphql-api/go.sum ./graphql-api/
+COPY ncog-evm/go.mod ncog-evm/go.sum ./ncog-evm/
+
+WORKDIR /src/graphql-api
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+
+WORKDIR /src
+COPY graphql-api/ ./graphql-api/
+COPY ncog-evm/ ./ncog-evm/
+
+# Version metadata is passed in rather than shelled out to git inside the image, so the build
+# does not depend on a .git directory being present in the context. These are the same five
+# ldflags symbols the Makefile's `server` target injects (cmd/apiserver/build/build.go), so
+# `version` in the GraphQL schema answers the same way from the image as from `make server`.
+ARG APP_VERSION=1.1.0
+ARG BUILD_DATE=unknown
+ARG BUILD_COMMIT=unknown
+ARG BUILD_COMMIT_TIME=unknown
+
+WORKDIR /src/graphql-api
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    set -eu; \
+    go build \
+      -trimpath \
+      -ldflags "-s -w \
+        -X 'ncogearthchain-api-graphql/cmd/apiserver/build.Version=${APP_VERSION}' \
+        -X 'ncogearthchain-api-graphql/cmd/apiserver/build.Time=${BUILD_DATE}' \
+        -X 'ncogearthchain-api-graphql/cmd/apiserver/build.Compiler=$(go version)' \
+        -X 'ncogearthchain-api-graphql/cmd/apiserver/build.Commit=${BUILD_COMMIT}' \
+        -X 'ncogearthchain-api-graphql/cmd/apiserver/build.CommitTime=${BUILD_COMMIT_TIME}'" \
+      -o /out/apiserver \
+      ./cmd/apiserver; \
+    go build -trimpath -ldflags "-s -w" -o /out/migrate ./cmd/migrate
+
+
+FROM alpine:${ALPINE_VERSION} AS runtime
+
+# ca-certificates: the API dials Postgres (`sslmode=require`/`verify-full`) and, for contract
+#   verification, downloads solc over HTTPS. alpine ships neither a trust store nor tzdata.
+# tzdata: the ingest path formats timestamps; without it every non-UTC location silently
+#   resolves to UTC.
+RUN apk add --no-cache ca-certificates tzdata
+
+# Run unprivileged. 10002 rather than the node image's 10001 so a host directory shared with a
+# node container cannot end up owned by one identity and written by the other.
+RUN addgroup -g 10002 -S ncogapi \
+ && adduser -u 10002 -S -G ncogapi -h /app -s /sbin/nologin ncogapi
+
+COPY --from=builder /out/apiserver /usr/local/bin/apiserver
+COPY --from=builder /out/migrate   /usr/local/bin/migrate
+
+# tokens.json is the ERC20 logo map. internal/config/default.go points `erc20_tokens_file` at
+# the RELATIVE path "tokens.json", i.e. at the working directory; entrypoint.sh writes the
+# absolute path below into the rendered config so the lookup does not depend on where the
+# process was started. Missing it is non-fatal (load.go logs and continues) but costs every
+# token its logo.
+COPY graphql-api/tokens.json /app/tokens.json
+
+COPY graphql-api/docker/entrypoint.sh  /usr/local/bin/entrypoint.sh
+COPY graphql-api/docker/healthcheck.sh /usr/local/bin/healthcheck.sh
+
+# The `sed` is CR stripping, not cosmetics. This repository is cloned on Windows hosts with
+# core.autocrlf=true; a checkout that turns these two scripts into CRLF produces the classic
+#     exec /usr/local/bin/entrypoint.sh: no such file or directory
+# because the kernel reads "/bin/sh\r" as the interpreter. .gitattributes pins them to LF at
+# the source; this is the second line of defence, for a context that arrived some other way.
+RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh /usr/local/bin/healthcheck.sh \
+ && chmod 0755 /usr/local/bin/entrypoint.sh /usr/local/bin/healthcheck.sh
+
+# /etc/ncog  -- where an operator MOUNTS a complete apiserver.json (read-only is fine).
+# /run/ncog  -- where entrypoint.sh RENDERS one from the environment when nothing is mounted.
+#               Owned by the app user because the process is unprivileged. With `--read-only`,
+#               mount a tmpfs here (`--tmpfs /run/ncog`) or the render has nowhere to go.
+RUN mkdir -p /etc/ncog /run/ncog \
+ && chown ncogapi:ncogapi /run/ncog \
+ && chmod 0750 /run/ncog
+
+# Build metadata, readable without a backend. `apiserver -v` cannot serve that purpose: the flag
+# is only consulted in run(), and init() has by then already run config.Load() and
+# resolvers.New() -> svc.Manager() -> repository.R(), which opens PostgreSQL and the node RPC.
+# So a version query would need a live stack. `docker run --rm <image> version` reads this file.
+ARG APP_VERSION
+ARG BUILD_COMMIT
+ARG BUILD_DATE
+RUN printf 'version=%s\ncommit=%s\nbuilt=%s\n' \
+      "${APP_VERSION:-1.1.0}" "${BUILD_COMMIT:-unknown}" "${BUILD_DATE:-unknown}" \
+      > /etc/ncog-apiserver-version
+
+# Smoke-test both binaries IN THE RUNTIME IMAGE. This is what catches a libc/arch mismatch at
+# build time instead of at `docker run`, where it surfaces as the famously unhelpful
+# "exec ...: no such file or directory". `apiserver -h` exits inside flag.Parse(), before any
+# database or node connection is attempted, so it needs no backend; `migrate` with no DSN
+# reaches its own argument check. Both prove the static binary actually executes here.
+RUN set -eu; \
+    /usr/local/bin/apiserver -h 2>&1 | grep -q 'Path to a configuration file'; \
+    /usr/local/bin/migrate   2>&1 | grep -q 'no DSN'; \
+    echo 'runtime smoke test: apiserver and migrate both execute'
+
+USER 10002:10002
+WORKDIR /app
+
+# Defaults chosen for a container, not for a laptop. Only NEC_API_PG_URL and NEC_API_NODE_URL
+# are left unset, and entrypoint.sh refuses to start without them -- the same "a credential is a
+# decision, not an omission" rule the compose file's `:?` guards enforce. The full list of knobs
+# is in doc/container.md.
+#
+# NEC_API_BIND is 0.0.0.0 because the application default is localhost:16761
+# (internal/config/default.go), which inside a container is reachable by nothing.
+ENV NEC_API_BIND=0.0.0.0:16761 \
+    NEC_API_LOG_LEVEL=INFO \
+    NEC_API_LOG_OUTPUT=stdout \
+    NEC_API_CONFIG=/etc/ncog/apiserver.json \
+    NEC_API_RENDERED_CONFIG=/run/ncog/apiserver.json
+
+EXPOSE 16761/tcp
+
+# A REAL readiness probe, not a TCP-open check. /health (internal/handlers/health.go) calls
+# repository.Healthy(), which pings PostgreSQL and reads the ingest watermark, and answers 503
+# when the backend is gone. The grep is the other half: a 200 whose body is not `"status":"ok"`
+# -- a proxy error page, a truncated response -- must not count as healthy.
+# start-period is generous because a first start applies the schema migrations before listening.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=120s --retries=5 \
+    CMD ["/usr/local/bin/healthcheck.sh"]
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["apiserver"]

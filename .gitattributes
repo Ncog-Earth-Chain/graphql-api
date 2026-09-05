@@ -1,0 +1,14 @@
+# Files that are executed by a Linux kernel MUST keep LF endings, whatever the checkout host
+# does. This repository is cloned on Windows machines with core.autocrlf=true; a CRLF checkout of
+# a script with `#!/bin/sh` makes the kernel look for an interpreter literally named "/bin/sh\r",
+# and the container fails at start with
+#     exec /usr/local/bin/entrypoint.sh: no such file or directory
+# which names the script that plainly exists and says nothing about why. (.github/workflows/ci.yml
+# in this tree is already CRLF, so the conversion demonstrably happens here.)
+#
+# docker/Dockerfile.apiserver strips CRs at build time as well, for a context that reached the
+# daemon some other way. This is the fix at the source.
+*.sh            text eol=lf
+Dockerfile*     text eol=lf
+*.service       text eol=lf
+docker-compose*.yml text eol=lf

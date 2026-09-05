@@ -49,3 +49,30 @@ deployment. Point the API at it with the `pg` block of the configuration file (s
 
 The database schema, the operational runbook, and the migration from the previous MongoDB
 storage are documented in [doc/postgres-cutover.md](doc/postgres-cutover.md).
+
+## Running in a container
+
+```shell
+cp .env.example .env     # EXPLORER_PG_PASSWORD and NEC_NODE_RPC_URL have no defaults
+$EDITOR .env
+make up                  # builds the image, starts the API and its own PostgreSQL
+curl -s http://127.0.0.1:16761/health
+```
+
+The compose stack runs the API against **its own** PostgreSQL, which must be a different instance
+from the one a validator runs for its DDB. The node is not part of the stack: point
+`NEC_NODE_RPC_URL` at whichever node this API should read.
+
+There are no default credentials. Compose refuses to start when the database password or the node
+RPC endpoint is unset, and the image enforces the same rule on its own, so a `docker run` cannot
+slip past it.
+
+`make image` builds the image, `make check` validates the compose file and the systemd units
+without starting anything, `make destroy` removes the stack and its database volume.
+`deploy/systemd/` holds two units: one for the compose stack, one for the bare binary.
+
+The build context is the **parent** directory, because `go.mod` replaces `go-ethereum` with the
+sibling `../ncog-evm`; `docker build .` from this repository cannot resolve that.
+
+Full operator documentation -- every environment variable, the node RPC pitfalls, health and
+readiness, migrations, and troubleshooting -- is in [doc/container.md](doc/container.md).

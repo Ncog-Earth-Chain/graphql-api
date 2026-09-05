@@ -1,0 +1,43 @@
+# THIS FILE DOES NOT GOVERN THE API IMAGE BUILD. Read this before editing it.
+#
+# docker/Dockerfile.apiserver is built with the PARENT directory as its context -- the one holding
+# both graphql-api/ and ncog-evm/ -- because go.mod carries
+#     replace github.com/ethereum/go-ethereum => ../ncog-evm
+# and Docker reads the ignore file for the CONTEXT, not for the repo. The filter that actually
+# trims that build is docker/Dockerfile.apiserver.dockerignore, a per-Dockerfile ignore file that
+# BuildKit resolves in preference to the context-root one. Edit that file.
+#
+# This one applies only to a `docker build` whose context is this repository, of which there is
+# none: such a build cannot resolve ../ncog-evm and fails with
+#     failed to compute cache key: "/ncog-evm": not found
+# It is kept so that mistake costs a fast failure instead of uploading 50 MB of Windows binaries,
+# the git history and a live config file to the daemon first -- and so any future single-repo
+# build starts from a sane baseline rather than shipping all of that into a layer.
+#
+# Patterns are anchored at this repo's root and are not recursive.
+
+.git
+.github
+.idea
+.vscode
+
+# Build artefacts. apiserver.exe and migrate.exe are 35 MB and 15 MB, gitignored via *.exe and so
+# invisible to git-based hygiene, and sitting right beside go.mod.
+*.exe
+*.test
+build
+vendor
+
+# Local configuration. internal/config/load.go searches "." for a file named "apiserver", so a
+# config in this directory is loaded automatically -- and doc/postgres-cutover.md documents exactly
+# that file carrying a live PostgreSQL DSN.
+apiserver.json
+apiserver.yaml
+apiserver.yml
+apiserver.toml
+.env
+.env.*
+
+*.log
+*.prof
+.DS_Store

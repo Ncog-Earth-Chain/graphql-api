@@ -1,0 +1,101 @@
+# Build-context filter for docker/Dockerfile.apiserver.
+#
+# WHY THIS FILE HAS THIS NAME, AND WHY IT IS NOT ../.dockerignore
+# ---------------------------------------------------------------
+# Docker normally reads the .dockerignore at the root of the build CONTEXT. This image's context
+# is the PARENT of this repo (it needs both graphql-api/ and ncog-evm/, because go.mod carries
+#     replace github.com/ethereum/go-ethereum => ../ncog-evm
+# ) -- and that same parent is ALSO the context for the node image in the sibling ncogearthchain
+# repo. There is only one <context>/.dockerignore, the node repo's `make ncogearthchain-image`
+# overwrites it from its own canonical copy, and that copy denies `*` and re-admits only
+# `ncogearthchain` and `ncog-evm`. Under it, graphql-api/ is not in the context at all and this
+# build dies on its first COPY.
+#
+# BuildKit resolves `<dockerfile-path>.dockerignore` in preference to the context-root file. So
+# naming this file after the Dockerfile gives the two images independent, non-conflicting filters
+# over a shared context, with neither repo reaching into the other or into the parent directory.
+# It is also why this Dockerfile requires BuildKit (Docker 23+ / buildx): a legacy builder ignores
+# this file and falls back to the context-root one.
+#
+# Docker applies the LAST matching pattern, so the order of the three sections below is
+# load-bearing.
+#
+# CAUTION when editing section 3: broad `**/<name>` patterns are dangerous here because both
+# admitted trees are Go source whose package directories have ordinary names -- `**/build` would
+# silently delete ncog-evm/build (which holds ci.go, referenced by its Makefile) and `**/keystore`
+# would delete ncog-evm/accounts/keystore. Prefer repo-rooted paths, as below.
+
+# ---------------------------------------------------------------------------
+# 1. Deny every top-level entry.
+#    `*` matches a single path segment, so this excludes ncogearthchain/, wallet/,
+#    ncog-explorer/, nec-node-sdk/, ncog-trimix-ide/, genesis/, docs/, transactions.rlp --
+#    everything. Unfiltered this parent directory is ~7.4 GB; none of it is reachable from
+#    `go build ./cmd/apiserver`.
+# ---------------------------------------------------------------------------
+*
+
+# ---------------------------------------------------------------------------
+# 2. Re-admit exactly the two trees this build needs.
+#    ncogearthchain/ is deliberately NOT here: the explorer talks to the node over RPC and does
+#    not import it.
+# ---------------------------------------------------------------------------
+!graphql-api
+!ncog-evm
+
+# ---------------------------------------------------------------------------
+# 3. Strip what those two trees do not need in order to compile.
+# ---------------------------------------------------------------------------
+
+# Version metadata comes in as --build-arg and the build runs with -buildvcs=false, so no .git is
+# needed. Together they are ~18 MB and they change on every commit, which would also bust the
+# COPY cache layer on every build for nothing.
+graphql-api/.git
+ncog-evm/.git
+
+# BUILD ARTEFACTS. The two Windows binaries in this repo's root are why this section exists:
+# apiserver.exe (35 MB) and migrate.exe (15 MB) sit beside go.mod, are ignored by .gitignore
+# (`*.exe`) and so are untracked, and would otherwise be uploaded to the daemon and baked into
+# the builder layer on every build -- 50 MB of a foreign OS's binaries inside a Linux image.
+# `make server` output lands in build/ for the same reason.
+graphql-api/*.exe
+graphql-api/*.test
+graphql-api/build
+graphql-api/vendor
+ncog-evm/build/_workspace
+ncog-evm/build/_bin
+ncog-evm/build/bin
+ncog-evm/vendor
+
+# LOCAL CREDENTIALS. internal/config/load.go adds "." to viper's search path and keys.go names
+# the file "apiserver", so a config in this repo's ROOT is loaded automatically -- and
+# doc/postgres-cutover.md documents exactly that file carrying a live Postgres DSN with a
+# password. It is gitignored, so it is invisible to git-based hygiene but very much present in a
+# `docker build` context. It must never reach a layer.
+graphql-api/apiserver.json
+graphql-api/apiserver.yaml
+graphql-api/apiserver.yml
+graphql-api/apiserver.toml
+graphql-api/.env
+graphql-api/.env.*
+
+# ncog-evm/tests/testdata is a git submodule of the Ethereum consensus test vectors, and
+# ncog-evm/docs is prose. Neither is compiled, and neither tree has a go:embed reaching outside
+# its own package.
+ncog-evm/tests/testdata
+ncog-evm/docs
+
+# Editor and CI config: not compiled.
+graphql-api/.github
+graphql-api/.idea
+graphql-api/.vscode
+ncog-evm/.github
+ncog-evm/.idea
+ncog-evm/.vscode
+
+# Recursive globs, kept deliberately few and checked against
+# `find graphql-api ncog-evm -type d -name <n>` (all returned nothing) before being added.
+**/node_modules
+**/*.ipc
+**/*.log
+**/*.prof
+**/.DS_Store

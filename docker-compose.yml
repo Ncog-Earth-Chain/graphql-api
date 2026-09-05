@@ -1,0 +1,145 @@
+# The explorer / dApp-facing GraphQL API and its PostgreSQL.
+#
+#   cd graphql-api
+#   cp .env.example .env      # then fill it in -- it has NO working defaults
+#   docker compose up -d --build
+#   curl -s -X POST -H 'Content-Type: application/json' \
+#        --data '{"query":"{ version state { blocks } }"}' http://127.0.0.1:16761/graphql
+#
+# NO DEFAULT CREDENTIALS, IN EITHER DIRECTION.
+# EXPLORER_PG_PASSWORD and NEC_NODE_RPC_URL are written with `:?`, so compose REFUSES to start --
+# with the message after the `?` -- when they are unset, instead of silently standing up a
+# database reachable on a published port behind a one-word password. This mirrors
+# ncogearthchain/docker-compose.ddb.yml, where POSTGRES_PASSWORD lost its `password` fallback for
+# exactly that reason: the failure mode of a weak default is that nothing looks wrong.
+#
+# THE DATABASE HERE IS NOT THE VALIDATOR'S DDB, and must not be pointed at it. DDB rows are
+# consensus state; explorer rows are a derived index that a re-scan rebuilds from the chain. Disk,
+# WAL, max_connections and the postmaster lifetime are cluster-scoped, so an explorer re-scan that
+# fills a disk would take the validator down with it. doc/postgres-cutover.md section 0 is the long
+# form of this. This file therefore runs its OWN postgres on its OWN volume.
+#
+# THE NODE IS NOT IN THIS STACK, deliberately. A validator is not a component of the explorer's
+# deployment: it has its own lifecycle, its own compose file
+# (ncogearthchain/docker-compose.ddb.yml plus the node image) and frequently its own machine. Point
+# NEC_NODE_RPC_URL at whichever node this API should read.
+
+name: ncog-explorer-api
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ncog-explorer-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${EXPLORER_PG_USER:-explorer}
+      POSTGRES_PASSWORD: ${EXPLORER_PG_PASSWORD:?set EXPLORER_PG_PASSWORD (put it in a .env file next to this compose file) - there is deliberately no default}
+      POSTGRES_DB: ${EXPLORER_PG_DB:-nec_explorer}
+      # Deterministic collation and encoding for a fresh cluster. The explorer sorts and compares
+      # hex strings; a locale-aware collation from the host makes index order machine-dependent.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - explorer_pg_data:/var/lib/postgresql/data
+    # Published on loopback ONLY, and only so an operator can run psql. Nothing outside this
+    # compose network needs it -- the API reaches it as `postgres:5432` over the internal network.
+    ports:
+      - "${EXPLORER_PG_BIND_ADDR:-127.0.0.1}:${EXPLORER_PG_PORT:-5442}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${EXPLORER_PG_USER:-explorer} -d ${EXPLORER_PG_DB:-nec_explorer}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - explorer-net
+
+  apiserver:
+    build:
+      # The context is the PARENT of this repo. go.mod carries
+      #     replace github.com/ethereum/go-ethereum => ../ncog-evm
+      # so ncog-evm/ has to be inside the context or the module graph cannot resolve. The build
+      # is filtered by docker/Dockerfile.apiserver.dockerignore (a per-Dockerfile ignore file,
+      # which BuildKit prefers over the context-root one that the node image owns) -- see the
+      # header of that file.
+      context: ..
+      dockerfile: graphql-api/docker/Dockerfile.apiserver
+      args:
+        APP_VERSION: ${APP_VERSION:-1.1.0}
+        BUILD_COMMIT: ${BUILD_COMMIT:-unknown}
+        BUILD_DATE: ${BUILD_DATE:-unknown}
+    image: ${APISERVER_IMAGE:-ncog-apiserver:latest}
+    container_name: ncog-apiserver
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # --- the two settings with no default anywhere -------------------------------------
+      # The DSN is assembled from the same variables the postgres service uses, so the two can
+      # never drift apart. `postgres` is the compose service name on the internal network.
+      # sslmode=disable is correct HERE and only here: this hop never leaves the compose bridge.
+      # A remote database needs sslmode=require at minimum -- set EXPLORER_PG_DSN to override the
+      # whole string.
+      NEC_API_PG_URL: ${EXPLORER_PG_DSN:-postgres://${EXPLORER_PG_USER:-explorer}:${EXPLORER_PG_PASSWORD:?set EXPLORER_PG_PASSWORD - there is deliberately no default}@postgres:5432/${EXPLORER_PG_DB:-nec_explorer}?sslmode=disable}
+      NEC_API_NODE_URL: ${NEC_NODE_RPC_URL:?set NEC_NODE_RPC_URL to the RPC endpoint of an NCOG Earth Chain node, e.g. http://host.docker.internal:18545 for a node on this host}
+
+      # --- everything below is optional; unset means the application default applies -------
+      NEC_API_BIND: 0.0.0.0:16761
+      NEC_API_LOG_LEVEL: ${NEC_API_LOG_LEVEL:-INFO}
+      NEC_API_LOG_OUTPUT: stdout
+      NEC_API_CORS_ORIGINS: ${NEC_API_CORS_ORIGINS:-*}
+      NEC_API_PG_AUTO_MIGRATE: ${NEC_API_PG_AUTO_MIGRATE:-true}
+      NEC_API_PG_MAX_CONNS: ${NEC_API_PG_MAX_CONNS:-16}
+      NEC_API_PG_MIN_CONNS: ${NEC_API_PG_MIN_CONNS:-2}
+      NEC_API_RESOLVER_TIMEOUT: ${NEC_API_RESOLVER_TIMEOUT:-30}
+      NEC_API_WRITE_TIMEOUT: ${NEC_API_WRITE_TIMEOUT:-35}
+      # The GraphiQL IDE is unauthenticated. Off unless an operator turns it on for a dev stack.
+      NEC_API_GRAPHI_ENABLED: ${NEC_API_GRAPHI_ENABLED:-false}
+      NEC_API_SFC_CONTRACT: ${NEC_API_SFC_CONTRACT:-0xFC00FACE00000000000000000000000000000000}
+    # Loopback by default. This API has no authentication of its own; publishing it on 0.0.0.0
+    # should be a decision (set EXPLORER_API_BIND_ADDR=0.0.0.0) taken together with putting a
+    # reverse proxy in front of it, not something that happens because a default said so.
+    ports:
+      - "${EXPLORER_API_BIND_ADDR:-127.0.0.1}:${EXPLORER_API_PORT:-16761}:16761"
+    # Lets NEC_NODE_RPC_URL=http://host.docker.internal:18545 reach a node running on the
+    # container host (including one inside WSL) on Linux hosts too, where that name is not
+    # defined by default.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # The image declares a HEALTHCHECK that queries /health, which pings PostgreSQL and reads the
+    # ingest watermark. It is repeated here only to shorten start_period for a stack that is
+    # brought up interactively; delete this block to use the image's own longer window.
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      start_period: 90s
+      retries: 6
+    networks:
+      - explorer-net
+
+  # One-shot schema migration, for deployments that set NEC_API_PG_AUTO_MIGRATE=false and want
+  # migrations to be a deliberate step rather than a startup side effect.
+  #
+  #     docker compose --profile migrate run --rm migrate
+  #
+  # It runs the SAME embedded migrations through the SAME migrate.Up entry point the server uses
+  # at startup, so this is not a second, subtly different schema tool.
+  migrate:
+    profiles: ["migrate"]
+    image: ${APISERVER_IMAGE:-ncog-apiserver:latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NEC_API_PG_URL: ${EXPLORER_PG_DSN:-postgres://${EXPLORER_PG_USER:-explorer}:${EXPLORER_PG_PASSWORD:?set EXPLORER_PG_PASSWORD - there is deliberately no default}@postgres:5432/${EXPLORER_PG_DB:-nec_explorer}?sslmode=disable}
+    command: ["migrate"]
+    restart: "no"
+    networks:
+      - explorer-net
+
+networks:
+  explorer-net:
+    driver: bridge
+
+volumes:
+  explorer_pg_data:

@@ -1,0 +1,104 @@
+# Runs the apiserver binary directly, with no container, for hosts that do not run Docker.
+#
+# INSTALL
+#   make server                                          # -> build/apiserver
+#   install -m0755 build/apiserver /usr/local/bin/apiserver
+#   install -m0644 tokens.json /var/lib/ncog-apiserver/tokens.json
+#   useradd --system --home-dir /var/lib/ncog-apiserver --shell /usr/sbin/nologin ncogapi
+#   install -d -o root -g ncogapi -m0750 /etc/ncog
+#   install -o root -g ncogapi -m0640 doc/example.config.json /etc/ncog/apiserver.json
+#   $EDITOR /etc/ncog/apiserver.json      # set node.url, pg.url, server.bind
+#   install -m0644 deploy/systemd/ncog-apiserver-native.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now ncog-apiserver-native
+#
+# THE CONFIG FILE IS THE ONLY CONFIGURATION SURFACE. The binary has no environment binding
+# (internal/config/load.go builds a viper reader with a file search path and a `-cfg` flag, and
+# there is no AutomaticEnv anywhere in the tree), so there is deliberately no EnvironmentFile
+# here: adding one would look like it configured something. -cfg is passed explicitly rather than
+# relying on the search path, because that path includes the process working directory and
+# $HOME/.ncogearthchainapi, and "which file did it actually load" is not a question an operator
+# should have to answer from strace.
+#
+# 0640 root:ncogapi on the config, not 0644: it carries the PostgreSQL password.
+
+[Unit]
+Description=NCOG Earth Chain GraphQL API server
+Documentation=file:/usr/share/doc/ncog-apiserver/container.md
+After=network-online.target
+Wants=network-online.target
+# If PostgreSQL is on this host, uncomment. If it is remote, leave it out -- the API retries
+# nothing at startup and simply exits, which Restart= below handles.
+#Requires=postgresql.service
+#After=postgresql.service
+
+[Service]
+Type=exec
+User=ncogapi
+Group=ncogapi
+WorkingDirectory=/var/lib/ncog-apiserver
+ExecStart=/usr/local/bin/apiserver -cfg /etc/ncog/apiserver.json
+
+# The server closes its listener on SIGTERM (cmd/apiserver/app.go observeSignals) and then shuts
+# the resolver, the services and the repository down in order. Give that room; killing it mid-shut
+# leaves connection-pool sockets in the server's backend for a statement_timeout's worth of time.
+KillSignal=SIGTERM
+TimeoutStopSec=60
+
+# The process dies when PostgreSQL or the node RPC is unreachable at startup
+# (repository.newRepository -> log.Fatal). That is correct behaviour -- serving from a
+# half-initialised repository would report missing data as fact -- so restarting is the operator's
+# retry loop. 15s, not 1s, so a genuinely misconfigured DSN does not fill the journal.
+Restart=always
+RestartSec=15
+
+# --- hardening ------------------------------------------------------------------------------
+# This process is a read-only observer of the chain: it holds no keys (see the comment on
+# ServerSignature in internal/config/config.go), writes only to PostgreSQL over a socket, and
+# needs the filesystem only to read its config, read tokens.json and -- if contract verification
+# is enabled -- write into the solc temp directory. Everything below follows from that.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+# `systemd-analyze security` flags the default 0022 as the one remaining finding on this unit:
+# anything the process writes -- a log file if log.output is a path, a solc download -- would be
+# world-readable. Nothing it produces is meant to be.
+UMask=0077
+MemoryDenyWriteExecute=no
+RemoveIPC=yes
+# It binds one TCP port and dials TCP (RPC, PostgreSQL) or a UNIX socket (IPC RPC, local
+# PostgreSQL). Nothing else.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+SystemCallErrorNumber=EPERM
+# ProcSubset=pid is deliberately NOT set. It would hide /proc/meminfo and friends, and
+# shirou/gopsutil (pulled in indirectly through go-ethereum's metrics) reads them. The hardening
+# gain is small; a runtime failure inside a metrics collector is not.
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# ProtectSystem=strict makes the whole filesystem read-only. These are the only writable paths:
+#   /var/lib/ncog-apiserver  working directory (and where tokens.json lives)
+#   /tmp/solidity            compiler.temp; PrivateTmp=yes already gives this process its own /tmp
+StateDirectory=ncog-apiserver
+ReadWritePaths=/var/lib/ncog-apiserver
+
+# Modest bump: the pgx pool plus per-request goroutines and the block-scan pipeline open more file
+# descriptors than the 1024 default comfortably allows under load.
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
