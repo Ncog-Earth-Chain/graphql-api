@@ -46,13 +46,14 @@
 #     connect. busybox supplies both, for ~8 MB.
 #
 # ---------------------------------------------------------------------------------------------
-# TOOLCHAIN: graphql-api/go.mod declares `go 1.25.7` and the official golang images ship
+# TOOLCHAIN: graphql-api/go.mod declares `go 1.26.8` (REL-03: in lockstep with ncogearthchain and
+# ncog-evm, because golang.org/x/crypto v0.56.0 itself requires go 1.26.0), and the official golang images ship
 # GOTOOLCHAIN=local, so the base image's own Go must ALREADY satisfy that -- it will not
 # download a newer toolchain. GO_VERSION is pinned to an exact patch for reproducibility; raise
 # it when go.mod's minimum moves past it.
 # ---------------------------------------------------------------------------------------------
 
-ARG GO_VERSION=1.25.14
+ARG GO_VERSION=1.26.8
 ARG ALPINE_VERSION=3.22
 
 
