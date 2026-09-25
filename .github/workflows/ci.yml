@@ -51,12 +51,26 @@ jobs:
       #
       # Adjust `repository` if your ncog-evm lives elsewhere. If it is private, supply a PAT with read
       # access via `token:` -- the default GITHUB_TOKEN only grants access to the current repository.
+      # REL-00b / audit O06: the sibling is checked out at the commit ncog-evm.ref records, not at
+      # whatever ncog-evm's default branch is today. scripts/check-release-pins.sh holds every workflow
+      # that checks ncog-evm out to this file, and a local ../ncog-evm to the same commit.
+      - name: ncog-evm pin
+        id: pin
+        working-directory: graphql-api
+        run: echo "sha=$(cat ncog-evm.ref)" >> "$GITHUB_OUTPUT"
+
       - name: Checkout ncog-evm (sibling)
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository_owner }}/ncog-evm
+          ref: ${{ steps.pin.outputs.sha }}
           path: ncog-evm
           # token: ${{ secrets.NCOG_EVM_TOKEN }}
+
+      # Blocking (REL-00b): the image's bases are digest-pinned, its apk packages version-pinned, and
+      # every ncog-evm checkout reads ncog-evm.ref, whose commit the sibling above must be at.
+      - name: Release pins (blocking)
+        run: sh scripts/check-release-pins.sh
 
       - uses: actions/setup-go@v5
         with:
