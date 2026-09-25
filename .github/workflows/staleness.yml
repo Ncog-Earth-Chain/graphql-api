@@ -1,0 +1,62 @@
+name: Staleness
+
+# OPS-02. A maintenance signal, NOT a PR gate -- which is why this is a separate workflow with no push
+# or pull_request trigger.
+#
+# This module's `go` directive is held to the node's and ncog-evm's by ncog-evm's
+# build/dep-alignment.sh, whose floor is a ratchet: a one-way stop, not a clock. The floor that was the
+# newest Go patch the day it was set stays green in every PR gate while Go ships standard-library fixes
+# past it. This job is the clock.
+#
+# Red here means one of two things, and neither is "somebody's PR is wrong":
+#   - go.mod's go directive is behind the newest published patch of its minor, or on an unsupported
+#     minor (ncog-evm's build/go-floor-staleness.sh, against https://go.dev/dl/?mode=json&include=all);
+#     or
+#   - a CALLED advisory exists in a dependency of THIS module, at the floor-exact toolchain. This
+#     repository has no vulncheck script of its own and no CI step runs govulncheck on it, so this is
+#     ncog-evm's build/vulncheck-deps.sh -- the same design as the node's -- scanning this module's
+#     ./... from the sibling checkout.
+on:
+  schedule:
+    - cron: "17 6 * * 1" # Mondays 06:17 UTC
+  workflow_dispatch:
+
+jobs:
+  staleness:
+    runs-on: ubuntu-latest
+    env:
+      # Floor-exact: setup-go installs the go directive's version from go.mod, and `local` stops the go
+      # command from switching to any other.
+      GOTOOLCHAIN: local
+    # go.mod does `replace github.com/ethereum/go-ethereum => ../ncog-evm`; see ci.yml.
+    defaults:
+      run:
+        working-directory: graphql-api
+    steps:
+      - name: Checkout graphql-api
+        uses: actions/checkout@v4
+        with:
+          path: graphql-api
+
+      # Same sibling checkout as ci.yml. If ci.yml pins it to a ref, pin this one to the same ref.
+      - name: Checkout ncog-evm (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/ncog-evm
+          path: ncog-evm
+          # token: ${{ secrets.NCOG_EVM_TOKEN }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: graphql-api/go.mod
+          cache: true
+          cache-dependency-path: graphql-api/go.sum
+
+      - name: go floor is the newest published patch of a supported minor
+        run: sh ../ncog-evm/build/go-floor-staleness.sh go.mod
+
+      # Runs even when the floor is stale: the two findings are independent, and one red should not
+      # hide the other.
+      - name: govulncheck deps at the floor-exact toolchain
+        if: ${{ !cancelled() }}
+        run: sh ../ncog-evm/build/vulncheck-deps.sh
