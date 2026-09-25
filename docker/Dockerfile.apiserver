@@ -55,9 +55,17 @@
 
 ARG GO_VERSION=1.26.8
 ARG ALPINE_VERSION=3.22
+# REL-00b: both bases are pulled by DIGEST (the tags' multi-arch index digests, resolved 2026-09-25 from
+# registry-1.docker.io); the tag stays for the reader. Moving GO_VERSION or ALPINE_VERSION means moving the
+# digest with it. scripts/check-release-pins.sh (a blocking ci.yml step) refuses a FROM without one.
+ARG BUILDER_DIGEST=sha256:8ac98ca534ac3f51e1f420a1dd2c15e74c75cfa0f23f3ad27eb5d7236c349a0c
+ARG RUNTIME_DIGEST=sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8
+# Exact apk versions (alpine v3.22 main), for the same reason one layer down.
+ARG CA_CERTIFICATES_VERSION=20260909-r0
+ARG TZDATA_VERSION=2026d-r0
 
 
-FROM golang:${GO_VERSION}-alpine AS builder
+FROM golang:${GO_VERSION}-alpine@${BUILDER_DIGEST} AS builder
 
 # -buildvcs=false because the .dockerignore strips both .git directories; without it `go build`
 # tries to stamp VCS info and dies on git's dubious-ownership check inside the container.
@@ -111,13 +119,17 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go build -trimpath -ldflags "-s -w" -o /out/migrate ./cmd/migrate
 
 
-FROM alpine:${ALPINE_VERSION} AS runtime
+FROM alpine:${ALPINE_VERSION}@${RUNTIME_DIGEST} AS runtime
+
+# A global ARG is not visible inside a stage until it is re-declared there.
+ARG CA_CERTIFICATES_VERSION
+ARG TZDATA_VERSION
 
 # ca-certificates: the API dials Postgres (`sslmode=require`/`verify-full`) and, for contract
 #   verification, downloads solc over HTTPS. alpine ships neither a trust store nor tzdata.
 # tzdata: the ingest path formats timestamps; without it every non-UTC location silently
 #   resolves to UTC.
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates=${CA_CERTIFICATES_VERSION} tzdata=${TZDATA_VERSION}
 
 # Run unprivileged. 10002 rather than the node image's 10001 so a host directory shared with a
 # node container cannot end up owned by one identity and written by the other.

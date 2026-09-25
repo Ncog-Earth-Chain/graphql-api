@@ -39,10 +39,19 @@ jobs:
           path: graphql-api
 
       # Same sibling checkout as ci.yml. If ci.yml pins it to a ref, pin this one to the same ref.
+      # REL-00b / audit O06: the sibling is checked out at the commit ncog-evm.ref records, not at
+      # whatever ncog-evm's default branch is today. scripts/check-release-pins.sh holds every workflow
+      # that checks ncog-evm out to this file, and a local ../ncog-evm to the same commit.
+      - name: ncog-evm pin
+        id: pin
+        working-directory: graphql-api
+        run: echo "sha=$(cat ncog-evm.ref)" >> "$GITHUB_OUTPUT"
+
       - name: Checkout ncog-evm (sibling)
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository_owner }}/ncog-evm
+          ref: ${{ steps.pin.outputs.sha }}
           path: ncog-evm
           # token: ${{ secrets.NCOG_EVM_TOKEN }}
 
