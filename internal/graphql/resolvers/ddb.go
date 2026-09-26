@@ -6,6 +6,7 @@ package resolvers
 
 import (
 	"ncogearthchain-api-graphql/internal/repository"
+	"ncogearthchain-api-graphql/internal/types"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -63,6 +64,51 @@ func (rs *rootResolver) DdbQuery(args struct {
 	Limit      int32
 }) (JSONAny, error) {
 	res, err := repository.R().DdbQuery(args.SchemaName, args.TableName, clampDdbLimit(args.Limit))
+	return JSONAny{Value: res}, err
+}
+
+// SignedDdbReadInput is the GraphQL form of a client-signed ddb_signedSelect envelope. Every field is a
+// plain String so it reaches the node exactly as the client encoded it; see types.SignedDdbRead.
+type SignedDdbReadInput struct {
+	SchemaName   string
+	TableName    string
+	JoinTables   *[]string
+	From         string
+	Timestamp    string
+	Nonce        string
+	CallerPubKey string
+	CallerSig    string
+}
+
+// envelope copies the input into the forwarded envelope, field for field and nothing else.
+func (in SignedDdbReadInput) envelope() *types.SignedDdbRead {
+	env := &types.SignedDdbRead{
+		SchemaName:   in.SchemaName,
+		TableName:    in.TableName,
+		From:         in.From,
+		Timestamp:    in.Timestamp,
+		Nonce:        in.Nonce,
+		CallerPubKey: in.CallerPubKey,
+		CallerSig:    in.CallerSig,
+	}
+	if in.JoinTables != nil {
+		env.JoinTables = *in.JoinTables
+	}
+	return env
+}
+
+// DdbSignedSelect resolves the ddbSignedSelect query — rows of a reader-role contract, read with a
+// signature the CLIENT made. The API holds no reader's key and never signs: it forwards the envelope
+// verbatim to the node's ddb_signedSelect, which verifies it and authorizes the signer.
+func (rs *rootResolver) DdbSignedSelect(args struct {
+	Read    SignedDdbReadInput
+	Options *JSONAny
+}) (JSONAny, error) {
+	var opts interface{}
+	if args.Options != nil {
+		opts = args.Options.Value
+	}
+	res, err := repository.R().DdbSignedSelect(args.Read.envelope(), opts)
 	return JSONAny{Value: res}, err
 }
 

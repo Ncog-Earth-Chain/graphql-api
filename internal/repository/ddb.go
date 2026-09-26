@@ -1,6 +1,10 @@
 package repository
 
-import "github.com/ethereum/go-ethereum/common"
+import (
+	"ncogearthchain-api-graphql/internal/types"
+
+	"github.com/ethereum/go-ethereum/common"
+)
 
 // ddb.go exposes the node's DDB (Decentralized DataBase) introspection to the GraphQL layer by delegating
 // to the RPC bridge. Read-only; no local cache (DDB state changes on finality, so callers read live).
@@ -30,4 +34,11 @@ func (p *proxy) DdbConsensusStats() (interface{}, error) { return p.rpc.DdbConse
 // DdbEndorsementStatus returns the endorsement status for a request id.
 func (p *proxy) DdbEndorsementStatus(requestID common.Hash) (interface{}, error) {
 	return p.rpc.DdbEndorsementStatus(requestID)
+}
+
+// DdbSignedSelect forwards a client-signed read to the node verbatim and returns its rows. Never
+// cached: unlike every other call here, the answer depends on who signed, so a cached result would
+// hand one reader's rows to the next caller.
+func (p *proxy) DdbSignedSelect(read *types.SignedDdbRead, options interface{}) (interface{}, error) {
+	return p.rpc.DdbSignedSelect(read, options)
 }
