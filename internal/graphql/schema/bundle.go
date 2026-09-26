@@ -275,6 +275,14 @@ type Query {
     # Simple row fetch (up to limit rows).
     ddbQuery(schemaName: String!, tableName: String!, limit: Int = 100): JSONAny!
 
+    # Rows of a contract that declares a reader role, read with a signature made by the READER.
+    # ddbSelect / ddbQuery are refused for such a contract; this is how its readers get the rows.
+    # The API never signs and never changes the envelope: it is forwarded verbatim to the node's
+    # ddb_signedSelect, which verifies the ML-DSA-87 signature and authorizes the signer. The
+    # options arg is the UNSIGNED query, same shape as ddbSelect's; its joins may name only tables
+    # in the signed set (tableName plus joinTables).
+    ddbSignedSelect(read: SignedDdbReadInput!, options: JSONAny): JSONAny!
+
     # DDB storage stats (schema / table / operation counts).
     ddbStats: JSONAny!
 
@@ -745,6 +753,35 @@ type DdbContractList {
 type DdbContractListEdge {
     cursor: Cursor!
     contract: DdbContract!
+}
+
+# SignedDdbReadInput is a client-signed ddb_signedSelect envelope: exactly the fields of the node's
+# SignedDdbRead, all of them inside the signature (the chain-ID-bound NEC-DDB-READ preimage). Values
+# are strings, forwarded exactly as sent.
+input SignedDdbReadInput {
+    "Contract db_name, as returned by ddbSchema."
+    schemaName: String!
+
+    "Base table of the read."
+    tableName: String!
+
+    "Every other table the query joins: sorted, no duplicates, excluding tableName."
+    joinTables: [String!]
+
+    "The reading account. Must be the address of callerPubKey."
+    from: String!
+
+    "Unix seconds, hex quantity."
+    timestamp: String!
+
+    "Single-use value, hex quantity."
+    nonce: String!
+
+    "Raw ML-DSA-87 public key, hex."
+    callerPubKey: String!
+
+    "ML-DSA-87 signature over the signed-read hash, hex, no EIP-191 prefix."
+    callerSig: String!
 }
 
 # Represents epoch information.

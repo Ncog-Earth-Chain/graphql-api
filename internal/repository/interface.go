@@ -524,6 +524,10 @@ type Repository interface {
 	// DdbQuery returns up to limit rows from a table.
 	DdbQuery(schemaName, tableName string, limit int) (interface{}, error)
 
+	// DdbSignedSelect forwards a client-signed read envelope unchanged to the node's
+	// ddb_signedSelect and returns the rows. The API never signs, alters or caches it.
+	DdbSignedSelect(read *types.SignedDdbRead, options interface{}) (interface{}, error)
+
 	// DdbStats returns DDB storage stats.
 	DdbStats() (interface{}, error)
 

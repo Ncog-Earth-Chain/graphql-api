@@ -271,6 +271,14 @@ type Query {
     # Simple row fetch (up to limit rows).
     ddbQuery(schemaName: String!, tableName: String!, limit: Int = 100): JSONAny!
 
+    # Rows of a contract that declares a reader role, read with a signature made by the READER.
+    # ddbSelect / ddbQuery are refused for such a contract; this is how its readers get the rows.
+    # The API never signs and never changes the envelope: it is forwarded verbatim to the node's
+    # ddb_signedSelect, which verifies the ML-DSA-87 signature and authorizes the signer. The
+    # options arg is the UNSIGNED query, same shape as ddbSelect's; its joins may name only tables
+    # in the signed set (tableName plus joinTables).
+    ddbSignedSelect(read: SignedDdbReadInput!, options: JSONAny): JSONAny!
+
     # DDB storage stats (schema / table / operation counts).
     ddbStats: JSONAny!
 

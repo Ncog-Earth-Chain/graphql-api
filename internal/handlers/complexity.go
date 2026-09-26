@@ -56,8 +56,9 @@ var fieldWeights = map[string]int{
 	"balanceOf":      5,
 
 	// node-local Postgres reads
-	"ddbSelect": 10,
-	"ddbQuery":  10,
+	"ddbSelect":       10,
+	"ddbQuery":        10,
+	"ddbSignedSelect": 10,
 }
 
 // listArgs are the argument names that set how many items a field returns. The

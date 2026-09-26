@@ -7,6 +7,9 @@ package rpc
 
 import (
 	"context"
+	"errors"
+
+	"ncogearthchain-api-graphql/internal/types"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -62,4 +65,29 @@ func (br *NecBridge) DdbEndorsementStatus(requestID common.Hash) (interface{}, e
 	var result interface{}
 	err := br.rpc.CallContext(context.Background(), &result, "ddb_getEndorsementStatus", requestID)
 	return result, err
+}
+
+// DdbSignedSelect forwards a client-signed read to the node's ddb_signedSelect and returns its rows.
+// This is the only way the API can serve rows of a contract that declares a reader role, and it does
+// so as PASS-THROUGH: the envelope goes out exactly as the client built it, and options (the unsigned
+// query) rides alongside untouched. The bridge never constructs, alters or signs an envelope, and the
+// result is never cached, since the rows belong to the one reader who signed for them.
+//
+// An envelope with no signature or no public key is refused here, before any network call: it is not
+// a signed read, and there is nothing the node could do with it but refuse it too.
+func (br *NecBridge) DdbSignedSelect(read *types.SignedDdbRead, options interface{}) (interface{}, error) {
+	if read == nil {
+		return nil, errors.New("signed read envelope is required")
+	}
+	if isEmptyHex(read.CallerSig) || isEmptyHex(read.CallerPubKey) {
+		return nil, errors.New("read must be signed by the reader (callerSig and callerPubKey are required); the API never signs reads")
+	}
+	var result interface{}
+	err := br.rpc.CallContext(context.Background(), &result, "ddb_signedSelect", read, options)
+	return result, err
+}
+
+// isEmptyHex reports whether a hex byte string carries no bytes at all ("" or a bare "0x").
+func isEmptyHex(s string) bool {
+	return s == "" || s == "0x" || s == "0X"
 }
