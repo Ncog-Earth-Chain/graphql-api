@@ -70,6 +70,18 @@ type Transaction struct {
 	// Input represents the data send along with the transaction.
 	InputData hexutil.Bytes `json:"input"`
 
+	// InputRedacted is set, and InputData empty, when this transaction's calldata is a DDB commit the
+	// node will not serve to an anonymous caller (SEC-07; ethapi.RPCTransaction.InputRedacted).
+	//
+	// The JSON name is the NODE's, so every fetch of a transaction from the node fills this in for
+	// free -- the single loader, the batched ingest loader, and the in-memory cache, which serialises
+	// with the same tags. A transaction read back from the local INDEX has it unset and its calldata
+	// as it was indexed, which is why the read path re-asks the node (repository/ddb_verdict.go):
+	// rows indexed before SEC-07, or by a node whose DDB was off, hold bytes that must not be served.
+	//
+	// Not persisted. The withheld record lives in its own block-keyed table, not on the tx row.
+	InputRedacted *DdbWithheld `json:"inputRedacted,omitempty"`
+
 	// LargeInput indicates the input data block is large and needs to be loaded separately.
 	LargeInput bool `json:"-"`
 

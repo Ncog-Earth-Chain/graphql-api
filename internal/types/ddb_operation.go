@@ -86,7 +86,19 @@ type DdbOperation struct {
 	// Payload is the operation JSON verbatim. Its shape is user-defined -- a CreateSchema
 	// carries table and column definitions, an InsertData carries rows -- so it stays
 	// dynamic rather than being forced into a fixed type it does not have.
-	Payload json.RawMessage `json:"payload"`
+	//
+	// EMPTY when Withheld is set. This is the field SEC-07c exists for: the procedure
+	// arguments of a CallProcedure op ARE the row values, so serving it unauthenticated
+	// serves exactly what the node's read gate refuses.
+	Payload json.RawMessage `json:"payload,omitempty"`
+
+	// Withheld is set, and Payload emptied, when the node will not serve this commit's
+	// calldata to an anonymous caller. Resolved on every READ, never trusted from the
+	// index: a row indexed before SEC-07, or by a node whose DDB was off, holds a payload
+	// that must not be served now (repository/ddb_verdict.go).
+	//
+	// Not a stored column. It is the node's verdict as of this request.
+	Withheld *DdbWithheld `json:"withheld,omitempty"`
 
 	TimeStamp hexutil.Uint64 `json:"timestamp"`
 

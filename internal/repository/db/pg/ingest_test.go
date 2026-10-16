@@ -61,6 +61,7 @@ func cleanDB(t *testing.T, s *Store) {
 	for _, q := range []string{
 		"DELETE FROM tx_log", "DELETE FROM tx_account", "DELETE FROM tx",
 		"DELETE FROM ddb_operation", "DELETE FROM ddb_endorsement", "DELETE FROM ddb_contract",
+		"DELETE FROM ddb_withheld_commit", "DELETE FROM ddb_verdict_pending",
 		// contract belongs here for the same reason as the rest -- the ingest path writes
 		// it -- and its absence was a live cross-test hazard rather than a tidiness issue:
 		// contract carries UNIQUE (block_number, tx_index, deploy_seq), so rows left by one

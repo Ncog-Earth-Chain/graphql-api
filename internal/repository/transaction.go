@@ -133,6 +133,11 @@ func (p *proxy) IndexedTransaction(ctx context.Context, hash *common.Hash) (*typ
 	}
 
 	if trx := p.cache.PullTransaction(hash); trx != nil {
+		// SEC-07c: the cache and the index both hold the calldata as it was INDEXED, which for a DDB
+		// commit is the tenant's operation verbatim. Nothing but the node may say whether it is
+		// servable now, so ask (PullTransaction decodes a fresh struct per call, so this mutates
+		// nothing shared).
+		p.ddbFilterTxInput(ctx, trx)
 		return trx, nil
 	}
 
@@ -143,6 +148,7 @@ func (p *proxy) IndexedTransaction(ctx context.Context, hash *common.Hash) (*typ
 		p.log.Errorf("can not read transaction %s from the index; falling back to the node: %s",
 			hash.String(), err.Error())
 	} else if trx != nil {
+		p.ddbFilterTxInput(ctx, trx)
 		return trx, nil
 	}
 
@@ -213,6 +219,8 @@ func (p *proxy) Transactions(ctx context.Context, cursor *string, count int32) (
 
 		// does it make sense? if so, make the list from it
 		if len(tl) > 0 {
+			// SEC-07c: cached calldata is indexed calldata; re-filter before it is served.
+			p.ddbFilterTxInput(ctx, tl...)
 			return &types.TransactionList{
 				Collection: tl,
 				Total:      uint64(p.MustEstimateTransactionsCount()),
@@ -229,6 +237,8 @@ func (p *proxy) Transactions(ctx context.Context, cursor *string, count int32) (
 	if err != nil {
 		return nil, err
 	}
+	// SEC-07c: indexed calldata, so the same re-filter the single read does.
+	p.ddbFilterTxInput(ctx, rows...)
 	total, err := p.pg.TransactionsCount(ctx)
 	if err != nil {
 		return nil, err

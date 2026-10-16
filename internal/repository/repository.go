@@ -75,6 +75,11 @@ type proxy struct {
 	log logger.Logger
 	cfg *config.Config
 
+	// ddbVerdicts caches the node's per-commit DDB read verdicts for a second, so an anonymous
+	// caller hammering one transaction hash cannot drive a node Postgres query per request
+	// (SEC-07c, ddb_verdict.go).
+	ddbVerdicts *ddbVerdictCache
+
 	// transaction estimator counter
 	txCount uint64
 
@@ -112,6 +117,8 @@ func newRepository() Repository {
 		rpc:   rpcBridge,
 		log:   log,
 		cfg:   cfg,
+
+		ddbVerdicts: newDdbVerdictCache(),
 
 		// get the map of governance contracts
 		govContracts: governanceContractsMap(&cfg.Governance),

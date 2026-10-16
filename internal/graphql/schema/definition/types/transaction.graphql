@@ -46,7 +46,17 @@ type Transaction {
     # Contains smart contract byte code if this is contract creation.
     # Contains encoded contract state mutating function call if recipient
     # is a contract address.
+    #
+    # EMPTY, with inputRedacted set, when this is a DDB commit transaction whose contract the node
+    # will not serve to an anonymous caller: a commit carries the tenant's operation -- and therefore
+    # its row values -- verbatim in its calldata.
     inputData: Bytes!
+
+    # inputRedacted states why inputData was withheld, and is NULL when it was not.
+    #
+    # An empty inputData with this NULL is a transaction that genuinely carries no calldata. The two
+    # must not be confused, which is why this is a descriptor rather than an empty field.
+    inputRedacted: DdbWithheld
 
     # BlockHash is the hash of the block this transaction was assigned to.
     # Null if the transaction is pending.
