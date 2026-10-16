@@ -156,6 +156,46 @@ func isHexASCII(s string) bool {
 	return len(s) > 0
 }
 
+// DdbOperationTargetFromJSON is DdbOperationTarget for an operation read straight off the wire, which
+// states its own type and schema_name. Used on the calldata the node SERVES, to check that the
+// operation those authorized bytes carry is the one the row being served claims to be.
+func DdbOperationTargetFromJSON(operationJSON []byte) (string, error) {
+	var op struct {
+		Type       int16  `json:"type"`
+		SchemaName string `json:"schema_name"`
+	}
+	if err := json.Unmarshal(operationJSON, &op); err != nil {
+		return "", errDdbOperationUnparseable
+	}
+	return DdbOperationTarget(op.Type, op.SchemaName, operationJSON)
+}
+
+// DdbIndexedTarget is DdbOperationTarget for an operation read out of the explorer's own index, where
+// the carried definition's contract_address has already been shredded into its own column
+// (ddb_operation.contract_addr, extracted at ingest from the operation's contractAddress or its
+// data.contract_address).
+//
+// Same rule, different input, and the rule is the whole point: a deploy's or an upgrade's schema_name
+// column holds the HUMAN contract name, so keying on it would look up a contract the registry does not
+// have and read as public. A row that names no contract address for a deploy, or no schema for
+// anything else, cannot be bound to a verdict and must be withheld.
+func DdbIndexedTarget(opType int16, schemaName string, contractAddr *common.Address) (string, error) {
+	if opType != DdbOpCreateSchema && opType != DdbOpUpdateSchema {
+		if schemaName == "" {
+			return "", errDdbNoSchemaNamed
+		}
+		return schemaName, nil
+	}
+	if contractAddr == nil {
+		return "", errDdbNoContractAddress
+	}
+	dbName := DdbDeriveDbName(contractAddr.Hex())
+	if dbName == "" {
+		return "", errDdbNoContractAddress
+	}
+	return dbName, nil
+}
+
 // DdbOperationTarget resolves the schema (db_name) whose read policy governs a committed DDB
 // operation, the way the node's ddb.ReadPolicyTarget resolves it:
 //

@@ -21,6 +21,25 @@ type DdbEndorsement struct{ types.DdbEndorsement }
 // DdbContract resolves a data contract.
 type DdbContract struct{ types.DdbContract }
 
+// DdbWithheld resolves the descriptor that stands in for calldata the node would not serve. It
+// mirrors the node's `inputRedacted` field for field, so a client can treat the explorer's refusal
+// and the node's own as one thing.
+type DdbWithheld struct{ types.DdbWithheld }
+
+// Schema resolves the data-contract schema the withheld operation targets, or nil when it could not
+// be resolved at all (an undecodable commit).
+//
+// For a deploy or an upgrade this is the schema the contract_address DERIVES, not the human contract
+// name the operation's schema_name carries -- see types.DdbIndexedTarget for why that distinction is
+// the difference between a verdict and a leak.
+func (w *DdbWithheld) Schema() *string {
+	if w.DdbWithheld.Schema == "" {
+		return nil
+	}
+	s := w.DdbWithheld.Schema
+	return &s
+}
+
 // DdbOperationList resolves a page of operations.
 type DdbOperationList struct {
 	list    []*types.DdbOperation
@@ -221,12 +240,36 @@ func (op *DdbOperation) Version() *string {
 //
 // Stays dynamic because the operation's shape is user-defined; a fixed type would be a
 // claim the data does not support.
+//
+// WITHHELD (SEC-07c) when the node will not serve this commit's calldata to an anonymous
+// caller: the operation JSON of a DDB commit IS the tenant's data -- the procedure arguments
+// of a CallProcedure op are the row values, and a deploy's definition is the contract's
+// tables, roles, reader accounts and procedure bodies -- so this field republished exactly
+// what ddb_select and the node's chain-history RPCs refuse. The field stays non-null and
+// carries the descriptor instead of the data, which is the same trade the node makes on
+// `input`/`inputRedacted`: a caller learns that something is there, how big it is and what it
+// hashes to, but not what it says. Read the typed `withheld` field rather than parsing this.
 func (op *DdbOperation) Payload() JSONAny {
+	if w := op.DdbOperation.Withheld; w != nil {
+		return JSONAny{Value: map[string]interface{}{"withheld": w}}
+	}
 	var v interface{}
 	if err := jsonUnmarshal(op.DdbOperation.Payload, &v); err != nil {
 		return JSONAny{Value: nil}
 	}
 	return JSONAny{Value: v}
+}
+
+// Withheld resolves why this operation's payload was not served, or nil when it was.
+//
+// Nil is the ONLY "it was served" signal a client should use. `payload` is non-null and
+// carries a {withheld: ...} object when the data is withheld, which a client that does not
+// check this field would otherwise read as the operation's own JSON.
+func (op *DdbOperation) Withheld() *DdbWithheld {
+	if op.DdbOperation.Withheld == nil {
+		return nil
+	}
+	return &DdbWithheld{DdbWithheld: *op.DdbOperation.Withheld}
 }
 
 // Endorsement resolves the quorum proof.

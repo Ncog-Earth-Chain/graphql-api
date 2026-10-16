@@ -14,13 +14,29 @@ import (
 // The node serves no DDB history RPC, so this is the only place it exists: the records
 // were captured from the commit-transaction stream at ingest and cannot be recovered
 // afterwards.
+//
+// The METADATA is the explorer's to serve; the PAYLOAD is not. Every row's operation JSON goes
+// back through the node's read verdict before it leaves here (SEC-07c, ddb_verdict.go), because
+// the payload of a DDB commit IS the tenant's data -- the procedure arguments of a CallProcedure
+// op are the row values -- and the index holds rows captured before the node withheld any of it.
 func (p *proxy) DdbOperations(ctx context.Context, c pg.DdbOpCriteria, cursor *string, count int32) ([]*types.DdbOperation, error) {
-	return p.pg.DdbOperations(ctx, c, derefCursor(cursor), count)
+	ops, err := p.pg.DdbOperations(ctx, c, derefCursor(cursor), count)
+	if err != nil {
+		return nil, err
+	}
+	p.ddbFilterOperations(ctx, ops)
+	return ops, nil
 }
 
-// DdbOperationAt returns the DDB operation committed at a block position.
+// DdbOperationAt returns the DDB operation committed at a block position, with its payload filtered
+// through the node's read verdict exactly as the list is.
 func (p *proxy) DdbOperationAt(ctx context.Context, blockNumber, txIndex uint64) (*types.DdbOperation, error) {
-	return p.pg.DdbOperationAt(ctx, blockNumber, txIndex)
+	op, err := p.pg.DdbOperationAt(ctx, blockNumber, txIndex)
+	if err != nil || op == nil {
+		return op, err
+	}
+	p.ddbFilterOperations(ctx, []*types.DdbOperation{op})
+	return op, nil
 }
 
 // DdbContracts returns the known data contracts, most recently active first.

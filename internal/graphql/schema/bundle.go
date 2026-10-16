@@ -649,7 +649,21 @@ type DdbOperation {
     # operation's shape is USER-DEFINED (a CreateSchema carries table and column
     # definitions, an InsertData carries rows), so a fixed type would be a lie. Consensus
     # metadata has a fixed shape and is typed above; row data does not and is not.
+    #
+    # WITHHELD when the node will not serve this commit's calldata to an anonymous caller.
+    # The operation JSON of a DDB commit IS the tenant's data -- the procedure arguments of
+    # a CallProcedure op are the row values, and a deploy's definition is the contract's
+    # tables, roles, reader accounts and procedure bodies -- so a contract that declares a
+    # "reader" role, or has been tombstoned, has this field replaced by
+    # "{withheld: {reason, schema, size, keccak256}}". CHECK "withheld" BELOW rather than
+    # parsing this: the field is non-null either way, so a client that does not look will
+    # read the descriptor as though it were the operation.
     payload: JSONAny!
+
+    # withheld states why payload was not served, and is NULL when it was.
+    #
+    # This is the only "the data is here" signal a client should trust.
+    withheld: DdbWithheld
 
     timestamp: Long!
 
@@ -658,6 +672,35 @@ type DdbOperation {
 
     # transaction resolves the commit transaction that carried this operation.
     transaction: Transaction
+}
+
+# DdbWithheld describes transaction calldata this API did not serve.
+#
+# It mirrors the node's own "inputRedacted" descriptor field for field, so a client can treat the
+# explorer's refusal and the node's as one thing. What it keeps is what an auditor still needs: how
+# much was withheld, what it hashes to -- so a party who obtains the bytes through an authorized read
+# (ddbSignedSelect) can bind them to the chain -- and why.
+type DdbWithheld {
+    # reason is "reader-role" (the contract declares a reader role), "tombstoned" (the contract was
+    # deleted; the data still exists and the deletion is reversible), "undecodable" (the calldata
+    # carries a DDB commit prefix but does not decode, so its contract cannot be named) or
+    # "undecidable" (the node could not decide).
+    #
+    # The first three are verdicts on the CONTRACT. "undecidable" is a statement about the NODE -- the
+    # block carrying the commit is above its contiguous applied frontier, the commit is still pending,
+    # or its DDB is off or its PostgreSQL unreachable -- and is TRANSIENT: the same commit is served
+    # verbatim once the node has applied its block, if the contract is public. Retry rather than cache.
+    reason: String!
+
+    # schema is the data-contract schema (db_name) the operation targets, when it could be resolved.
+    #
+    # For a deploy or an upgrade this is the schema its contract_address DERIVES, not the human
+    # contract name the operation's schema_name carries.
+    schema: String
+
+    # size is the byte length of the withheld data, and keccak256 its hash.
+    size: Long!
+    keccak256: Bytes32!
 }
 
 # DdbEndorsement is the validator quorum proof that authorised an operation.
@@ -1887,7 +1930,17 @@ type Transaction {
     # Contains smart contract byte code if this is contract creation.
     # Contains encoded contract state mutating function call if recipient
     # is a contract address.
+    #
+    # EMPTY, with inputRedacted set, when this is a DDB commit transaction whose contract the node
+    # will not serve to an anonymous caller: a commit carries the tenant's operation -- and therefore
+    # its row values -- verbatim in its calldata.
     inputData: Bytes!
+
+    # inputRedacted states why inputData was withheld, and is NULL when it was not.
+    #
+    # An empty inputData with this NULL is a transaction that genuinely carries no calldata. The two
+    # must not be confused, which is why this is a descriptor rather than an empty field.
+    inputRedacted: DdbWithheld
 
     # BlockHash is the hash of the block this transaction was assigned to.
     # Null if the transaction is pending.

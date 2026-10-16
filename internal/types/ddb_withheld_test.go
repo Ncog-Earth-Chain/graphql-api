@@ -1,6 +1,10 @@
 package types
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ethereum/go-ethereum/common"
+)
 
 // SEC-07c: the contract a committed DDB operation belongs to, and whether the node's refusal to
 // serve its calldata is a settled verdict or a transient one.
@@ -89,6 +93,61 @@ func TestDdbDeriveDbNameMirrorsTheNode(t *testing.T) {
 	for in, want := range cases {
 		if got := DdbDeriveDbName(in); got != want {
 			t.Errorf("DdbDeriveDbName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestDdbIndexedTargetKeysSchemaOpsOnTheDerivedName(t *testing.T) {
+	// The index row of a deploy or an upgrade holds the HUMAN name in schema_name and the contract
+	// address in its own column, so the target comes from the address.
+	addr := common.HexToAddress("0x00000000000000000000000000000000000000a1")
+	for _, opType := range []int16{DdbOpCreateSchema, DdbOpUpdateSchema} {
+		got, err := DdbIndexedTarget(opType, "payroll", &addr)
+		if err != nil {
+			t.Fatalf("op type %d: %v", opType, err)
+		}
+		if want := "c_00000000000000000000000000000000000000a1"; got != want {
+			t.Errorf("op type %d target = %q, want %q", opType, got, want)
+		}
+	}
+	// A deploy row with no contract address cannot be bound to a verdict at all.
+	if got, err := DdbIndexedTarget(DdbOpCreateSchema, "payroll", nil); err == nil {
+		t.Errorf("deploy row with no contract address resolved to %q; it must be withheld", got)
+	}
+	// Everything else is keyed on the schema it names, and a row naming none is unresolvable.
+	got, err := DdbIndexedTarget(DdbOpCallProcedure, "c_00000000000000000000000000000000000000a2", nil)
+	if err != nil || got != "c_00000000000000000000000000000000000000a2" {
+		t.Errorf("call row target = %q, %v; want the schema it names", got, err)
+	}
+	if _, err := DdbIndexedTarget(DdbOpCallProcedure, "", &addr); err == nil {
+		t.Error("a call row naming no schema resolved; it must be withheld")
+	}
+}
+
+func TestDdbOperationTargetFromJSONReadsTheOperationsOwnType(t *testing.T) {
+	// The node's served calldata states its own type, so the target is resolved from the bytes alone.
+	deploy := []byte(`{"type":0,"schema_name":"payroll","data":{"contract_address":"0x00000000000000000000000000000000000000a1"}}`)
+	if got, err := DdbOperationTargetFromJSON(deploy); err != nil || got != "c_00000000000000000000000000000000000000a1" {
+		t.Errorf("deploy target = %q, %v; want the derived name", got, err)
+	}
+	call := []byte(`{"type":7,"schema_name":"c_00000000000000000000000000000000000000a2"}`)
+	if got, err := DdbOperationTargetFromJSON(call); err != nil || got != "c_00000000000000000000000000000000000000a2" {
+		t.Errorf("call target = %q, %v; want the schema it names", got, err)
+	}
+	if _, err := DdbOperationTargetFromJSON([]byte(`not json`)); err == nil {
+		t.Error("unparseable operation JSON resolved a target")
+	}
+}
+
+func TestIsDdbCommitTxDataMatchesOnPrefixAlone(t *testing.T) {
+	for _, in := range [][]byte{[]byte("DDBR\x01"), []byte("DDBE{"), []byte("DDBR")} {
+		if !IsDdbCommitTxData(in) {
+			t.Errorf("%q not recognised as a DDB commit", in)
+		}
+	}
+	for _, in := range [][]byte{nil, []byte("DDB"), []byte("0xdeadbeef"), []byte("ddbr....")} {
+		if IsDdbCommitTxData(in) {
+			t.Errorf("%q recognised as a DDB commit", in)
 		}
 	}
 }

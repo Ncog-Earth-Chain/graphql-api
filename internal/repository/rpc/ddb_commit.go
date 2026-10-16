@@ -10,13 +10,17 @@ import (
 	"errors"
 	"fmt"
 
+	"ncogearthchain-api-graphql/internal/types"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
+// The 4-byte prefixes live on the domain type (types.IsDdbCommitTxData uses them for the cheap
+// "is this a commit at all" test the read path runs before it asks the node anything).
 const (
-	ddbCommitPrefixJSON = "DDBE" // legacy
-	ddbCommitPrefixRLP  = "DDBR" // current
+	ddbCommitPrefixJSON = types.DdbCommitPrefixJSON // legacy
+	ddbCommitPrefixRLP  = types.DdbCommitPrefixRLP  // current
 )
 
 // The *RLP structs MIRROR the node's proofRLP/endorsementRLP/sigRLP EXACTLY — RLP is positional, so field

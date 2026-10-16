@@ -2,6 +2,7 @@
 package resolvers
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math/big"
@@ -62,6 +63,21 @@ func (rs *rootResolver) SendTransaction(args *struct{ Tx hexutil.Bytes }) (*Tran
 	}
 
 	return NewTransaction(trx), nil
+}
+
+// InputRedacted resolves why this transaction's calldata was not served, or nil when it was.
+//
+// SEC-07c. A DDB commit transaction carries the tenant's operation VERBATIM in its calldata, so
+// `inputData` is withheld for a commit whose contract the node will not serve to an anonymous caller.
+// The descriptor is the node's own (ethapi.RPCRedactedInput): the size and keccak256 of the withheld
+// bytes, so a party who obtains them through an authorized read can bind them to the chain, plus the
+// reason. An empty `inputData` with this field nil is a transaction that genuinely carries no
+// calldata; the two must not be confused.
+func (trx *Transaction) InputRedacted() *DdbWithheld {
+	if trx.Transaction.InputRedacted == nil {
+		return nil
+	}
+	return &DdbWithheld{DdbWithheld: *trx.Transaction.InputRedacted}
 }
 
 // Sender resolves sender's account of the transaction.
@@ -238,6 +254,44 @@ func (trx *Transaction) TracingAvailable(ctx context.Context) (bool, error) {
 //
 // Always read together with tracingAvailable -- see the note there on why [] is ambiguous.
 func (trx *Transaction) InternalTransactions(ctx context.Context) ([]*InternalTransaction, error) {
+	itxs, err := trx.internalTransactions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	trx.redactInternalInputs(itxs)
+	return itxs, nil
+}
+
+// redactInternalInputs withholds the `input` of trace frames that would re-publish DDB commit
+// calldata this transaction is not serving.
+//
+// SEC-07c, and this is the third field that carries tx input -- less obvious than `inputData` and
+// `payload` because it comes from a different RPC. The node's SEC-07 redaction covers the eth_*,
+// nec_* and dag_* formatters; the `debug` namespace it does not. debug_traceTransaction's TOP-LEVEL
+// frame carries the transaction's own calldata verbatim, so the explorer's callTracer path (which
+// starts at the top frame's children) is safe while the OpenEthereum-style flat fallback -- which
+// takes every trace in the list, top frame included -- is not.
+//
+// Two rules, both keyed on what this transaction is already allowed to serve rather than on a policy
+// of its own: every frame is blanked when the transaction's own calldata was withheld, and any single
+// frame carrying DDB commit data the transaction is not itself serving is blanked on its own. The
+// second covers a trace fetched for a transaction whose calldata the node emptied without a
+// descriptor, and a nested frame that somehow carries a commit proof.
+func (trx *Transaction) redactInternalInputs(itxs []*InternalTransaction) {
+	withheld := trx.Transaction.InputRedacted != nil
+	for _, itx := range itxs {
+		if itx == nil {
+			continue
+		}
+		if withheld || (types.IsDdbCommitTxData(itx.Input) && !bytes.Equal(itx.Input, trx.InputData)) {
+			itx.Input = nil
+		}
+	}
+}
+
+// internalTransactions decodes the trace into call frames. The redaction above is applied by the
+// exported resolver, so a new caller cannot reach the frames without it.
+func (trx *Transaction) internalTransactions(ctx context.Context) ([]*InternalTransaction, error) {
 	result, err := trx.trace(ctx)
 	if err != nil {
 		return nil, err
