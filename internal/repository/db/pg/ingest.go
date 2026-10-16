@@ -157,6 +157,8 @@ var purgeOrder = []string{
 	"reward_claim",
 	"ddb_operation",
 	"ddb_endorsement",
+	"ddb_withheld_commit",
+	"ddb_verdict_pending",
 	"tx",
 }
 
@@ -353,6 +355,9 @@ func (s *Store) writeTransactions(ctx context.Context, q Querier, txs []*types.T
 	// commit together.
 	for _, t := range txs {
 		if err := s.writeDdbCommit(ctx, q, t, int64(*t.BlockNumber), int32(*t.Index)); err != nil {
+			return err
+		}
+		if err := s.writeDdbWithheld(ctx, q, t, int64(*t.BlockNumber), int32(*t.Index)); err != nil {
 			return err
 		}
 	}
