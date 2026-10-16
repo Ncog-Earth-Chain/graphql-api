@@ -580,6 +580,10 @@ type Repository interface {
 	// inserts eventually fail and tx_log rows fall into an unprunable default partition.
 	MaintainPartitions(ctx context.Context, head uint64) error
 
+	// RetryDdbPendingVerdicts re-asks the node about DDB commits it answered `undecidable` at ingest
+	// (SEC-07c) and indexes the ones it now serves; it returns how many queued commits were resolved.
+	RetryDdbPendingVerdicts(ctx context.Context) (int, error)
+
 	// Close and cleanup the repository.
 	Close()
 

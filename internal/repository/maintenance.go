@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"ncogearthchain-api-graphql/internal/types"
 )
 
 // Database maintenance policy.
@@ -117,4 +119,35 @@ func (p *proxy) MaintainPartitions(ctx context.Context, head uint64) error {
 		}
 	}
 	return nil
+}
+
+// ddbPendingBatch bounds one retry pass: each queued commit costs the node one transaction lookup (and,
+// for a mined one, its receipt), so a backlog drains over several ticks rather than in one burst.
+const ddbPendingBatch = 64
+
+// RetryDdbPendingVerdicts re-fetches queued `undecidable` DDB commits (SEC-07c). The node's answer is
+// applied as-is: served -> indexed, a final reason -> recorded withheld, anything else -> backed off.
+// A fetch that fails is an attempt like any other, so an unreachable node backs the queue off rather
+// than spinning on it.
+func (p *proxy) RetryDdbPendingVerdicts(ctx context.Context) (int, error) {
+	pending, err := p.pg.DdbPendingVerdicts(ctx, time.Now(), ddbPendingBatch)
+	if err != nil {
+		return 0, err
+	}
+	resolved := 0
+	for _, q := range pending {
+		hash := q.TxHash
+		trx, err := p.rpc.Transaction(&hash)
+		if err != nil {
+			p.log.Debugf("DDB verdict re-fetch for %s failed; backing off; %s", hash.String(), err.Error())
+			trx = nil
+		}
+		if err := p.pg.ResolveDdbPending(ctx, q, trx); err != nil {
+			return resolved, err
+		}
+		if trx != nil && (trx.DDB != nil || (trx.InputRedacted != nil && types.DdbWithholdIsFinal(trx.InputRedacted.Reason))) {
+			resolved++
+		}
+	}
+	return resolved, nil
 }

@@ -17,6 +17,10 @@ const (
 	// past retention is pruned. The runway is months wide, so a daily pass is ample; it
 	// also runs once at startup so a long-idle deployment recovers immediately.
 	partitionMaintenancePeriod = 12 * time.Hour
+
+	// ddbVerdictRetryPeriod is how often DDB commits the node answered `undecidable` at ingest are
+	// re-asked (SEC-07c). Each entry also backs off on its own, so this is only the polling grain.
+	ddbVerdictRetryPeriod = 15 * time.Second
 )
 
 // dbMaintenance runs the recurring PostgreSQL housekeeping the schema needs but does not
@@ -28,8 +32,9 @@ const (
 // in, began failing every gas-price insert as the seeded partition runway ran out.
 type dbMaintenance struct {
 	service
-	statTicker      *time.Ticker
-	partitionTicker *time.Ticker
+	statTicker       *time.Ticker
+	partitionTicker  *time.Ticker
+	ddbVerdictTicker *time.Ticker
 }
 
 // name returns a human-readable name of the service used by the manager.
@@ -51,6 +56,7 @@ func (dbm *dbMaintenance) close() {
 	if dbm.statTicker != nil {
 		dbm.statTicker.Stop()
 		dbm.partitionTicker.Stop()
+		dbm.ddbVerdictTicker.Stop()
 	}
 	if dbm.sigStop != nil {
 		dbm.sigStop <- true
@@ -70,6 +76,7 @@ func (dbm *dbMaintenance) execute() {
 
 	dbm.statTicker = time.NewTicker(accountStatRefreshPeriod)
 	dbm.partitionTicker = time.NewTicker(partitionMaintenancePeriod)
+	dbm.ddbVerdictTicker = time.NewTicker(ddbVerdictRetryPeriod)
 
 	for {
 		select {
@@ -79,6 +86,8 @@ func (dbm *dbMaintenance) execute() {
 			go dbm.refreshAccountStats()
 		case <-dbm.partitionTicker.C:
 			go dbm.maintainPartitions()
+		case <-dbm.ddbVerdictTicker.C:
+			dbm.retryDdbVerdicts()
 		}
 	}
 }
@@ -104,5 +113,18 @@ func (dbm *dbMaintenance) maintainPartitions() {
 
 	if err := repo.MaintainPartitions(ctx, head); err != nil {
 		log.Errorf("partition maintenance failed; %s", err.Error())
+	}
+}
+
+// retryDdbVerdicts runs inline on the maintenance loop rather than in a goroutine, so two passes never
+// overlap and re-ask the node about the same commits.
+func (dbm *dbMaintenance) retryDdbVerdicts() {
+	n, err := repo.RetryDdbPendingVerdicts(bgCtx())
+	if err != nil {
+		log.Errorf("DDB verdict re-fetch failed; %s", err.Error())
+		return
+	}
+	if n > 0 {
+		log.Infof("DDB verdict re-fetch resolved %d queued commits", n)
 	}
 }
