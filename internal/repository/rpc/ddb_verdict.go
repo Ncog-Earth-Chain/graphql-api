@@ -36,6 +36,7 @@ import (
 	"context"
 	"fmt"
 
+	"ncogearthchain-api-graphql/internal/logger"
 	"ncogearthchain-api-graphql/internal/types"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -115,4 +116,11 @@ func ddbVerdictOf(elem *nec2.BatchElem, tx *ddbVerdictTx, hash common.Hash) type
 		return types.DdbCommitVerdict{Withheld: tx.InputRedacted}
 	}
 	return types.DdbCommitVerdict{Input: tx.Input}
+}
+
+// NewDdbVerdictBridge is a bridge that can do nothing but DdbCommitVerdicts and Transaction over an
+// existing client. It exists for tests that stand a node up in process (rpc.DialInProc) to answer as
+// the node's redaction walk does; production code builds its bridge with New.
+func NewDdbVerdictBridge(c *nec2.Client, log logger.Logger) *NecBridge {
+	return &NecBridge{rpc: c, log: log}
 }
