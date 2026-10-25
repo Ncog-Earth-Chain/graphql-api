@@ -47,13 +47,26 @@ jobs:
         working-directory: graphql-api
         run: echo "sha=$(cat ncog-evm.ref)" >> "$GITHUB_OUTPUT"
 
+      # ncog-evm is PRIVATE: on 2026-10-25 this checkout failed on GitHub with "repository
+      # 'https://github.com/Ncog-Earth-Chain/ncog-evm/' not found", because the default GITHUB_TOKEN reads
+      # only the repository running the workflow. NCOG_EVM_TOKEN is a repository secret holding a
+      # fine-grained token with Contents: read on ncog-evm (OPS-02, NEC-48). This step turns a missing or
+      # under-scoped secret into an error that names it, instead of a bare "not found" from the checkout.
+      - name: Read access to ncog-evm
+        env:
+          TOKEN: ${{ secrets.NCOG_EVM_TOKEN || github.token }}
+          REPO: ${{ github.repository_owner }}/ncog-evm
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "https://api.github.com/repos/$REPO")
+          [ "$code" = 200 ] || { echo "::error::cannot read $REPO (HTTP $code): it is private, so this job needs the repository secret NCOG_EVM_TOKEN, a fine-grained token with Contents: read on ncog-evm"; exit 1; }
+
       - name: Checkout ncog-evm (sibling)
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository_owner }}/ncog-evm
           ref: ${{ steps.pin.outputs.sha }}
           path: ncog-evm
-          # token: ${{ secrets.NCOG_EVM_TOKEN }}
+          token: ${{ secrets.NCOG_EVM_TOKEN || github.token }}
 
       - uses: actions/setup-go@v5
         with:
