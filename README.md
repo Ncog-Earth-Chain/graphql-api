@@ -76,3 +76,9 @@ sibling `../ncog-evm`; `docker build .` from this repository cannot resolve that
 
 Full operator documentation -- every environment variable, the node RPC pitfalls, health and
 readiness, migrations, and troubleshooting -- is in [doc/container.md](doc/container.md).
+
+## Test evidence
+
+The [SEC-07c trace policy catalog](docs/testing/sec-07c-trace-test-cases.md)
+records BASIC, DEFERRED, LIVE and OWNER cases and the limits of the run 22
+component checks. The node repository gate does not qualify this API release.

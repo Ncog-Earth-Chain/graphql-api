@@ -73,3 +73,13 @@ The coordinator owns execution under the shared run-22 lock, commit references, 
 - PLACE03 commitment-only calldata contains public routing/commitment metadata and keyed tags. Off-chain sidecars and digest keys are not supplied by these trace routes. Protecting historical plaintext calldata does not prove sidecar transport confidentiality, key custody or tenant erasure elsewhere.
 - This is an API output-policy repair: no consensus word, feature flag, governance setter, signing domain, database migration or node RPC method is introduced. Consensus flag-off/older-validator compatibility, serial/parallel execution, anchor rebuild and governance bounds are therefore not new activation obligations for this change. Public trace compatibility and legacy calldata policy are covered above; full system rollout remains separate.
 - The guard adds lookup/verdict work to trace requests. Existing tracing timeouts, API budgets, RPC batching and cancellation remain necessary; component tests do not establish production capacity, crash behavior of the upstream node or protection against every resource-exhaustion workload.
+
+## Board reconciliation, 2026-11-05
+
+After the independently reviewed correction was merged as `58036bae`, NEC-174
+was reopened to In Progress and labelled `tests-deferred`; comment 13153
+records the exact component evidence and remaining work. The earlier Done wording
+above describes the authoring checkpoint. The node gate `r22-waveD2-codex`
+on `80f36f29` does not replace separate GraphQL validation.
+The 36 inherited staticcheck diagnostics remain unresolved; no full GraphQL
+lint, HTTP/live or exact-release qualification is claimed.
