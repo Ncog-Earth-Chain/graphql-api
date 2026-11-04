@@ -225,9 +225,7 @@ func NewInternalTransaction(itx *types.InternalTransaction) *InternalTransaction
 // serve the optional `debug` namespace, so nothing about internal calls can be determined.
 func (trx *Transaction) trace(ctx context.Context) (interface{}, error) {
 	val, err, _ := trx.cg.Do("trace", func() (interface{}, error) {
-		return repository.R().TraceTransaction(ctx, trx.Hash, map[string]interface{}{
-			"tracer": "callTracer",
-		})
+		return repository.R().InternalTransactionTrace(ctx, trx.Hash)
 	})
 	if err != nil {
 		return nil, err

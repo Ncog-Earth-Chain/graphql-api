@@ -510,6 +510,10 @@ type Repository interface {
 	// TraceTransaction traces a transaction.
 	TraceTransaction(ctx context.Context, hash common.Hash, params map[string]interface{}) (interface{}, error)
 
+	// InternalTransactionTrace supplies only the typed internal-call resolver,
+	// which extracts metadata and redacts inputs. Never serve its result raw.
+	InternalTransactionTrace(ctx context.Context, hash common.Hash) (interface{}, error)
+
 	// --- DDB (Decentralized DataBase) introspection ---
 
 	// DdbValidators returns the current DDB validator committee + threshold.
