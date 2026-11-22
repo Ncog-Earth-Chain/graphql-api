@@ -38,7 +38,7 @@ jobs:
 
     steps:
       - name: Checkout graphql-api
-        uses: actions/checkout@v4
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           path: graphql-api
 
@@ -73,7 +73,7 @@ jobs:
           [ "$code" = 200 ] || { echo "::error::cannot read $REPO (HTTP $code): it is private, so this job needs the repository secret NCOG_EVM_TOKEN, a fine-grained token with Contents: read on ncog-evm"; exit 1; }
 
       - name: Checkout ncog-evm (sibling)
-        uses: actions/checkout@v4
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           repository: ${{ github.repository_owner }}/ncog-evm
           ref: ${{ steps.pin.outputs.sha }}
@@ -85,7 +85,7 @@ jobs:
       - name: Release pins (blocking)
         run: sh scripts/check-release-pins.sh
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: graphql-api/go.mod
           cache: true
