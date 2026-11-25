@@ -60,9 +60,8 @@ ARG ALPINE_VERSION=3.22
 # digest with it. scripts/check-release-pins.sh (a blocking ci.yml step) refuses a FROM without one.
 ARG BUILDER_DIGEST=sha256:8ac98ca534ac3f51e1f420a1dd2c15e74c75cfa0f23f3ad27eb5d7236c349a0c
 ARG RUNTIME_DIGEST=sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8
-# Exact apk versions (alpine v3.22 main), for the same reason one layer down.
-ARG CA_CERTIFICATES_VERSION=20260909-r0
-ARG TZDATA_VERSION=2026d-r0
+# There is deliberately NO package-version ARG here any more, and no apk anywhere in this file.
+# REL-05 removed the one apk call; the reasoning is at the runtime stage, where the call used to be.
 
 
 FROM golang:${GO_VERSION}-alpine@${BUILDER_DIGEST} AS builder
@@ -121,15 +120,40 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 FROM alpine:${ALPINE_VERSION}@${RUNTIME_DIGEST} AS runtime
 
-# A global ARG is not visible inside a stage until it is re-declared there.
-ARG CA_CERTIFICATES_VERSION
-ARG TZDATA_VERSION
-
-# ca-certificates: the API dials Postgres (`sslmode=require`/`verify-full`) and, for contract
-#   verification, downloads solc over HTTPS. alpine ships neither a trust store nor tzdata.
-# tzdata: the ingest path formats timestamps; without it every non-UTC location silently
-#   resolves to UTC.
-RUN apk add --no-cache ca-certificates=${CA_CERTIFICATES_VERSION} tzdata=${TZDATA_VERSION}
+# THE TRUST STORE (REL-05). alpine ships no trust store, and the API needs one: it dials Postgres with
+# sslmode=require / verify-full, and for contract verification it downloads solc over HTTPS. It is COPIED
+# from the digest-pinned builder instead of installed, so this image no longer reaches the live Alpine
+# package index at build time.
+#
+# WHY THIS AND NOT A PIN. The previous revision ran
+#     apk add --no-cache ca-certificates=20260909-r0 tzdata=2026d-r0
+# and both pins had aged out. Measured 2026-11-25 against RUNTIME_DIGEST, apk exits 2 with
+#     ca-certificates-20261020-r0: breaks: world[ca-certificates=20260909-r0]
+#     tzdata-2026f-r0:             breaks: world[tzdata=2026d-r0]
+# so this image could not be built at all, and nothing reported it: scripts/check-release-pins.sh is a
+# blocking CI step, but it checks that FROM lines carry digests -- which they do -- and says nothing about
+# whether a pinned PACKAGE still exists. Alpine serves only the current version of a package per branch,
+# so ANY exact apk pin here expires at the next upstream revision. This is the same vise REL-04 hit in the
+# node image three days earlier, and it is resolved the same way, for the same reason: the bytes are
+# already inside BUILDER_DIGEST, which carries ca-certificates as a 121-certificate bundle.
+#
+# TZDATA IS GONE FROM THE IMAGE, AND THE REASON IS NOT "it also expired". The comment that used to sit
+# here said the ingest path formats timestamps and that without tzdata every non-UTC location silently
+# resolves to UTC. The code does not do that: there is no time.LoadLocation anywhere in this repository,
+# nothing sets TZ, the only AT TIME ZONE in the SQL is 'UTC' (which PostgreSQL resolves on the database
+# server, using the database server's zone files, not this container's), and the shipped healthcheck
+# talks plain http to 127.0.0.1. So the stated dependency was not real.
+#
+# Rather than simply delete the package on that reasoning, cmd/apiserver and cmd/migrate now import
+# _ "time/tzdata", which embeds the IANA database in the binary. That costs about 450 KB and makes the
+# old comment TRUE instead of merely unfalsified: a named location resolves whatever the image contains,
+# so future code that does call LoadLocation cannot be broken by this change, and the external package is
+# gone for good rather than replaced by an assumption about what the code will never do.
+#
+# THE COST, STATED PLAINLY: the trust store is now frozen at the builder digest, so a CA addition or
+# revocation reaches this image only when BUILDER_DIGEST moves. That digest is already the thing that has
+# to move to change the compiler, and a frozen-but-known trust store beats an image nobody can build.
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 # Run unprivileged. 10002 rather than the node image's 10001 so a host directory shared with a
 # node container cannot end up owned by one identity and written by the other.

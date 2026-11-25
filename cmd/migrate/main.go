@@ -15,6 +15,13 @@ import (
 	"os"
 
 	"ncogearthchain-api-graphql/internal/repository/db/migrate"
+
+	// REL-05: embed the IANA zone database in the binary so a named location resolves without the
+	// alpine tzdata package, which the runtime image no longer installs -- an exact apk pin there
+	// expires at every upstream revision, and it had already aged out and broken the build. Nothing
+	// in this repository calls time.LoadLocation today; this is here so that staying true does not
+	// depend on nobody ever adding such a call.
+	_ "time/tzdata"
 )
 
 func main() {
@@ -48,20 +55,20 @@ func firstNonEmpty(vs ...string) string {
 // package emits only a handful of leveled lines, so nothing richer is needed here.
 type stdLogger struct{}
 
-func (stdLogger) Fatal(a ...interface{})            { log.Fatal(a...) }
-func (stdLogger) Fatalf(f string, a ...interface{}) { log.Fatalf(f, a...) }
-func (stdLogger) Panic(a ...interface{})            { log.Panic(a...) }
-func (stdLogger) Panicf(f string, a ...interface{}) { log.Panicf(f, a...) }
+func (stdLogger) Fatal(a ...interface{})               { log.Fatal(a...) }
+func (stdLogger) Fatalf(f string, a ...interface{})    { log.Fatalf(f, a...) }
+func (stdLogger) Panic(a ...interface{})               { log.Panic(a...) }
+func (stdLogger) Panicf(f string, a ...interface{})    { log.Panicf(f, a...) }
 func (stdLogger) Critical(a ...interface{})            { log.Print(a...) }
 func (stdLogger) Criticalf(f string, a ...interface{}) { log.Printf(f, a...) }
-func (stdLogger) Error(a ...interface{})            { log.Print(a...) }
-func (stdLogger) Errorf(f string, a ...interface{}) { log.Printf(f, a...) }
-func (stdLogger) Warning(a ...interface{})            { log.Print(a...) }
-func (stdLogger) Warningf(f string, a ...interface{}) { log.Printf(f, a...) }
-func (stdLogger) Notice(a ...interface{})            { log.Print(a...) }
-func (stdLogger) Noticef(f string, a ...interface{}) { log.Printf(f, a...) }
-func (stdLogger) Info(a ...interface{})            { log.Print(a...) }
-func (stdLogger) Infof(f string, a ...interface{}) { log.Printf(f, a...) }
-func (stdLogger) Debug(a ...interface{})            { log.Print(a...) }
-func (stdLogger) Debugf(f string, a ...interface{}) { log.Printf(f, a...) }
-func (stdLogger) Printf(f string, a ...interface{}) { log.Printf(f, a...) }
+func (stdLogger) Error(a ...interface{})               { log.Print(a...) }
+func (stdLogger) Errorf(f string, a ...interface{})    { log.Printf(f, a...) }
+func (stdLogger) Warning(a ...interface{})             { log.Print(a...) }
+func (stdLogger) Warningf(f string, a ...interface{})  { log.Printf(f, a...) }
+func (stdLogger) Notice(a ...interface{})              { log.Print(a...) }
+func (stdLogger) Noticef(f string, a ...interface{})   { log.Printf(f, a...) }
+func (stdLogger) Info(a ...interface{})                { log.Print(a...) }
+func (stdLogger) Infof(f string, a ...interface{})     { log.Printf(f, a...) }
+func (stdLogger) Debug(a ...interface{})               { log.Print(a...) }
+func (stdLogger) Debugf(f string, a ...interface{})    { log.Printf(f, a...) }
+func (stdLogger) Printf(f string, a ...interface{})    { log.Printf(f, a...) }
