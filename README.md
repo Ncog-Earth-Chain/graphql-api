@@ -9,7 +9,18 @@ Please check the [release tags](https://github.com/Ncog-Earth-Chain/graphql-api/
 #### Version 0.2.0, pending
 This version connects with the Forest v.0.7.0-rc1. The SFC contract ABI bundled with the API is version 2.0.2-rc1.
 
-The release brings new fluid delegations and rewards system. Each address is be able to delegate to multiple stakers. Delegation can be locked to certain time, at least 14 days and up to 1 year, to get higher rewards. Please check our website [NCOGChain.Earth](https://ncogchain.earth) and the [Special Fee Contract repository](https://github.com/Ncog-Earth-Chain/ncogearthchain-sfc) for more details.
+**The delegation surface is NOT in this release.** It was removed deliberately, to be rebuilt against
+the SFC v2 rewrite rather than carried forward, so there is no `delegations` field and no
+multiple-delegation or delegation-locking API here. The schema says so at its own definition site:
+`internal/graphql/schema/bundle.go` notes that reward-claims history is "exposed at the root so the
+reward-claims history remains queryable now that the delegation surface is gone". `withdrawRequests`
+is still available by address.
+
+> Corrected 2026-11-25. This paragraph previously announced, under a heading reading "Version 0.2.0,
+> pending", that "the release brings new fluid delegations and rewards system. Each address is be able
+> to delegate to multiple stakers." That is a claim about the CURRENT release and the code contradicts
+> it. It is the kind of README that costs an integrator a day: they build against an API the server
+> does not serve.
 
 #### Version 0.1.0, released on 8/2020
 This is the version you want to be able to connect with Forest v.0.6.0-rc2. The SFC contract ABI bundled with this API release is the version 1.1.0-rc1. The release uses Forest API v0.6.0 which recognizes single delegation per address and no delegation locking.
